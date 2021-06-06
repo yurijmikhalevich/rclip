@@ -8,12 +8,13 @@ import PIL
 import clip
 import numpy as np
 import torch
+from tqdm import tqdm
 from PIL import Image
 
-from rclip import db
+from rclip import db, utils
 
-
-DB = db.DB('/home/yurij/Downloads/rclip.sqlite3')
+DATADIR = utils.get_app_datadir()
+DB = db.DB(DATADIR / 'db.sqlite3')
 
 EXCLUDE_DIRS = ['@eaDir', 'node_modules', '.git']
 EXCLUDE_DIR_REGEX = re.compile(r'^.+\/(' + '|'.join(re.escape(dir) for dir in EXCLUDE_DIRS) + r')(\/.+)?$')
@@ -94,9 +95,11 @@ def index_files(filepaths: List[str], metas: List[ImageMeta]):
 def ensure_index(directory: str):
   batch = []
   metas = []
-  for root, _, files in os.walk(directory):
+  for root, _, files in tqdm(os.walk(directory), desc=directory):
     if EXCLUDE_DIR_REGEX.match(root): continue
-    for file in (f for f in files if IMAGE_REGEX.match(f)):
+    filtered_files = list(f for f in files if IMAGE_REGEX.match(f))
+    if not filtered_files: continue
+    for file in tqdm(filtered_files, desc=root):
       filepath = path.join(root, file)
 
       image = DB.get_image(filepath=filepath)
