@@ -15,6 +15,10 @@ from rclip import db
 
 DB = db.DB('/home/yurij/Downloads/rclip.sqlite3')
 
+EXCLUDE_DIRS = ['@eaDir', 'node_modules', '.git']
+EXCLUDE_DIR_REGEX = re.compile(r'^.+\/(' + '|'.join(re.escape(dir) for dir in EXCLUDE_DIRS) + r')(\/.+)?$')
+IMAGE_REGEX = re.compile(r'^.+\.(jpg|png)$', re.I)
+
 
 class ImageMeta(TypedDict):
   modified_at: float
@@ -88,11 +92,11 @@ def index_files(filepaths: List[str], metas: List[ImageMeta]):
 
 
 def ensure_index(directory: str):
-  pattern = re.compile(r'^.+\.((jpg)|(png))$', re.I)
   batch = []
   metas = []
   for root, _, files in os.walk(directory):
-    for file in (f for f in files if pattern.match(f)):
+    if EXCLUDE_DIR_REGEX.match(root): continue
+    for file in (f for f in files if IMAGE_REGEX.match(f)):
       filepath = path.join(root, file)
 
       image = DB.get_image(filepath=filepath)
