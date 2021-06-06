@@ -3,12 +3,12 @@ import os
 from os import path
 import re
 from typing import List, NamedTuple, Tuple, TypedDict, cast
-import PIL
 
 import clip
 import numpy as np
 import torch
 from tqdm import tqdm
+import PIL
 from PIL import Image
 
 from rclip import db, utils

@@ -33,10 +33,5 @@ def get_app_datadir() -> pathlib.Path:
     app_datadir = pathlib.Path(app_datadir)
   else:
     app_datadir = get_system_datadir() / config.NAME
-
-  try:
-    app_datadir.mkdir(parents=True)
-  except FileExistsError:
-    pass
-
+  os.makedirs(app_datadir, exist_ok=True)
   return app_datadir
