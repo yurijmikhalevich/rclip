@@ -82,7 +82,11 @@ def index_files(filepaths: List[str], metas: List[ImageMeta]):
     except Exception as ex:
       print(f'error loading image {path}:', ex)
 
-  features = compute_clip_features(images)
+  try:
+    features = compute_clip_features(images)
+  except Exception as ex:
+    print('error computing features:', ex)
+    return
   for path, meta, vector in zip(filtered_paths, metas, features):
     DB.upsert_image(db.NewImage(
       filepath=path,
