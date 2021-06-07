@@ -9,7 +9,8 @@ import numpy as np
 import torch
 from tqdm import tqdm
 import PIL
-from PIL import Image
+from PIL import Image, ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True  # type: ignore
 
 from rclip import db, utils
 
