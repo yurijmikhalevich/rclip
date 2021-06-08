@@ -19,7 +19,7 @@ DB = db.DB(DATADIR / 'db.sqlite3')
 
 EXCLUDE_DIRS = ['@eaDir', 'node_modules', '.git']
 EXCLUDE_DIR_REGEX = re.compile(r'^.+\/(' + '|'.join(re.escape(dir) for dir in EXCLUDE_DIRS) + r')(\/.+)?$')
-IMAGE_REGEX = re.compile(r'^.+\.(jpg|png)$', re.I)
+IMAGE_REGEX = re.compile(r'^.+\.(jpe?g|png)$', re.I)
 
 
 class ImageMeta(TypedDict):
@@ -35,6 +35,7 @@ class SearchResult(NamedTuple):
 def init_arg_parser():
   parser = argparse.ArgumentParser()
   parser.add_argument('query')
+  parser.add_argument('--index', action='store_true', default=False)
   return parser
 
 
@@ -138,8 +139,6 @@ def get_features(directory: str) -> Tuple[List[str], np.ndarray]:
 
 
 def search(query: str, directory: str, top_k: int = 10) -> List[SearchResult]:
-  ensure_index(directory)
-
   filepaths, features = get_features(directory)
 
   with torch.no_grad():
@@ -156,7 +155,13 @@ def search(query: str, directory: str, top_k: int = 10) -> List[SearchResult]:
 def main():
   arg_parser = init_arg_parser()
   args = arg_parser.parse_args()
-  result = search(args.query, os.getcwd())
+
+  current_directory = os.getcwd()
+
+  if args.index:
+    ensure_index(current_directory)
+
+  result = search(args.query, current_directory)
   for r in result:
     print(r)
 
