@@ -1,74 +1,20 @@
-import argparse
 import os
 from os import path
 import re
-from typing import List, NamedTuple, Tuple, TypedDict, cast
+from typing import Any, Iterable, List, NamedTuple, Tuple, TypedDict, cast
 
-import clip
 import numpy as np
-import torch
 from tqdm import tqdm
 import PIL
 from PIL import Image, ImageFile
-ImageFile.LOAD_TRUNCATED_IMAGES = True  # type: ignore
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
-from rclip import db, utils
-
-DATADIR = utils.get_app_datadir()
-DB = db.DB(DATADIR / 'db.sqlite3')
-
-EXCLUDE_DIRS = ['@eaDir', 'node_modules', '.git']
-EXCLUDE_DIR_REGEX = re.compile(r'^.+\/(' + '|'.join(re.escape(dir) for dir in EXCLUDE_DIRS) + r')(\/.+)?$')
-IMAGE_REGEX = re.compile(r'^.+\.(jpe?g|png)$', re.I)
+from rclip import db, model, utils
 
 
 class ImageMeta(TypedDict):
   modified_at: float
   size: int
-
-
-class SearchResult(NamedTuple):
-  filepath: str
-  score: float
-
-
-def top_arg_type(x):
-  x = int(x)
-  if x < 1:
-    raise argparse.ArgumentTypeError('number of results to display should be >0')
-  return x
-
-
-def init_arg_parser():
-  parser = argparse.ArgumentParser()
-  parser.add_argument('query')
-  parser.add_argument('--top', '-t', type=top_arg_type, default=10, help='number of top results to display')
-  parser.add_argument('--filepath-only', '-f', action='store_true', default=False, help='outputs only filepaths')
-  parser.add_argument(
-    '--skip-index', '-n',
-    action='store_true',
-    default=False,
-    help='don\'t attempt image indexing, saves time on consecutive runs on huge directories'
-  )
-  return parser
-
-
-model_name = 'ViT-B/32'
-device = 'cpu'
-model, preprocess = clip.load(model_name, device=device)
-batch_size = 8
-
-
-def compute_clip_features(images: List[Image.Image]) -> np.ndarray:
-  images_preprocessed = torch.stack([cast(torch.Tensor, preprocess(thumb)) for thumb in images]).to(device)
-
-  with torch.no_grad():
-    images_features = model.encode_image(images_preprocessed)
-    images_features /= images_features.norm(dim=-1, keepdim=True)
-
-  images_features = images_features.cpu().numpy()
-
-  return images_features
 
 
 def get_image_meta(filepath: str) -> ImageMeta:
@@ -84,98 +30,107 @@ def compare_image_meta(image: db.Image, meta: ImageMeta) -> bool:
   return True
 
 
+class RClip:
+  EXCLUDE_DIRS = ['@eaDir', 'node_modules', '.git']
+  EXCLUDE_DIR_REGEX = re.compile(r'^.+\/(' + '|'.join(re.escape(dir) for dir in EXCLUDE_DIRS) + r')(\/.+)?$')
+  IMAGE_REGEX = re.compile(r'^.+\.(jpe?g|png)$', re.I)
+  BATCH_SIZE = 8
 
-def index_files(filepaths: List[str], metas: List[ImageMeta]):
-  images: List[Image.Image] = []
-  filtered_paths: List[str] = []
-  for path in filepaths:
-    try:
-      image = Image.open(path)
-      images.append(image)
-      filtered_paths.append(path)
-    except PIL.UnidentifiedImageError as ex:
-      pass
-    except Exception as ex:
-      print(f'error loading image {path}:', ex)
+  class SearchResult(NamedTuple):
+    filepath: str
+    score: float
 
-  try:
-    features = compute_clip_features(images)
-  except Exception as ex:
-    print('error computing features:', ex)
-    return
-  for path, meta, vector in zip(filtered_paths, metas, features):
-    DB.upsert_image(db.NewImage(
-      filepath=path,
-      modified_at=meta['modified_at'],
-      size=meta['size'],
-      vector=vector.tobytes()
-    ))
+  def __init__(self, model_instance: model.Model, database: db.DB):
+    self._model = model_instance
+    self._db = database
 
-
-def ensure_index(directory: str):
-  batch = []
-  metas = []
-  for root, _, files in tqdm(os.walk(directory), desc=directory):
-    if EXCLUDE_DIR_REGEX.match(root): continue
-    filtered_files = list(f for f in files if IMAGE_REGEX.match(f))
-    if not filtered_files: continue
-    for file in tqdm(filtered_files, desc=root):
-      filepath = path.join(root, file)
-
-      image = DB.get_image(filepath=filepath)
+  def _index_files(self, filepaths: List[str], metas: List[ImageMeta]):
+    images: List[Image.Image] = []
+    filtered_paths: List[str] = []
+    for path in filepaths:
       try:
-        meta = get_image_meta(filepath)
+        image = Image.open(path)
+        images.append(image)
+        filtered_paths.append(path)
+      except PIL.UnidentifiedImageError as ex:
+        pass
       except Exception as ex:
-        print(f'error getting fs metadata for {filepath}:', ex)
-        continue
-      if image and compare_image_meta(image, meta):
-        continue
+        print(f'error loading image {path}:', ex)
 
-      batch.append(filepath)
-      metas.append(meta)
+    try:
+      features = self._model.compute_image_features(images)
+    except Exception as ex:
+      print('error computing features:', ex)
+      return
+    for path, meta, vector in cast(Iterable[Tuple[str, ImageMeta, np.ndarray]], zip(filtered_paths, metas, features)):
+      self._db.upsert_image(db.NewImage(
+        filepath=path,
+        modified_at=meta['modified_at'],
+        size=meta['size'],
+        vector=vector.tobytes()
+      ))
 
-      if len(batch) >= batch_size:
-        index_files(batch, metas)
-        batch = []
-        metas = []
+  def ensure_index(self, directory: str):
+    batch: List[str] = []
+    metas: List[ImageMeta] = []
+    for root, _, files in cast(Iterable[Tuple[str, Any, List[str]]], tqdm(os.walk(directory), desc=directory)):
+      if self.EXCLUDE_DIR_REGEX.match(root): continue
+      filtered_files = list(f for f in files if self.IMAGE_REGEX.match(f))
+      if not filtered_files: continue
+      for file in cast(Iterable[str], tqdm(filtered_files, desc=root)):
+        filepath = path.join(root, file)
 
-  if len(batch) != 0:
-    index_files(batch, metas)
+        image = self._db.get_image(filepath=filepath)
+        try:
+          meta = get_image_meta(filepath)
+        except Exception as ex:
+          print(f'error getting fs metadata for {filepath}:', ex)
+          continue
+        if image and compare_image_meta(image, meta):
+          continue
 
+        batch.append(filepath)
+        metas.append(meta)
 
-def get_features(directory: str) -> Tuple[List[str], np.ndarray]:
-  filepaths = []
-  features = []
-  for image in DB.get_images_by_path(directory):
-    filepaths.append(image['filepath'])
-    features.append(np.frombuffer(image['vector'], np.float32))
-  return filepaths, np.stack(features)
+        if len(batch) >= self.BATCH_SIZE:
+          self._index_files(batch, metas)
+          batch = []
+          metas = []
 
+    if len(batch) != 0:
+      self._index_files(batch, metas)
 
-def search(query: str, directory: str, top_k: int = 10) -> List[SearchResult]:
-  filepaths, features = get_features(directory)
+  def search(self, query: str, directory: str, top_k: int = 10) -> List[SearchResult]:
+    filepaths, features = self._get_features(directory)
 
-  with torch.no_grad():
-    text_encoded = model.encode_text(clip.tokenize(query).to(device))
-    text_encoded /= text_encoded.norm(dim=-1, keepdim=True)
+    sorted_similarities = self._model.compute_similarities_to_text(features, query)
 
-  text_features = text_encoded.cpu().numpy()
-  similarities = list((text_features @ features.T).squeeze(0))
-  best_thumbs = sorted(zip(similarities, range(features.shape[0])), key=lambda x: x[0], reverse=True)
+    return [RClip.SearchResult(filepath=filepaths[th[1]], score=th[0]) for th in sorted_similarities[:top_k]]
 
-  return [SearchResult(filepath=filepaths[th[1]], score=th[0]) for th in best_thumbs[:top_k]]
+  def _get_features(self, directory: str) -> Tuple[List[str], np.ndarray]:
+    filepaths: List[str] = []
+    features: List[np.ndarray] = []
+    for image in self._db.get_images_by_dir_path(directory):
+      filepaths.append(image['filepath'])
+      features.append(np.frombuffer(image['vector'], np.float32))
+    return filepaths, np.stack(features)
 
 
 def main():
-  arg_parser = init_arg_parser()
+  arg_parser = utils.init_arg_parser()
   args = arg_parser.parse_args()
 
   current_directory = os.getcwd()
 
-  if not args.skip_index:
-    ensure_index(current_directory)
+  model_instance = model.Model()
+  datadir = utils.get_app_datadir()
+  database = db.DB(datadir / 'db.sqlite3')
+  rclip = RClip(model_instance, database)
 
-  result = search(args.query, current_directory, args.top)
+  if not args.skip_index:
+    rclip.ensure_index(current_directory)
+
+  result = rclip.search(args.query, current_directory, args.top)
   if args.filepath_only:
     for r in result:
       print(r.filepath)

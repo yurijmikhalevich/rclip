@@ -1,3 +1,4 @@
+import argparse
 import os
 import pathlib
 import sys
@@ -35,3 +36,24 @@ def get_app_datadir() -> pathlib.Path:
     app_datadir = get_system_datadir() / config.NAME
   os.makedirs(app_datadir, exist_ok=True)
   return app_datadir
+
+
+def top_arg_type(arg: str) -> int:
+  arg_int = int(arg)
+  if arg_int < 1:
+    raise argparse.ArgumentTypeError('number of results to display should be >0')
+  return arg_int
+
+
+def init_arg_parser() -> argparse.ArgumentParser:
+  parser = argparse.ArgumentParser()
+  parser.add_argument('query')
+  parser.add_argument('--top', '-t', type=top_arg_type, default=10, help='number of top results to display')
+  parser.add_argument('--filepath-only', '-f', action='store_true', default=False, help='outputs only filepaths')
+  parser.add_argument(
+    '--skip-index', '-n',
+    action='store_true',
+    default=False,
+    help='don\'t attempt image indexing, saves time on consecutive runs on huge directories'
+  )
+  return parser

@@ -1,0 +1,13 @@
+{
+  "exclude": [
+    "AppDir",
+    "appimage-builder-cache",
+    "get-pip.py"
+  ],
+  "typeCheckingMode": "strict",
+  "reportMissingTypeStubs": "none",
+  "reportUnknownArgumentType": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownParameterType": "none",
+  "reportUnknownVariableType": "none"
+}

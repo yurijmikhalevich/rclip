@@ -1,6 +1,6 @@
 import pathlib
 import sqlite3
-from typing import Any, Dict, Optional, TypedDict, Union
+from typing import Any, Dict, List, Optional, TypedDict, Union
 
 
 class ImageOmittable(TypedDict, total=False):
@@ -18,11 +18,11 @@ class Image(NewImage):
   id: int
 
 
-def dict_factory(cur, row) -> Dict[str, Any]:
-    dict_row = {}
-    for idx, col in enumerate(cur.description):
-        dict_row[col[0]] = row[idx]
-    return dict_row
+def dict_factory(cur: sqlite3.Cursor, row: List[Any]) -> Dict[str, Any]:
+  dict_row: Dict[str, Any] = {}
+  for idx, col in enumerate(cur.description):
+    dict_row[col[0]] = row[idx]
+  return dict_row
 
 
 class DB:
@@ -57,11 +57,10 @@ class DB:
     self._con.execute('UPDATE images SET deleted = 1 WHERE id = ?', (id,))
     self._con.commit()
 
-  def get_image(self, **kwargs) -> Optional[Image]:
+  def get_image(self, **kwargs: Any) -> Optional[Image]:
     query = ' AND '.join(f'{key}=:{key}' for key in kwargs)
     cur = self._con.execute(f'SELECT * FROM images WHERE {query} LIMIT 1', kwargs)
     return cur.fetchone()
 
-  def get_images_by_path(self, path: str) -> sqlite3.Cursor:
-    path += '/%'
-    return self._con.execute(f'SELECT filepath, vector FROM images WHERE filepath LIKE ?', (path,))
+  def get_images_by_dir_path(self, path: str) -> sqlite3.Cursor:
+    return self._con.execute(f'SELECT filepath, vector FROM images WHERE filepath LIKE ?', (path + '/%',))

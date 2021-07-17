@@ -10,3 +10,6 @@ clip = {git = "https://github.com/openai/CLIP.git"}
 
 [requires]
 python_version = "3.8"
+
+[scripts]
+check_types = "pyright ."
