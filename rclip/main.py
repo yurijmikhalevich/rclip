@@ -32,9 +32,17 @@ class SearchResult(NamedTuple):
   score: float
 
 
+def top_arg_type(x):
+  x = int(x)
+  if x < 1:
+    raise argparse.ArgumentTypeError('number of results to display should be >0')
+  return x
+
+
 def init_arg_parser():
   parser = argparse.ArgumentParser()
   parser.add_argument('query')
+  parser.add_argument('--top', '-t', type=top_arg_type, default=10, help='number of top results to display')
   parser.add_argument(
     '--skip-index', '-n',
     action='store_true',
@@ -166,9 +174,10 @@ def main():
   if not args.skip_index:
     ensure_index(current_directory)
 
-  result = search(args.query, current_directory)
+  result = search(args.query, current_directory, args.top)
+  print('score\tfilepath')
   for r in result:
-    print(r)
+    print(f'{r.score:.3f}\t"{r.filepath}"')
 
 
 if __name__ == '__main__':
