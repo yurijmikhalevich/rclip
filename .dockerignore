@@ -1,0 +1,7 @@
+# AppImage
+AppDir
+appimage-builder-cache
+*.AppImage
+*.AppImage.zsync
+requirements.txt
+get-pip.py
