@@ -43,6 +43,7 @@ def init_arg_parser():
   parser = argparse.ArgumentParser()
   parser.add_argument('query')
   parser.add_argument('--top', '-t', type=top_arg_type, default=10, help='number of top results to display')
+  parser.add_argument('--filepath-only', '-f', action='store_true', default=False, help='outputs only filepaths')
   parser.add_argument(
     '--skip-index', '-n',
     action='store_true',
@@ -175,9 +176,13 @@ def main():
     ensure_index(current_directory)
 
   result = search(args.query, current_directory, args.top)
-  print('score\tfilepath')
-  for r in result:
-    print(f'{r.score:.3f}\t"{r.filepath}"')
+  if args.filepath_only:
+    for r in result:
+      print(r.filepath)
+  else:
+    print('score\tfilepath')
+    for r in result:
+      print(f'{r.score:.3f}\t"{r.filepath}"')
 
 
 if __name__ == '__main__':
