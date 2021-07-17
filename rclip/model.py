@@ -8,6 +8,7 @@ import torch
 import torch.nn
 
 class Model:
+  VECTOR_SIZE = 512
   _device = 'cpu'
   _model_name = 'ViT-B/32'
 

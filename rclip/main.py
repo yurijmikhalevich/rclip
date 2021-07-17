@@ -113,6 +113,8 @@ class RClip:
     for image in self._db.get_images_by_dir_path(directory):
       filepaths.append(image['filepath'])
       features.append(np.frombuffer(image['vector'], np.float32))
+    if not filepaths:
+      return [], np.ndarray(shape=(0, model.Model.VECTOR_SIZE))
     return filepaths, np.stack(features)
 
 

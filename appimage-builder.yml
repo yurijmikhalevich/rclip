@@ -56,7 +56,7 @@ AppDir:
     # Generate the requirements.txt file
     python3.8 -m pipenv lock -r > requirements.txt
     # Install application dependencies in AppDir
-    python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix=$APPDIR/usr wheel
+    python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix=$APPDIR/usr certifi wheel
     python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix=$APPDIR/usr -r ./requirements.txt
 
   runtime:
@@ -67,28 +67,25 @@ AppDir:
       # Path to the site-packages dir or other modules dirs
       # See https://docs.python.org/3/using/cmdline.html#envvar-PYTHONPATH
       PYTHONPATH: '${APPDIR}/usr/src:${APPDIR}/usr/lib/python3.8/site-packages'
+      # SSL Certificates are placed in a different location for every system therefore we ship our own copy
+      SSL_CERT_FILE: '${APPDIR}/usr/lib/python3.8/site-packages/certifi/cacert.pem'
 
   test:
     fedora:
       image: appimagecrafters/tests-env:fedora-30
-      command: ./AppRun
-      use_host_x: true
+      command: ./AppRun "kitty"
     debian:
       image: appimagecrafters/tests-env:debian-stable
-      command: ./AppRun
-      use_host_x: true
+      command: ./AppRun "kitty"
     arch:
       image: appimagecrafters/tests-env:archlinux-latest
-      command: ./AppRun
-      use_host_x: true
+      command: ./AppRun "kitty"
     centos:
       image: appimagecrafters/tests-env:centos-7
-      command: ./AppRun
-      use_host_x: true
+      command: ./AppRun "kitty"
     ubuntu:
       image: appimagecrafters/tests-env:ubuntu-xenial
-      command: ./AppRun
-      use_host_x: true
+      command: ./AppRun "kitty"
 
 AppImage:
   update-information: 'gh-releases-zsync|AppImageCrafters|python-appimage-example|latest|python-appimage-*x86_64.AppImage.zsync'
