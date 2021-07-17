@@ -35,7 +35,12 @@ class SearchResult(NamedTuple):
 def init_arg_parser():
   parser = argparse.ArgumentParser()
   parser.add_argument('query')
-  parser.add_argument('--index', action='store_true', default=False)
+  parser.add_argument(
+    '--skip-index', '-n',
+    action='store_true',
+    default=False,
+    help='don\'t attempt image indexing, saves time on consecutive runs on huge directories'
+  )
   return parser
 
 
@@ -158,7 +163,7 @@ def main():
 
   current_directory = os.getcwd()
 
-  if args.index:
+  if not args.skip_index:
     ensure_index(current_directory)
 
   result = search(args.query, current_directory)
