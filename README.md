@@ -1,6 +1,6 @@
-# rclip - AI-powered image search tool
+# rclip - AI-powered photo search tool
 
-**rclip** is a command-line image search tool based on the awesome OpenAI's [CLIP](https://github.com/openai/CLIP) neural network.
+**rclip** is a command-line photo search tool based on the awesome OpenAI's [CLIP](https://github.com/openai/CLIP) neural network.
 
 ## Installation
 
@@ -16,6 +16,14 @@ $ sudo mv rclip-0.0.1-alpha-x86_64.AppImage /usr/local/bin/rclip
 
 ```bash
 $ cd photos && rclip "search query"
+```
+
+### How do I preview the results?
+
+The command from below will open top-5 results for "kitty" in your default image viewer. For this to work, you'll have to index the directory beforehand by running rclip in it without the `-n` key.
+
+```bash
+$ rclip -nf -t 5 "kitty" | xargs -d '\n' -n 1 xdg-open
 ```
 
 ## Help
