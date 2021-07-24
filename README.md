@@ -1,5 +1,7 @@
 # rclip - AI-powered photo search tool
 
+![rclip logo](https://raw.githubusercontent.com/yurijmikhalevich/rclip/docs/logo/logo_transparent.png)
+
 **rclip** is a command-line photo search tool based on the awesome OpenAI's [CLIP](https://github.com/openai/CLIP) neural network.
 
 ## Installation
