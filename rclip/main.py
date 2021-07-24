@@ -7,9 +7,11 @@ import numpy as np
 from tqdm import tqdm
 import PIL
 from PIL import Image, ImageFile
-ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 from rclip import db, model, utils
+
+
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 class ImageMeta(TypedDict):
@@ -26,7 +28,8 @@ def get_image_meta(filepath: str) -> ImageMeta:
 
 def compare_image_meta(image: db.Image, meta: ImageMeta) -> bool:
   for key in meta:
-    if meta[key] != image[key]: return False
+    if meta[key] != image[key]:
+      return False
   return True
 
 
@@ -74,9 +77,11 @@ class RClip:
     batch: List[str] = []
     metas: List[ImageMeta] = []
     for root, _, files in cast(Iterable[Tuple[str, Any, List[str]]], tqdm(os.walk(directory), desc=directory)):
-      if self.EXCLUDE_DIR_REGEX.match(root): continue
+      if self.EXCLUDE_DIR_REGEX.match(root):
+        continue
       filtered_files = list(f for f in files if self.IMAGE_REGEX.match(f))
-      if not filtered_files: continue
+      if not filtered_files:
+        continue
       for file in cast(Iterable[str], tqdm(filtered_files, desc=root)):
         filepath = path.join(root, file)
 

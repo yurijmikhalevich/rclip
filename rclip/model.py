@@ -7,19 +7,23 @@ from PIL import Image
 import torch
 import torch.nn
 
+
 class Model:
   VECTOR_SIZE = 512
   _device = 'cpu'
   _model_name = 'ViT-B/32'
 
   def __init__(self):
-    model, preprocess = cast(Tuple[clip.model.CLIP, Callable[[Image.Image], torch.Tensor]], clip.load(self._model_name, device=self._device))
+    model, preprocess = cast(
+      Tuple[clip.model.CLIP, Callable[[Image.Image], torch.Tensor]],
+      clip.load(self._model_name, device=self._device)
+    )
     self._model = model
     self._preprocess = preprocess
 
   def compute_image_features(self, images: List[Image.Image]) -> np.ndarray:
     images_preprocessed = torch.stack([self._preprocess(thumb) for thumb in images]).to(self._device)
-  
+
     with torch.no_grad():
       image_features = self._model.encode_image(images_preprocessed)
       image_features /= image_features.norm(dim=-1, keepdim=True)

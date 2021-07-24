@@ -7,9 +7,11 @@ name = "pypi"
 clip = {git = "https://github.com/openai/CLIP.git"}
 
 [dev-packages]
+pycodestyle = "~=2.7"
 
 [requires]
 python_version = "3.8"
 
 [scripts]
 check_types = "pyright ."
+lint = "pycodestyle ."
