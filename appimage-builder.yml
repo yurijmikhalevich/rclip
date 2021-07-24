@@ -15,7 +15,7 @@ AppDir:
     id: org.yurijmikhalevich.rclip
     name: rclip
     icon: utilities-terminal
-    version: 0.0.1
+    version: !ENV ${APP_VERSION}
     # Set the python executable as entry point
     exec: usr/bin/python3.8
     # Set the application main script path as argument. Use '$@' to forward CLI parameters

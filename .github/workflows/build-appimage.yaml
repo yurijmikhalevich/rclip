@@ -1,0 +1,32 @@
+name: rclip
+
+on:
+  push:
+    tags:
+      - v*
+
+jobs:
+  build-appimage:
+
+    runs-on:  ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Get the version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+      - name: Build AppImage
+        uses: AppImageCrafters/build-appimage@master
+        with:
+          recipe: './appimage-builder.yml'
+        env:
+          APP_VERSION: ${{ steps.get_version.outputs.VERSION }}
+      - name: Debug output
+        run: ls -lah
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ steps.get_version.outputs.VERSION }}
+          artifacts: 'rclip-*.AppImage'
+          prerelease: true
+          token: ${{ secrets.GITHUB_TOKEN }}
