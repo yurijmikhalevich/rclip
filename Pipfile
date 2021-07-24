@@ -13,6 +13,7 @@ pycodestyle = "~=2.7"
 python_version = "3.8"
 
 [scripts]
+check_style = "pycodestyle ."
 check_types = "pyright ."
 install_pyright = "npm i -g pyright@1.1.133"
-lint = "pycodestyle ."
+lint = "bash -c 'pipenv run check_style && pipenv run check_types'"
