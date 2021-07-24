@@ -1,6 +1,6 @@
-# rclip - AI-powered CLI image search tool
+# rclip - AI-powered image search tool
 
-rclip is a command-line image search tool based on the awesome OpenAI's [CLIP](https://github.com/openai/CLIP) neural network.
+**rclip** is a command-line image search tool based on the awesome OpenAI's [CLIP](https://github.com/openai/CLIP) neural network.
 
 ## Installation
 
