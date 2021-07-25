@@ -45,6 +45,8 @@ AppDir:
 
   after_bundle: |
     # Set python 3.8 env
+    echo ${APPDIR}
+    ls ${APPDIR}
     export PYTHONHOME=${APPDIR}/usr
     export PYTHONPATH=${APPDIR}/usr/lib/python3.8/site-packages:$APPDIR/usr/lib/python3.8
     export PATH=${APPDIR}/usr/bin:$PATH
