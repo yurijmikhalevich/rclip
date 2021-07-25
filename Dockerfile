@@ -15,4 +15,3 @@ ENV DATADIR /data
 
 COPY . .
 CMD pipenv shell "cd /images && /opt/rclip/bin/rclip.sh \"${QUERY}\" && exit"
-

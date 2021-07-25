@@ -40,6 +40,7 @@ AppDir:
       - python3.8
       - python3.8-distutils
       - python3.8-minimal
+      - python3-pip
     exclude: []
 
   after_bundle: |
@@ -48,9 +49,6 @@ AppDir:
     export PYTHONPATH=${APPDIR}/usr/lib/python3.8/site-packages:$APPDIR/usr/lib/python3.8
     export PATH=${APPDIR}/usr/bin:$PATH
     export LD_LIBRARY_PATH=${APPDIR}/usr/lib/x86_64-linux-gnu
-    # Install pip
-    curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
-    python3.8 get-pip.py
     # Install pipenv
     python3.8 -m pip install pipenv
     # Generate the requirements.txt file
