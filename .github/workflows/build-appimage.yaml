@@ -21,7 +21,7 @@ jobs:
           recipe: './appimage-builder.yml'
         env:
           APP_VERSION: ${{ steps.get_version.outputs.VERSION }}
-          APPDIR: ./AppDir
+          APPDIR: ${pwd}/AppDir
       - name: Debug output
         run: ls -lah
       - name: Create release
