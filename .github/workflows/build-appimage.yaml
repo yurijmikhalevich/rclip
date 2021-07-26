@@ -15,20 +15,16 @@ jobs:
       - name: Get the version
         id: get_version
         run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
-      - name: Debug env
-        run: env
       - name: Get pwd
         id: get_pwd
         run: echo ::set-output name=PWD::${PWD}
-      - name: Test pwd
-        run: echo ${{ steps.get_pwd.outputs.PWD }}
       - name: Build AppImage
         uses: AppImageCrafters/build-appimage@master
         with:
           recipe: './appimage-builder.yml'
         env:
           APP_VERSION: ${{ steps.get_version.outputs.VERSION }}
-          APPDIR: "${PWD}/AppDir"
+          APPDIR: ${{ steps.get_pwd.outputs.PWD }}/AppDir
       - name: Debug output
         run: ls -lah
       - name: Create release
