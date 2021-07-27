@@ -52,6 +52,7 @@ AppDir:
     export PYTHONPATH=${APPDIR}/usr/lib/python3.8/site-packages:$APPDIR/usr/lib/python3.8
     export PATH=${APPDIR}/usr/bin:$PATH
     export LD_LIBRARY_PATH=${APPDIR}/usr/lib/x86_64-linux-gnu
+    env
     # Install pipenv
     python3.8 -m pip install pipenv
     # Generate the requirements.txt file
