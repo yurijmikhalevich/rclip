@@ -44,26 +44,15 @@ AppDir:
     exclude: []
 
   after_bundle: |
-    # Set python 3.8 env
-    echo ${APPDIR}
-    ls ${APPDIR}
-    ls ${APPDIR}/usr/bin
-    export PYTHONHOME=${APPDIR}/usr
-    export PYTHONPATH=${APPDIR}/usr/lib/python3.8/site-packages:${APPDIR}/usr/lib/python3.8
-    export PATH=${APPDIR}/usr/bin:${PATH}
-    export LD_LIBRARY_PATH=${APPDIR}/usr/lib/x86_64-linux-gnu
-    echo ::set-env PYTHONHOME=${APPDIR}/usr
-    echo ::set-env PYTHONPATH=${APPDIR}/usr/lib/python3.8/site-packages:${APPDIR}/usr/lib/python3.8
-    echo ::set-env PATH=${APPDIR}/usr/bin:${PATH}
-    echo ::set-env LD_LIBRARY_PATH=${APPDIR}/usr/lib/x86_64-linux-gnu
-    env
-    # Install pipenv
-    python3.8 -m pip install pipenv
-    # Generate the requirements.txt file
-    python3.8 -m pipenv lock -r > requirements.txt
-    # Install application dependencies in AppDir
-    python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix=$APPDIR/usr certifi wheel
-    python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix=$APPDIR/usr -r ./requirements.txt
+    PYTHONHOME=${APPDIR}/usr \
+    PYTHONPATH=${APPDIR}/usr/lib/python3.8/site-packages:${APPDIR}/usr/lib/python3.8 \
+    PATH=${APPDIR}/usr/bin:${PATH} \
+    LD_LIBRARY_PATH=${APPDIR}/usr/lib/x86_64-linux-gnu \
+    env && \
+    python3.8 -m pip install pipenv && \
+    python3.8 -m pipenv lock -r > requirements.txt && \
+    python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="${APPDIR}/usr" certifi wheel && \
+    python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="${APPDIR}/usr" -r ./requirements.txt
 
   runtime:
     env:
