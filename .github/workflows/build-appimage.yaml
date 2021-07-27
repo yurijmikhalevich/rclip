@@ -15,17 +15,16 @@ jobs:
       - name: Get the version
         id: get_version
         run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
-      - name: Get pwd
-        id: get_pwd
-        run: echo ::set-output name=PWD::${PWD}
+      - name: Setup APPDIR and PATH for after_bundle
+        run: |
+          echo "APPDIR=${PWD}/AppDir" >> $GITHUB_ENV
+          echo "${PWD}/AppDir/usr/bin" >> $GITHUB_PATH
       - name: Build AppImage
         uses: AppImageCrafters/build-appimage@master
         with:
           recipe: './appimage-builder.yml'
         env:
           APP_VERSION: ${{ steps.get_version.outputs.VERSION }}
-          # Variables required by the after_bundle step (GHA doesn't respect `export VAR=`)
-          APPDIR: ${{ steps.get_pwd.outputs.PWD }}/AppDir
       - name: Debug output
         run: ls -lah
       - name: Create release
