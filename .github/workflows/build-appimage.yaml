@@ -26,10 +26,6 @@ jobs:
           APP_VERSION: ${{ steps.get_version.outputs.VERSION }}
           # Variables required by the after_bundle step (GHA doesn't respect `export VAR=`)
           APPDIR: ${{ steps.get_pwd.outputs.PWD }}/AppDir
-          PYTHONHOME: ${{ steps.get_pwd.outputs.PWD }}/AppDir/usr
-          PYTHONPATH: ${{ steps.get_pwd.outputs.PWD }}/AppDir/usr/lib/python3.8/site-packages:${{ steps.get_pwd.outputs.PWD }}/AppDir/usr/lib/python3.8
-          PATH: ${{ steps.get_pwd.outputs.PWD }}/AppDir/usr/bin:/usr/bin:/usr/local/bin:/usr/sbin:/usr/local/sbin
-          LD_LIBRARY_PATH: ${{ steps.get_pwd.outputs.PWD }}/AppDir/usr/lib/x86_64-linux-gnu
       - name: Debug output
         run: ls -lah
       - name: Create release

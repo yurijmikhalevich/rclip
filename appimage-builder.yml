@@ -50,8 +50,12 @@ AppDir:
     ls ${APPDIR}/usr/bin
     export PYTHONHOME=${APPDIR}/usr
     export PYTHONPATH=${APPDIR}/usr/lib/python3.8/site-packages:${APPDIR}/usr/lib/python3.8
-    export PATH=${APPDIR}/usr/bin:$PATH
+    export PATH=${APPDIR}/usr/bin:${PATH}
     export LD_LIBRARY_PATH=${APPDIR}/usr/lib/x86_64-linux-gnu
+    echo ::set-env PYTHONHOME=${APPDIR}/usr
+    echo ::set-env PYTHONPATH=${APPDIR}/usr/lib/python3.8/site-packages:${APPDIR}/usr/lib/python3.8
+    echo ::set-env PATH=${APPDIR}/usr/bin:${PATH}
+    echo ::set-env LD_LIBRARY_PATH=${APPDIR}/usr/lib/x86_64-linux-gnu
     env
     # Install pipenv
     python3.8 -m pip install pipenv
