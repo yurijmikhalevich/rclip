@@ -49,7 +49,7 @@ AppDir:
     ls ${APPDIR}
     ls ${APPDIR}/usr/bin
     export PYTHONHOME=${APPDIR}/usr
-    export PYTHONPATH=${APPDIR}/usr/lib/python3.8/site-packages:$APPDIR/usr/lib/python3.8
+    export PYTHONPATH=${APPDIR}/usr/lib/python3.8/site-packages:${APPDIR}/usr/lib/python3.8
     export PATH=${APPDIR}/usr/bin:$PATH
     export LD_LIBRARY_PATH=${APPDIR}/usr/lib/x86_64-linux-gnu
     env
