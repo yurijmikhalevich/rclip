@@ -45,14 +45,14 @@ AppDir:
 
     # PATH=${APPDIR}/usr/bin:${PATH}
   after_bundle: >
+    # using full path to the python here because GHA doesn't allow updating PATH via `export`
+    # and resets PATH updated in the previous actions for this build-appimage action
     PYTHONHOME=${APPDIR}/usr
     PYTHONPATH=${APPDIR}/usr/lib/python3.8/site-packages:${APPDIR}/usr/lib/python3.8
     LD_LIBRARY_PATH=${APPDIR}/usr/lib/x86_64-linux-gnu
     env &&
     echo $PATH &&
     ls -lah /github/workspace/AppDir/usr/bin/python3.8 &&
-    # using full path here because GHA doesn't allow updating PATH via `export`
-    # and resets PATH updated in the previous actions for the build-appimage action
     ${APPDIR}/usr/bin/python3.8 --version &&
     ${APPDIR}/usr/bin/python3.8 -m pip install pipenv &&
     ${APPDIR}/usr/bin/python3.8 -m pipenv lock -r > requirements.txt &&
