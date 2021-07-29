@@ -17,7 +17,7 @@ jobs:
         run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
       - name: Setup APPDIR and PATH for after_bundle
         run: |
-          # echo "APPDIR=${PWD}/AppDir" >> $GITHUB_ENV
+          echo "APPDIR=${PWD}/AppDir" >> $GITHUB_ENV
           echo "${PWD}/AppDir/usr/bin" >> $GITHUB_PATH
       - name: Test env
         run: |

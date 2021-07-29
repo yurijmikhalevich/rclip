@@ -48,14 +48,15 @@ AppDir:
     PYTHONHOME=${APPDIR}/usr
     PYTHONPATH=${APPDIR}/usr/lib/python3.8/site-packages:${APPDIR}/usr/lib/python3.8
     LD_LIBRARY_PATH=${APPDIR}/usr/lib/x86_64-linux-gnu
+    PYTHONBIN=${APPDIR}/usr/bin/python3.8
     env &&
     echo $PATH &&
     ls -lah /github/workspace/AppDir/usr/bin/python3.8 &&
-    ${APPDIR}/usr/bin/python3.8 --version &&
-    ${APPDIR}/usr/bin/python3.8 -m pip install pipenv &&
-    ${APPDIR}/usr/bin/python3.8 -m pipenv lock -r > requirements.txt &&
-    ${APPDIR}/usr/bin/python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="${APPDIR}/usr" certifi wheel &&
-    ${APPDIR}/usr/bin/python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="${APPDIR}/usr" -r ./requirements.txt
+    ${PYTHON_BIN} --version &&
+    ${PYTHON_BIN} -m pip install pipenv &&
+    ${PYTHON_BIN} -m pipenv lock -r > requirements.txt &&
+    ${PYTHON_BIN} -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="${APPDIR}/usr" certifi wheel &&
+    ${PYTHON_BIN} -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="${APPDIR}/usr" -r ./requirements.txt
 
   runtime:
     env:
