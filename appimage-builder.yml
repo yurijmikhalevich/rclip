@@ -51,11 +51,11 @@ AppDir:
     env &&
     echo $PATH &&
     ls -lah /github/workspace/AppDir/usr/bin/python3.8 &&
-    /github/workspace/AppDir/usr/bin/python3.8 --version &&
-    python3.8 -m pip install pipenv &&
-    python3.8 -m pipenv lock -r > requirements.txt &&
-    python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="${APPDIR}/usr" certifi wheel &&
-    python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="${APPDIR}/usr" -r ./requirements.txt
+    ${APPDIR}/usr/bin/python3.8 --version &&
+    ${APPDIR}/usr/bin/python3.8 -m pip install pipenv &&
+    ${APPDIR}/usr/bin/python3.8 -m pipenv lock -r > requirements.txt &&
+    ${APPDIR}/usr/bin/python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="${APPDIR}/usr" certifi wheel &&
+    ${APPDIR}/usr/bin/python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="${APPDIR}/usr" -r ./requirements.txt
 
   runtime:
     env:
