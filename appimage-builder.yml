@@ -43,12 +43,15 @@ AppDir:
       - python3-pip
     exclude: []
 
+    # PATH=${APPDIR}/usr/bin:${PATH}
   after_bundle: >
     PYTHONHOME=${APPDIR}/usr
     PYTHONPATH=${APPDIR}/usr/lib/python3.8/site-packages:${APPDIR}/usr/lib/python3.8
-    PATH=${APPDIR}/usr/bin:${PATH}
     LD_LIBRARY_PATH=${APPDIR}/usr/lib/x86_64-linux-gnu
     env &&
+    echo $PATH &&
+    ls -lah /github/workspace/AppDir/usr/bin/python3.8 &&
+    /github/workspace/AppDir/usr/bin/python3.8 --version &&
     python3.8 -m pip install pipenv &&
     python3.8 -m pipenv lock -r > requirements.txt &&
     python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="${APPDIR}/usr" certifi wheel &&
