@@ -25,7 +25,7 @@ jobs:
           recipe: './appimage-builder.yml'
         env:
           APP_VERSION: ${{ steps.version.outputs.VERSION }}
-      - name: Generate Changelog 2
+      - name: Generate Changelog
         run: |
           echo "CHANGELOG<<EOF" >> $GITHUB_ENV
           git --no-pager log --pretty="format:- %s" "$(git describe --abbrev=0 --tags ${{ steps.version.outputs.VERSION }}^)..${{ steps.version.outputs.VERSION }}" >> $GITHUB_ENV
