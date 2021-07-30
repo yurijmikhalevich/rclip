@@ -16,9 +16,9 @@ jobs:
         id: version
         run: |
           echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
-          echo ::set-output name=PRERELEASE::$([[ ! ${GITHUB_REF} =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo "true")
+          echo ::set-output name=PRERELEASE::$([[ ! $GITHUB_REF =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo "true")
       - name: Set up APPDIR for after_bundle
-        run: echo "APPDIR=${PWD}/AppDir" >> $GITHUB_ENV
+        run: echo "APPDIR=$PWD/AppDir" >> $GITHUB_ENV
       # - name: Build AppImage
       #   uses: AppImageCrafters/build-appimage@master
       #   with:
@@ -26,20 +26,25 @@ jobs:
       #   env:
       #     APP_VERSION: ${{ steps.version.outputs.VERSION }}
       - name: Generate Changelog
+        id: changelog
         run: |
           git fetch --all --tags
-          echo $(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1))
-          echo $GITHUB_REF
-          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
-          git --no-pager log --pretty="format:- %s" "$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1))..${{ steps.version.outputs.VERSION }}" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          CHANGELOG=$(
+            git --no-pager log --pretty="format:- %s" "$(
+              git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1)
+            )..${{ steps.version.outputs.VERSION }}"
+          )
+          CHANGELOG="${CHANGELOG//'%'/'%25'}"
+          CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
+          CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
+          echo ::set-output name=CHANGELOG::$CHANGELOG
       - name: test changelog
         run: printf "${GITHUB_ENV}"
-      # - name: Create Release
-      #   uses: ncipollo/release-action@v1
-      #   with:
-      #     name: ${{ steps.version.outputs.VERSION }}
-      #     artifacts: 'rclip-*.AppImage'
-      #     body: ${{ env.CHANGELOG || 'internal release' }}
-      #     prerelease: ${{ steps.version.outputs.PRERELEASE }}
-      #     token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ steps.version.outputs.VERSION }}
+          artifacts: 'rclip-*.AppImage'
+          body: ${{ steps.changelog.outputs.CHANGELOG }}
+          prerelease: ${{ steps.version.outputs.PRERELEASE }}
+          token: ${{ secrets.GITHUB_TOKEN }}
