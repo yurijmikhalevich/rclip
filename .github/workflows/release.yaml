@@ -1,0 +1,34 @@
+name: release
+
+on:
+  push:
+    tags:
+      - v*
+
+jobs:
+  build-appimage:
+
+    runs-on:  ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Parse the Version
+        id: version
+        run: |
+          echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+          echo ::set-output name=PRERELEASE::${[[ ! ${GITHUB_REF} =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && "true"}
+      - name: Set up APPDIR for after_bundle
+        run: echo "APPDIR=${PWD}/AppDir" >> $GITHUB_ENV
+      - name: Build AppImage
+        uses: AppImageCrafters/build-appimage@master
+        with:
+          recipe: './appimage-builder.yml'
+        env:
+          APP_VERSION: ${{ steps.version.outputs.VERSION }}
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ steps.version.outputs.VERSION }}
+          artifacts: 'rclip-*.AppImage'
+          prerelease: ${{ steps.version.outputs.PRERELEASE }}
+          token: ${{ secrets.GITHUB_TOKEN }}
