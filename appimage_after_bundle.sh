@@ -2,6 +2,8 @@
 
 set -e
 
+echo $PATH
+ls -lah /usr/bin/git
 git --version
 which git
 
