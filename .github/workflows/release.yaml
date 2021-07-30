@@ -25,11 +25,14 @@ jobs:
           recipe: './appimage-builder.yml'
         env:
           APP_VERSION: ${{ steps.version.outputs.VERSION }}
+      - name: Generate Changelog
+        id: changelog
+        run: echo ::set-output name=CHANGELOG::$(git --no-pager log --pretty="format:- %s" $(git describe --abbrev=0 --tags ${GITHUB_REF}^)..${GITHUB_REF})
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
           name: ${{ steps.version.outputs.VERSION }}
           artifacts: 'rclip-*.AppImage'
-          body: ' '
+          body: ${{ steps.changelog.outputs.CHANGELOG || "internal release" }}
           prerelease: ${{ steps.version.outputs.PRERELEASE }}
           token: ${{ secrets.GITHUB_TOKEN }}
