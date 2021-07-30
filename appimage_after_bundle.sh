@@ -2,6 +2,9 @@
 
 set -e
 
+git --version
+which git
+
 PYTHONHOME=${APPDIR}/usr
 PYTHONPATH=${APPDIR}/usr/lib/python3.8/site-packages:${APPDIR}/usr/lib/python3.8
 LD_LIBRARY_PATH=${APPDIR}/usr/lib/x86_64-linux-gnu

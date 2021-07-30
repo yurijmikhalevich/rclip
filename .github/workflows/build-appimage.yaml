@@ -15,12 +15,11 @@ jobs:
       - name: Get the version
         id: get_version
         run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
-      - name: Setup APPDIR and PATH for after_bundle
+      - name: Setup APPDIR for after_bundle
         run: |
           echo "APPDIR=${PWD}/AppDir" >> $GITHUB_ENV
-          echo "${PWD}/AppDir/usr/bin" >> $GITHUB_PATH
-          git --version | echo "not installed"
-          sudo apt install git # install git
+          git --version
+          which git
       - name: Build AppImage
         uses: AppImageCrafters/build-appimage@master
         with:
