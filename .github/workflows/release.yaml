@@ -30,6 +30,5 @@ jobs:
         with:
           name: ${{ steps.version.outputs.VERSION }}
           artifacts: 'rclip-*.AppImage'
-          omitBody: true
           prerelease: ${{ steps.version.outputs.PRERELEASE }}
           token: ${{ secrets.GITHUB_TOKEN }}
