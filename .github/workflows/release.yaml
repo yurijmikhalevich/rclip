@@ -38,8 +38,6 @@ jobs:
           CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
           CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
           echo ::set-output name=CHANGELOG::$CHANGELOG
-      - name: test changelog
-        run: printf "${GITHUB_ENV}"
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
