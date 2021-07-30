@@ -1,11 +1,12 @@
 version: 1
 script:
   # Remove any previous build
-  - rm -rf AppDir  | true
+  - rm -rf AppDir | true
   # Make usr and icons dirs
-  - mkdir -p AppDir/usr/src
-  # Copy the python application code into the AppDir
+  - mkdir -p AppDir/usr/src AppDir/usr/share/icons/hicolor/256x256/apps/
+  # Copy the python application code and icon into the AppDir
   - cp rclip AppDir/usr/src -r
+  - cp logo@256.png AppDir/usr/share/icons/hicolor/256x256/apps/rclip.png
 
 
 AppDir:
@@ -14,12 +15,12 @@ AppDir:
   app_info:
     id: org.yurijmikhalevich.rclip
     name: rclip
-    icon: utilities-terminal
+    icon: rclip
     version: !ENV ${APP_VERSION}
     # Set the python executable as entry point
     exec: usr/bin/python3.8
     # Set the application main script path as argument. Use '$@' to forward CLI parameters
-    exec_args: "$APPDIR/usr/src/rclip/main.py $@"
+    exec_args: "${APPDIR}/usr/src/rclip/main.py $@"
 
   apt:
     arch: amd64
@@ -43,17 +44,13 @@ AppDir:
       - python3-pip
     exclude: []
 
-    # PATH=${APPDIR}/usr/bin:${PATH}
+  # using full path to the python here because GHA doesn't allow updating PATH via `export`
+  # and resets PATH updated in the previous actions for this build-appimage action
   after_bundle: >
-    # using full path to the python here because GHA doesn't allow updating PATH via `export`
-    # and resets PATH updated in the previous actions for this build-appimage action
+    PATH=${APPDIR}/usr/bin:${PATH}
     PYTHONHOME=${APPDIR}/usr
     PYTHONPATH=${APPDIR}/usr/lib/python3.8/site-packages:${APPDIR}/usr/lib/python3.8
     LD_LIBRARY_PATH=${APPDIR}/usr/lib/x86_64-linux-gnu
-    env &&
-    echo $PATH &&
-    ls -lah /github/workspace/AppDir/usr/bin/python3.8 &&
-    ${APPDIR}/usr/bin/python3.8 --version &&
     ${APPDIR}/usr/bin/python3.8 -m pip install pipenv &&
     ${APPDIR}/usr/bin/python3.8 -m pipenv lock -r > requirements.txt &&
     ${APPDIR}/usr/bin/python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="${APPDIR}/usr" certifi wheel &&
