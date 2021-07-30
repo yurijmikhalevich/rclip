@@ -2,8 +2,9 @@
 
 set -e
 
-echo $PATH
-ls -lah /usr/bin/git
+whoami
+apt-get install git
+
 git --version
 which git
 
