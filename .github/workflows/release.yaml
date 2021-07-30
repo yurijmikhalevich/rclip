@@ -27,13 +27,13 @@ jobs:
       #     APP_VERSION: ${{ steps.version.outputs.VERSION }}
       - name: Generate Changelog
         run: |
-          pwd
-          ls -lah
-          ls -lah .git
-          git tag
-          git fetch
+          git fetch --all --tags
+          echo $(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1))
+          echo $GITHUB_REF
           echo "CHANGELOG<<EOF" >> $GITHUB_ENV
-          git --no-pager log --pretty="format:- %s" "$(git describe --abbrev=0 --tags '${{ steps.version.outputs.VERSION }}^')..${{ steps.version.outputs.VERSION }}" >> $GITHUB_ENV
+          git --no-pager log --pretty="format:- %s" "$(
+            git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1)
+          )..${{ steps.version.outputs.VERSION }}" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
       - name: test changelog
         run: printf "${GITHUB_ENV}"
