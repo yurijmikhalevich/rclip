@@ -25,7 +25,7 @@ jobs:
       #     recipe: './appimage-builder.yml'
       #   env:
       #     APP_VERSION: ${{ steps.version.outputs.VERSION }}
-      - name: Generate Changelog
+      - name: Generate Changelog RRR
         id: changelog
         run: |
           git fetch --all --tags
