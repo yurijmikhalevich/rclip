@@ -2,7 +2,10 @@
 
 set -e
 
-apt-get install -y git
+if [[ "${GITHUB_ACTIONS}" ]]; then
+  # Install git into the appimage-builder docker image
+  apt-get update && apt-get install -y git
+fi
 
 PYTHONHOME=${APPDIR}/usr
 PYTHONPATH=${APPDIR}/usr/lib/python3.8/site-packages:${APPDIR}/usr/lib/python3.8
