@@ -20,7 +20,7 @@ jobs:
           echo "APPDIR=${PWD}/AppDir" >> $GITHUB_ENV
           echo "${PWD}/AppDir/usr/bin" >> $GITHUB_PATH
           git --version | echo "not installed"
-          apt install git # install git
+          sudo apt install git # install git
       - name: Build AppImage
         uses: AppImageCrafters/build-appimage@master
         with:
