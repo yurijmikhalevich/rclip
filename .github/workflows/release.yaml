@@ -42,7 +42,7 @@ jobs:
           CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
           printf "$CHANGELOG"
           echo "::set-output name=CHANGELOG::$CHANGELOG"
-      - name: Test 222
+      - name: Test Log
         run: echo "${{ steps.changelog.outputs.CHANGELOG }}"
       - name: Create Release
         uses: ncipollo/release-action@v1
