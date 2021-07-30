@@ -26,16 +26,15 @@ jobs:
         env:
           APP_VERSION: ${{ steps.version.outputs.VERSION }}
       - name: Generate Changelog 2
-        id: changelog
-        run: >
-          echo ::set-output name=CHANGELOG::$(
-            git --no-pager log --pretty="format:- %s" $(git describe --abbrev=0 --tags ${{ steps.version.outputs.VERSION }}^)..${{ steps.version.outputs.VERSION }}
-          )
+        run: |
+          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
+          git --no-pager log --pretty="format:- %s" "$(git describe --abbrev=0 --tags ${{ steps.version.outputs.VERSION }}^)..${{ steps.version.outputs.VERSION }}" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
           name: ${{ steps.version.outputs.VERSION }}
           artifacts: 'rclip-*.AppImage'
-          body: ${{ steps.changelog.outputs.CHANGELOG || 'internal release' }}
+          body: ${{ env.CHANGELOG || 'internal release' }}
           prerelease: ${{ steps.version.outputs.PRERELEASE }}
           token: ${{ secrets.GITHUB_TOKEN }}
