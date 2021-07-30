@@ -16,7 +16,7 @@ jobs:
         id: version
         run: |
           echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
-          echo ::set-output name=PRERELEASE::${[[ ! ${GITHUB_REF} =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && "true"}
+          echo ::set-output name=PRERELEASE::$([[ ! ${GITHUB_REF} =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo "true")
       - name: Set up APPDIR for after_bundle
         run: echo "APPDIR=${PWD}/AppDir" >> $GITHUB_ENV
       - name: Build AppImage
