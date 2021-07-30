@@ -28,12 +28,10 @@ jobs:
       - name: Generate Changelog RRR
         id: changelog
         run: |
+          git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1)
           git fetch --all --tags
-          CHANGELOG=$(cat << EOF <<
-            git --no-pager log --pretty="format:- %s" "$(
-              git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1)
-            )..${{ steps.version.outputs.VERSION }}" << EOF
-          )
+          PREVIOUS_TAG="$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1))"
+          CHANGELOG="$(git --no-pager log --pretty="format:- %s" $PREVIOUS_TAG..${{ steps.version.outputs.VERSION }})"
           CHANGELOG="${CHANGELOG//'%'/'%25'}"
           CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
           CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
