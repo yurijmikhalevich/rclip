@@ -16,7 +16,9 @@ jobs:
         id: version
         run: |
           echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
-          echo ::set-output name=PRERELEASE::$([[ ! $GITHUB_REF =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo "true")
+          echo ::set-output name=PRERELEASE::$(
+            [[ ! $GITHUB_REF =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo "true"
+          )
       - name: Set up APPDIR for after_bundle
         run: echo "APPDIR=$PWD/AppDir" >> $GITHUB_ENV
       # - name: Build AppImage
@@ -40,6 +42,6 @@ jobs:
         with:
           name: ${{ steps.version.outputs.VERSION }}
           artifacts: 'rclip-*.AppImage'
-          body: ${{ steps.changelog.outputs.CHANGELOG }}
+          body: "${{ steps.changelog.outputs.CHANGELOG }}"
           prerelease: ${{ steps.version.outputs.PRERELEASE }}
           token: ${{ secrets.GITHUB_TOKEN }}
