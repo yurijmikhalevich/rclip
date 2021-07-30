@@ -2,11 +2,7 @@
 
 set -e
 
-whoami
-apt-get install git
-
-git --version
-which git
+apt-get install -y git
 
 PYTHONHOME=${APPDIR}/usr
 PYTHONPATH=${APPDIR}/usr/lib/python3.8/site-packages:${APPDIR}/usr/lib/python3.8
