@@ -19,6 +19,7 @@ jobs:
         run: |
           echo "APPDIR=${PWD}/AppDir" >> $GITHUB_ENV
           echo "${PWD}/AppDir/usr/bin" >> $GITHUB_PATH
+          git --version
       - name: Build AppImage
         uses: AppImageCrafters/build-appimage@master
         with:
