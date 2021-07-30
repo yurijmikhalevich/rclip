@@ -28,6 +28,8 @@ jobs:
       - name: Generate Changelog
         run: |
           pwd
+          ls -lah
+          ls -lah .git
           echo "CHANGELOG<<EOF" >> $GITHUB_ENV
           git --no-pager log --pretty="format:- %s" "$(git describe --abbrev=0 --tags ${{ steps.version.outputs.VERSION }}^)..${{ steps.version.outputs.VERSION }}" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
