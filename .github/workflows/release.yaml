@@ -31,6 +31,9 @@ jobs:
         id: changelog
         run: |
           git fetch --all --tags
+          git --no-pager log
+          git fetch --depth 10
+          git --no-pager log
           PREVIOUS_TAG="$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1))"
           echo $PREVIOUS_TAG
           echo ${{ steps.version.outputs.VERSION }}
