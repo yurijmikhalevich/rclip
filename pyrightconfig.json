@@ -1,8 +1,7 @@
 {
   "exclude": [
     "AppDir",
-    "appimage-builder-cache",
-    "get-pip.py"
+    "appimage-builder-cache"
   ],
   "typeCheckingMode": "strict",
   "reportMissingTypeStubs": "none",

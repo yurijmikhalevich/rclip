@@ -1,4 +1,4 @@
-name: rclip
+name: build
 
 on: [push]
 
