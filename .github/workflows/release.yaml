@@ -21,12 +21,12 @@ jobs:
           )
       - name: Set up APPDIR for after_bundle
         run: echo "APPDIR=$PWD/AppDir" >> $GITHUB_ENV
-      # - name: Build AppImage
-      #   uses: AppImageCrafters/build-appimage@master
-      #   with:
-      #     recipe: './appimage-builder.yml'
-      #   env:
-      #     APP_VERSION: ${{ steps.version.outputs.VERSION }}
+      - name: Build AppImage
+        uses: AppImageCrafters/build-appimage@master
+        with:
+          recipe: './appimage-builder.yml'
+        env:
+          APP_VERSION: ${{ steps.version.outputs.VERSION }}
       - name: Generate Changelog
         id: changelog
         run: |
