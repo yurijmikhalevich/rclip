@@ -42,6 +42,6 @@ jobs:
         with:
           name: ${{ steps.version.outputs.VERSION }}
           artifacts: 'rclip-*.AppImage'
-          body: ${{ steps.changelog.outputs.CHANGELOG | 'internal release' }}
+          body: ${{ steps.changelog.outputs.CHANGELOG || 'internal release' }}
           prerelease: ${{ steps.version.outputs.PRERELEASE }}
           token: ${{ secrets.GITHUB_TOKEN }}
