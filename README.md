@@ -1,4 +1,4 @@
-# rclip - AI-powered photo search tool
+# rclip - AI-Powered Photo Search CLI Tool
 
 <div align="center">
   <img alt="rclip logo" src="logo_transparent.png" width="600px" />
