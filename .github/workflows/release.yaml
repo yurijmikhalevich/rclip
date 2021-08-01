@@ -44,12 +44,12 @@ jobs:
           echo "::set-output name=CHANGELOG::$CHANGELOG"
       - name: Test Log
         run: echo "${{ steps.changelog.outputs.CHANGELOG }}"
-      - name: Create Release
-        uses: ncipollo/release-action@v1
-        with:
-          name: ${{ steps.version.outputs.VERSION }}
-          artifacts: 'rclip-*.AppImage'
-          body: |
-            ${{ steps.changelog.outputs.CHANGELOG }}
-          prerelease: ${{ steps.version.outputs.PRERELEASE }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+      # - name: Create Release
+      #   uses: ncipollo/release-action@v1
+      #   with:
+      #     name: ${{ steps.version.outputs.VERSION }}
+      #     artifacts: 'rclip-*.AppImage'
+      #     body: |
+      #       ${{ steps.changelog.outputs.CHANGELOG }}
+      #     prerelease: ${{ steps.version.outputs.PRERELEASE }}
+      #     token: ${{ secrets.GITHUB_TOKEN }}
