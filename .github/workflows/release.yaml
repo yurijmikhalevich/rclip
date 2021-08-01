@@ -31,28 +31,17 @@ jobs:
         id: changelog
         run: |
           git fetch --unshallow
-          # git --no-pager log
-          # git fetch --depth 10
-          # git --no-pager log
           PREVIOUS_TAG="$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1))"
-          echo $PREVIOUS_TAG
-          echo ${{ steps.version.outputs.VERSION }}
-          git --no-pager log --pretty="format:- %s" $PREVIOUS_TAG..${{ steps.version.outputs.VERSION }}
           CHANGELOG="$(git --no-pager log --pretty="format:- %s" $PREVIOUS_TAG..${{ steps.version.outputs.VERSION }})"
-          echo "$CHANGELOG"
-          echo "==="
           CHANGELOG="${CHANGELOG//'%'/'%25'}"
           CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
           CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
           echo "::set-output name=CHANGELOG::$CHANGELOG"
-      - name: Test Log
-        run: echo "${{ steps.changelog.outputs.CHANGELOG }}"
-      # - name: Create Release
-      #   uses: ncipollo/release-action@v1
-      #   with:
-      #     name: ${{ steps.version.outputs.VERSION }}
-      #     artifacts: 'rclip-*.AppImage'
-      #     body: |
-      #       ${{ steps.changelog.outputs.CHANGELOG }}
-      #     prerelease: ${{ steps.version.outputs.PRERELEASE }}
-      #     token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ steps.version.outputs.VERSION }}
+          artifacts: 'rclip-*.AppImage'
+          body: ${{ steps.changelog.outputs.CHANGELOG | 'internal release' }}
+          prerelease: ${{ steps.version.outputs.PRERELEASE }}
+          token: ${{ secrets.GITHUB_TOKEN }}
