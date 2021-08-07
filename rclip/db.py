@@ -1,6 +1,6 @@
 import pathlib
 import sqlite3
-from typing import Any, Dict, List, Optional, TypedDict, Union
+from typing import Any, Optional, TypedDict, Union
 
 
 class ImageOmittable(TypedDict, total=False):
@@ -18,19 +18,12 @@ class Image(NewImage):
   id: int
 
 
-def dict_factory(cur: sqlite3.Cursor, row: List[Any]) -> Dict[str, Any]:
-  dict_row: Dict[str, Any] = {}
-  for idx, col in enumerate(cur.description):
-    dict_row[col[0]] = row[idx]
-  return dict_row
-
-
 class DB:
   VERSION = 1
 
   def __init__(self, filename: Union[str, pathlib.Path]):
     self._con = sqlite3.connect(filename)
-    self._con.row_factory = dict_factory
+    self._con.row_factory = sqlite3.Row
     self.ensure_tables()
     self.ensure_version()
 
