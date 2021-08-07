@@ -10,10 +10,13 @@
 
 Currently, pre-built distributable is available only for Linux x86_64.
 
+1. Download the AppImage from the latest [release](https://github.com/yurijmikhalevich/rclip/releases).
+
+2. Execute following commands:
+
 ```bash
-$ wget -c https://github.com/yurijmikhalevich/rclip/releases/download/v0.0.1-alpha/rclip-0.0.1-alpha-x86_64.AppImage
-$ chmod +x rclip-0.0.1-alpha-x86_64.AppImage
-$ sudo mv rclip-0.0.1-alpha-x86_64.AppImage /usr/local/bin/rclip
+$ chmod +x <downloaded AppImage filename>
+$ sudo mv <downloaded AppImage filename> /usr/local/bin/rclip
 ```
 
 ## Usage
@@ -39,6 +42,8 @@ $ rclip --help
 ## Contributing
 
 This repository follows the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) standard.
+
+Please, execute `pipenv shell` before running `pipenv sync` or `pipenv install` to set `PIP_FIND_LINKS`.
 
 ## License
 

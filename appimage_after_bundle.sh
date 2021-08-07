@@ -13,4 +13,4 @@ LD_LIBRARY_PATH=$APPDIR/usr/lib/x86_64-linux-gnu
 python3.8 -m pip install pipenv &&
 python3.8 -m pipenv lock -r > requirements.txt &&
 python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="$APPDIR/usr" certifi wheel &&
-python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="$APPDIR/usr" -r ./requirements.txt
+python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="$APPDIR/usr" -r ./requirements.txt -f https://download.pytorch.org/whl/torch_stable.html
