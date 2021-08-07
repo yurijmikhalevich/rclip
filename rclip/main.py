@@ -26,7 +26,7 @@ def get_image_meta(filepath: str) -> ImageMeta:
   )
 
 
-def compare_image_meta(image: db.Image, meta: ImageMeta) -> bool:
+def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
   for key in meta:
     if meta[key] != image[key]:
       return False
@@ -38,6 +38,7 @@ class RClip:
   EXCLUDE_DIR_REGEX = re.compile(r'^.+\/(' + '|'.join(re.escape(dir) for dir in EXCLUDE_DIRS) + r')(\/.+)?$')
   IMAGE_REGEX = re.compile(r'^.+\.(jpe?g|png)$', re.I)
   BATCH_SIZE = 8
+  DB_IMAGES_BEFORE_COMMIT = 50_000
 
   class SearchResult(NamedTuple):
     filepath: str
@@ -71,9 +72,13 @@ class RClip:
         modified_at=meta['modified_at'],
         size=meta['size'],
         vector=vector.tobytes()
-      ))
+      ), commit=False)
 
   def ensure_index(self, directory: str):
+    # We will mark existing images as existing later
+    self._db.flag_images_in_a_dir_as_deleted(directory)
+
+    images_processed = 0
     batch: List[str] = []
     metas: List[ImageMeta] = []
     for root, _, files in cast(Iterable[Tuple[str, Any, List[str]]], tqdm(os.walk(directory), desc=directory)):
@@ -91,7 +96,13 @@ class RClip:
         except Exception as ex:
           print(f'error getting fs metadata for {filepath}:', ex)
           continue
-        if image and compare_image_meta(image, meta):
+
+        if not images_processed % self.DB_IMAGES_BEFORE_COMMIT:
+          self._db.commit()
+        images_processed += 1
+
+        if image and is_image_meta_equal(image, meta):
+          self._db.remove_deleted_flag(filepath, commit=False)
           continue
 
         batch.append(filepath)
@@ -105,6 +116,8 @@ class RClip:
     if len(batch) != 0:
       self._index_files(batch, metas)
 
+    self._db.commit()
+
   def search(self, query: str, directory: str, top_k: int = 10) -> List[SearchResult]:
     filepaths, features = self._get_features(directory)
 
@@ -115,7 +128,7 @@ class RClip:
   def _get_features(self, directory: str) -> Tuple[List[str], np.ndarray]:
     filepaths: List[str] = []
     features: List[np.ndarray] = []
-    for image in self._db.get_images_by_dir_path(directory):
+    for image in self._db.get_image_vectors_by_dir_path(directory):
       filepaths.append(image['filepath'])
       features.append(np.frombuffer(image['vector'], np.float32))
     if not filepaths:
