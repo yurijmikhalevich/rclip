@@ -26,10 +26,13 @@ def dict_factory(cur: sqlite3.Cursor, row: List[Any]) -> Dict[str, Any]:
 
 
 class DB:
+  VERSION = 1
+
   def __init__(self, filename: Union[str, pathlib.Path]):
     self._con = sqlite3.connect(filename)
     self._con.row_factory = dict_factory
     self.ensure_tables()
+    self.ensure_version()
 
   def ensure_tables(self):
     self._con.execute('''
@@ -42,7 +45,21 @@ class DB:
         vector BLOB NOT NULL
       )
     ''')
+    self._con.execute('CREATE TABLE IF NOT EXISTS db_version (version INTEGER)')
     self._con.commit()
+
+  def ensure_version(self):
+    db_version = self._con.execute('SELECT version FROM db_version').fetchone()
+    if not db_version:
+      self._con.execute('INSERT INTO db_version(version) VALUES (?)', (self.VERSION,))
+      self._con.commit()
+    elif db_version['version'] < self.VERSION:
+      raise Exception('migration to a newer index version isn\'t implemented')
+    elif db_version['version'] > self.VERSION:
+      raise Exception(
+        'found index version newer than this version of rclip can support;'
+        ' please, update rclip: https://github.com/yurijmikhalevich/rclip/releases'
+      )
 
   def upsert_image(self, image: NewImage):
     self._con.execute('''
