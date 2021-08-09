@@ -1,7 +1,7 @@
 # rclip - AI-Powered Photo Search CLI Tool
 
 <div align="center">
-  <img alt="rclip logo" src="logo_transparent.png" width="600px" />
+  <img alt="rclip logo" src="resources/logo-transparent.png" width="600px" />
 </div>
 
 **rclip** is a command-line photo search tool based on the awesome OpenAI's [CLIP](https://github.com/openai/CLIP) neural network.
@@ -24,6 +24,8 @@ $ sudo mv <downloaded AppImage filename> /usr/local/bin/rclip
 ```bash
 $ cd photos && rclip "search query"
 ```
+
+![rclip usage demo](resources/rclip-usage-demo.gif)
 
 ### How do I preview the results?
 
