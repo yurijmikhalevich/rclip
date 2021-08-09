@@ -1,7 +1,7 @@
 import os
 from os import path
 import re
-from typing import Any, Iterable, List, NamedTuple, Tuple, TypedDict, cast
+from typing import Iterable, List, NamedTuple, Tuple, TypedDict, cast
 
 import numpy as np
 from tqdm import tqdm
@@ -81,7 +81,7 @@ class RClip:
     images_processed = 0
     batch: List[str] = []
     metas: List[ImageMeta] = []
-    for root, _, files in cast(Iterable[Tuple[str, Any, List[str]]], tqdm(os.walk(directory), desc=directory)):
+    for root, _, files in os.walk(directory):
       if self.EXCLUDE_DIR_REGEX.match(root):
         continue
       filtered_files = list(f for f in files if self.IMAGE_REGEX.match(f))
