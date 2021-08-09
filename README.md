@@ -25,7 +25,7 @@ $ sudo mv <downloaded AppImage filename> /usr/local/bin/rclip
 $ cd photos && rclip "search query"
 ```
 
-<img alt="rclip usage demo" src="resources/rclip-usage-demo-large.gif" width="640px" />
+<img alt="rclip usage demo" src="resources/rclip-usage.gif" width="640px" />
 
 ### How do I preview the results?
 
