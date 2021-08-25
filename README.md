@@ -45,7 +45,7 @@ $ rclip --help
 
 This repository follows the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) standard.
 
-Please, execute `pipenv shell` before running `pipenv sync` or `pipenv install` to set `PIP_FIND_LINKS`.
+Please, execute `pipenv shell` to set `PIP_FIND_LINKS` before running `pipenv sync` or `pipenv install`.
 
 ## License
 
