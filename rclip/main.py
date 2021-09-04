@@ -1,7 +1,8 @@
+import itertools
 import os
 from os import path
 import re
-from typing import Iterable, List, NamedTuple, Tuple, TypedDict, cast
+from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
 
 import numpy as np
 from tqdm import tqdm
@@ -34,8 +35,7 @@ def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
 
 
 class RClip:
-  EXCLUDE_DIRS = ['@eaDir', 'node_modules', '.git']
-  EXCLUDE_DIR_REGEX = re.compile(r'^.+\/(' + '|'.join(re.escape(dir) for dir in EXCLUDE_DIRS) + r')(\/.+)?$')
+  EXCLUDE_DIRS_DEFAULT = ['@eaDir', 'node_modules', '.git']
   IMAGE_REGEX = re.compile(r'^.+\.(jpe?g|png)$', re.I)
   BATCH_SIZE = 8
   DB_IMAGES_BEFORE_COMMIT = 50_000
@@ -44,9 +44,12 @@ class RClip:
     filepath: str
     score: float
 
-  def __init__(self, model_instance: model.Model, database: db.DB):
+  def __init__(self, model_instance: model.Model, database: db.DB, exclude_dirs: Optional[List[str]]):
     self._model = model_instance
     self._db = database
+
+    excluded_dirs = '|'.join(re.escape(dir) for dir in exclude_dirs or self.EXCLUDE_DIRS_DEFAULT)
+    self._exclude_dir_regex = re.compile(f'^.+\\/({excluded_dirs})(\\/.+)?$')
 
   def _index_files(self, filepaths: List[str], metas: List[ImageMeta]):
     images: List[Image.Image] = []
@@ -82,7 +85,7 @@ class RClip:
     batch: List[str] = []
     metas: List[ImageMeta] = []
     for root, _, files in os.walk(directory):
-      if self.EXCLUDE_DIR_REGEX.match(root):
+      if self._exclude_dir_regex.match(root):
         continue
       filtered_files = list(f for f in files if self.IMAGE_REGEX.match(f))
       if not filtered_files:
@@ -123,7 +126,13 @@ class RClip:
 
     sorted_similarities = self._model.compute_similarities_to_text(features, query)
 
-    return [RClip.SearchResult(filepath=filepaths[th[1]], score=th[0]) for th in sorted_similarities[:top_k]]
+    filtered_similarities = filter(
+      lambda similarity: not self._exclude_dir_regex.match(filepaths[similarity[1]]),
+      sorted_similarities
+    )
+    top_k_similarities = itertools.islice(filtered_similarities, top_k)
+
+    return [RClip.SearchResult(filepath=filepaths[th[1]], score=th[0]) for th in top_k_similarities]
 
   def _get_features(self, directory: str) -> Tuple[List[str], np.ndarray]:
     filepaths: List[str] = []
@@ -145,7 +154,7 @@ def main():
   model_instance = model.Model()
   datadir = utils.get_app_datadir()
   database = db.DB(datadir / 'db.sqlite3')
-  rclip = RClip(model_instance, database)
+  rclip = RClip(model_instance, database, args.exclude_dir)
 
   if not args.skip_index:
     rclip.ensure_index(current_directory)

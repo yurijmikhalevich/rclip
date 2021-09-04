@@ -56,4 +56,11 @@ def init_arg_parser() -> argparse.ArgumentParser:
     default=False,
     help='don\'t attempt image indexing, saves time on consecutive runs on huge directories'
   )
+  parser.add_argument(
+    '--exclude-dir',
+    action='append',
+    help='dir to exclude from search, can be specified multiple times;'
+    ' adding this argument overrides the default of ("@eaDir", "node_modules", ".git");'
+    ' WARNING: the default will be removed in v2'
+  )
   return parser
