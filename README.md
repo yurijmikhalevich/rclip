@@ -1,5 +1,7 @@
 # rclip - AI-Powered Command-Line Photo Search Tool
 
+[[Blog]](https://mikhalevi.ch/rclip-an-ai-powered-command-line-photo-search-tool/) [[Demo on YouTube]](https://www.youtube.com/watch?v=tAJHXOkHidw)
+
 <div align="center">
   <img alt="rclip logo" src="resources/logo-transparent.png" width="600px" />
 </div>
@@ -27,14 +29,22 @@ $ cd photos && rclip "search query"
 
 <img alt="rclip usage demo" src="resources/rclip-usage.gif" width="640px" />
 
+When you run **rclip** for the first time in a particular directory, it's going to extract features from the photos, and this takes time. How long it takes depends on your CPU and the number of photos you are going to search through. It took about a day to process 73 thousand of my photos on my NAS that runs an old-ish Intel Celeron J3455.
+
 For the detailed demonstration, watch the video: https://www.youtube.com/watch?v=tAJHXOkHidw.
 
 ### How do I preview the results?
 
-The command from below will open top-5 results for "kitty" in your default image viewer. For this to work, you'll have to index the directory beforehand by running rclip in it without the `-n` key.
+The command from below will open top-5 results for "kitty" in your default image viewer:
 
 ```bash
-$ rclip -nf -t 5 "kitty" | xargs -d '\n' -n 1 xdg-open
+$ rclip -f -t 5 kitty | xargs -d '\n' -n 1 xdg-open
+```
+
+I prefer to use `feh`'s thumbnail mode to preview multiple results:
+
+```bash
+$ rclip -f -t kitty | feh -f - -t
 ```
 
 ## Help
