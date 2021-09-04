@@ -44,7 +44,7 @@ $ rclip -f -t 5 kitty | xargs -d '\n' -n 1 xdg-open
 I prefer to use `feh`'s thumbnail mode to preview multiple results:
 
 ```bash
-$ rclip -f -t kitty | feh -f - -t
+$ rclip -f -t 5 kitty | feh -f - -t
 ```
 
 ## Help
