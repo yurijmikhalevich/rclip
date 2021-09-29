@@ -4,8 +4,10 @@ import clip
 import clip.model
 import numpy as np
 from PIL import Image
+import re
 import torch
 import torch.nn
+import requests
 
 
 class Model:
@@ -37,14 +39,36 @@ class Model:
 
     return text_encoded.cpu().numpy()
 
+  def download_image(self,url) -> Image.Image:
+    headers = {'User-agent': # https://meta.wikimedia.org/wiki/User-Agent_policy
+               "rclip - "+
+               "(https://github.com/yurijmikhalevich/rclip)"}
+    img = Image.open(requests.get(url, headers=headers, stream=True).raw)
+    return img
+
+  def compute_text_or_image_features(self, query: str) -> np.ndarray:
+    if query.startswith('https://') or query.startswith('http://'):
+      img = self.download_image(query)
+      return self.compute_image_features([img])
+    elif (query.startswith('/') or 
+          query.startswith('file://') or
+          query.startswith('./') or
+          re.match(r'(?i)^[a-z]:\\',query)
+    ):
+      path = query.removeprefix('file://')
+      img = Image.open(path)
+      return self.compute_image_features([img])
+    else:
+      return self.compute_text_features(query)
+
   def compute_similarities_to_text(
       self, item_features: np.ndarray,
       positive_queries: List[str], negative_queries: List[str]) -> List[Tuple[float, int]]:
 
-    positive_features = self.compute_text_features(positive_queries)
+    positive_features = np.array([self.compute_text_or_image_features(q)[0] for q in positive_queries])
+    negative_features = np.array([self.compute_text_or_image_features(q)[0] for q in negative_queries])
     text_features = np.add.reduce(positive_features)
     if negative_queries:
-        negative_features = self.compute_text_features(negative_queries)
         text_features -= np.add.reduce(negative_features)
 
     similarities = text_features @ item_features.T
