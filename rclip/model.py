@@ -43,7 +43,7 @@ class Model:
 
     positive_features = self.compute_text_features(positive_queries)
     text_features = np.add.reduce(positive_features)
-    if (negative_queries):
+    if negative_queries:
         negative_features = self.compute_text_features(negative_queries)
         text_features -= np.add.reduce(negative_features)
 
