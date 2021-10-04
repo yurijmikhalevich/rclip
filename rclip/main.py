@@ -121,10 +121,13 @@ class RClip:
 
     self._db.commit()
 
-  def search(self, query: str, directory: str, top_k: int = 10) -> List[SearchResult]:
+  def search(
+      self, query: str, directory: str, top_k: int = 10,
+      positive_queries: List[str] = [], negative_queries: List[str] = []) -> List[SearchResult]:
     filepaths, features = self._get_features(directory)
 
-    sorted_similarities = self._model.compute_similarities_to_text(features, query)
+    positive_queries = [query] + positive_queries
+    sorted_similarities = self._model.compute_similarities_to_text(features, positive_queries, negative_queries)
 
     filtered_similarities = filter(
       lambda similarity: not self._exclude_dir_regex.match(filepaths[similarity[1]]),
@@ -159,7 +162,7 @@ def main():
   if not args.skip_index:
     rclip.ensure_index(current_directory)
 
-  result = rclip.search(args.query, current_directory, args.top)
+  result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
   if args.filepath_only:
     for r in result:
       print(r.filepath)

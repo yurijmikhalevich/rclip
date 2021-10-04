@@ -48,6 +48,9 @@ def top_arg_type(arg: str) -> int:
 def init_arg_parser() -> argparse.ArgumentParser:
   parser = argparse.ArgumentParser()
   parser.add_argument('query')
+  parser.add_argument('--add', '-a', action='append', default=[], help='queries to add to the "original" query')
+  parser.add_argument('--subtract', '--sub', '-s', action='append', default=[],
+                      help='queries to subtract from the "original" query')
   parser.add_argument('--top', '-t', type=top_arg_type, default=10, help='number of top results to display')
   parser.add_argument('--filepath-only', '-f', action='store_true', default=False, help='outputs only filepaths')
   parser.add_argument(

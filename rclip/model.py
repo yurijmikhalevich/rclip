@@ -30,17 +30,24 @@ class Model:
 
     return image_features.cpu().numpy()
 
-  def compute_text_features(self, text: str) -> np.ndarray:
+  def compute_text_features(self, text: List[str]) -> np.ndarray:
     with torch.no_grad():
       text_encoded = self._model.encode_text(clip.tokenize(text).to(self._device))
       text_encoded /= text_encoded.norm(dim=-1, keepdim=True)
 
     return text_encoded.cpu().numpy()
 
-  def compute_similarities_to_text(self, item_features: np.ndarray, text: str) -> List[Tuple[float, int]]:
-    text_features = self.compute_text_features(text)
+  def compute_similarities_to_text(
+      self, item_features: np.ndarray,
+      positive_queries: List[str], negative_queries: List[str]) -> List[Tuple[float, int]]:
 
-    similarities = (text_features @ item_features.T).squeeze(0).tolist()
+    positive_features = self.compute_text_features(positive_queries)
+    text_features = np.add.reduce(positive_features)
+    if negative_queries:
+        negative_features = self.compute_text_features(negative_queries)
+        text_features -= np.add.reduce(negative_features)
+
+    similarities = text_features @ item_features.T
     sorted_similarities = sorted(zip(similarities, range(item_features.shape[0])), key=lambda x: x[0], reverse=True)
 
     return sorted_similarities
