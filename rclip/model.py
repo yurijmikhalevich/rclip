@@ -58,7 +58,7 @@ class Model:
       img = Image.open(path)
       return self.compute_image_features([img])
     else:
-      return self.compute_text_features(query)
+      return self.compute_text_features([query])
 
   def compute_similarities_to_text(
       self, item_features: np.ndarray,
