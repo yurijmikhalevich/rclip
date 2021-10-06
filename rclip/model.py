@@ -39,10 +39,10 @@ class Model:
 
     return text_encoded.cpu().numpy()
 
-  def download_image(self,url) -> Image.Image:
-    headers = {'User-agent': # https://meta.wikimedia.org/wiki/User-Agent_policy
-               "rclip - "+
-               "(https://github.com/yurijmikhalevich/rclip)"}
+  # See: https://meta.wikimedia.org/wiki/User-Agent_policy
+  def download_image(self, url) -> Image.Image:
+    headers = {'User-agent':
+               "rclip - (https://github.com/yurijmikhalevich/rclip)"}
     img = Image.open(requests.get(url, headers=headers, stream=True).raw)
     return img
 
@@ -50,11 +50,10 @@ class Model:
     if query.startswith('https://') or query.startswith('http://'):
       img = self.download_image(query)
       return self.compute_image_features([img])
-    elif (query.startswith('/') or 
+    elif (query.startswith('/') or
           query.startswith('file://') or
           query.startswith('./') or
-          re.match(r'(?i)^[a-z]:\\',query)
-    ):
+          re.match(r'(?i)^[a-z]:\\', query)):
       path = query.removeprefix('file://')
       img = Image.open(path)
       return self.compute_image_features([img])
