@@ -40,7 +40,7 @@ class Model:
     return text_encoded.cpu().numpy()
 
   # See: https://meta.wikimedia.org/wiki/User-Agent_policy
-  def download_image(self, url) -> Image.Image:
+  def download_image(self, url: str) -> Image.Image:
     headers = {'User-agent':
                "rclip - (https://github.com/yurijmikhalevich/rclip)"}
     img = Image.open(requests.get(url, headers=headers, stream=True).raw)
