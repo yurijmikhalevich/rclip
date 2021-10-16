@@ -5,9 +5,9 @@ import clip.model
 import numpy as np
 from PIL import Image
 import re
+import requests
 import torch
 import torch.nn
-import requests
 
 
 class Model:
@@ -41,9 +41,12 @@ class Model:
 
   # See: https://meta.wikimedia.org/wiki/User-Agent_policy
   def download_image(self, url: str) -> Image.Image:
-    headers = {'User-agent':
-               "rclip - (https://github.com/yurijmikhalevich/rclip)"}
-    img = Image.open(requests.get(url, headers=headers, stream=True).raw)
+    headers = {'User-agent': 'rclip - (https://github.com/yurijmikhalevich/rclip)'}
+    check_size = requests.request('HEAD', url, headers = headers, timeout = 60)
+    if length := check_size.headers.get('Content-Length'):
+        if int(length) > 50_000_000:
+            raise(ValueError(f"Avoiding download of large ({length} byte) file."))
+    img = Image.open(requests.get(url, headers = headers, stream = True, timeout = 60).raw)
     return img
 
   def compute_text_or_image_features(self, query: str) -> np.ndarray:
