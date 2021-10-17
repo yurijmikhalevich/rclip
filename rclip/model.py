@@ -1,8 +1,7 @@
-from typing import Callable, List, Tuple, cast
+from typing import Callable, List, Tuple, Optional, cast
 
 import clip
 import clip.model
-import itertools
 import numpy as np
 from PIL import Image
 import re
@@ -43,11 +42,11 @@ class Model:
   # See: https://meta.wikimedia.org/wiki/User-Agent_policy
   def download_image(self, url: str) -> Image.Image:
     headers = {'User-agent': 'rclip - (https://github.com/yurijmikhalevich/rclip)'}
-    check_size = requests.request('HEAD', url, headers = headers, timeout = 60)
+    check_size = requests.request('HEAD', url, headers=headers, timeout=60)
     if length := check_size.headers.get('Content-Length'):
         if int(length) > 50_000_000:
             raise(ValueError(f"Avoiding download of large ({length} byte) file."))
-    img = Image.open(requests.get(url, headers = headers, stream = True, timeout = 60).raw)
+    img = Image.open(requests.get(url, headers=headers, stream=True, timeout=60).raw)
     return img
 
   def image_from_file(self, query: str) -> Image.Image:
@@ -55,10 +54,10 @@ class Model:
     img = Image.open(path)
     return img
 
-  def group_query_parameters_by_type(self, queries: List[str]) -> Tuple[List[str]]:
-    phrase_queries = []
-    local_file_queries = []
-    url_queries = []
+  def group_query_parameters_by_type(self, queries: List[str]) -> Tuple[List[str], List[str], List[str]]:
+    phrase_queries: List[str] = []
+    local_file_queries: List[str] = []
+    url_queries: List[str] = []
     for query in queries:
         if query.startswith('https://') or query.startswith('http://'):
           url_queries.append(query)
@@ -71,17 +70,17 @@ class Model:
           phrase_queries.append(query)
     return phrase_queries, local_file_queries, url_queries
 
-  def compute_features_for_queries(self, queries: List[str]) -> Tuple[np.ndarray]:
-    text_features = image_features = None
-    phrases,files,urls = self.group_query_parameters_by_type(queries)
+  def compute_features_for_queries(self, queries: List[str]) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+    text_features: Optional[np.ndarray] = None
+    image_features: Optional[np.ndarray] = None
+    phrases, files, urls = self.group_query_parameters_by_type(queries)
     if phrases:
       text_features = np.add.reduce(self.compute_text_features(phrases))
     if files or urls:
       images = ([self.download_image(q) for q in urls] +
                 [self.image_from_file(q) for q in files])
       image_features = np.add.reduce(self.compute_image_features(images))
-    return(text_features,image_features)
-        
+    return(text_features, image_features)
 
   def compute_similarities_to_text(
       self, item_features: np.ndarray,
