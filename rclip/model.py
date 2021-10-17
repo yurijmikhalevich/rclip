@@ -2,6 +2,7 @@ from typing import Callable, List, Tuple, cast
 
 import clip
 import clip.model
+import itertools
 import numpy as np
 from PIL import Image
 import re
@@ -49,31 +50,57 @@ class Model:
     img = Image.open(requests.get(url, headers = headers, stream = True, timeout = 60).raw)
     return img
 
-  def compute_text_or_image_features(self, query: str) -> np.ndarray:
-    if query.startswith('https://') or query.startswith('http://'):
-      img = self.download_image(query)
-      return self.compute_image_features([img])
-    elif (query.startswith('/') or
-          query.startswith('file://') or
-          query.startswith('./') or
-          re.match(r'(?i)^[a-z]:\\', query)):
-      path = query.removeprefix('file://')
-      img = Image.open(path)
-      return self.compute_image_features([img])
-    else:
-      return self.compute_text_features([query])
+  def image_from_file(self, query: str) -> Image.Image:
+    path = query.removeprefix('file://')
+    img = Image.open(path)
+    return img
+
+  def group_query_parameters_by_type(self, queries: List[str]) -> Tuple[List[str]]:
+    phrase_queries = []
+    local_file_queries = []
+    url_queries = []
+    for query in queries:
+        if query.startswith('https://') or query.startswith('http://'):
+          url_queries.append(query)
+        elif (query.startswith('/') or
+              query.startswith('file://') or
+              query.startswith('./') or
+              re.match(r'(?i)^[a-z]:\\', query)):
+          local_file_queries.append(query)
+        else:
+          phrase_queries.append(query)
+    return phrase_queries, local_file_queries, url_queries
+
+  def compute_features_for_queries(self, queries: List[str]) -> Tuple[np.ndarray]:
+    text_features = image_features = None
+    phrases,files,urls = self.group_query_parameters_by_type(queries)
+    if phrases:
+      text_features = np.add.reduce(self.compute_text_features(phrases))
+    if files or urls:
+      images = ([self.download_image(q) for q in urls] +
+                [self.image_from_file(q) for q in files])
+      image_features = np.add.reduce(self.compute_image_features(images))
+    return(text_features,image_features)
+        
 
   def compute_similarities_to_text(
       self, item_features: np.ndarray,
       positive_queries: List[str], negative_queries: List[str]) -> List[Tuple[float, int]]:
 
-    positive_features = np.array([self.compute_text_or_image_features(q)[0] for q in positive_queries])
-    negative_features = np.array([self.compute_text_or_image_features(q)[0] for q in negative_queries])
-    text_features = np.add.reduce(positive_features)
-    if negative_queries:
-        text_features -= np.add.reduce(negative_features)
+    text_features, image_features = self.compute_features_for_queries(positive_queries)
+    n_text_features, n_image_features = self.compute_features_for_queries(negative_queries)
 
-    similarities = text_features @ item_features.T
+    features = np.zeros(Model.VECTOR_SIZE)
+    if text_features is not None:
+        features += text_features
+    if image_features is not None:
+        features += image_features
+    if n_text_features is not None:
+        features -= n_text_features
+    if n_image_features is not None:
+        features -= n_image_features
+
+    similarities = features @ item_features.T
     sorted_similarities = sorted(zip(similarities, range(item_features.shape[0])), key=lambda x: x[0], reverse=True)
 
     return sorted_similarities
