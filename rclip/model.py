@@ -80,7 +80,7 @@ class Model:
       images = ([self.download_image(q) for q in urls] +
                 [self.image_from_file(q) for q in files])
       image_features = np.add.reduce(self.compute_image_features(images))
-    return(text_features, image_features)
+    return text_features, image_features
 
   def compute_similarities_to_text(
       self, item_features: np.ndarray,
