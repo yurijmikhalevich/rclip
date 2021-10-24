@@ -70,7 +70,7 @@ class Model:
           phrase_queries.append(query)
     return phrase_queries, local_file_queries, url_queries
 
-  def compute_features_for_queries(self, queries: List[str]) -> Tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+  def compute_features_for_queries(self, queries: List[str]) -> np.ndarray:
     text_features: Optional[np.ndarray] = None
     image_features: Optional[np.ndarray] = None
     phrases, files, urls = self.group_query_parameters_by_type(queries)
@@ -80,24 +80,24 @@ class Model:
       images = ([self.download_image(q) for q in urls] +
                 [self.image_from_file(q) for q in files])
       image_features = np.add.reduce(self.compute_image_features(images))
-    return text_features, image_features
+
+    if text_features is not None and image_features is not None:
+        return text_features + image_features
+    elif text_features is not None:
+        return text_features
+    elif image_features is not None:
+        return image_features
+    else:
+        return np.zeros(Model.VECTOR_SIZE)
 
   def compute_similarities_to_text(
       self, item_features: np.ndarray,
       positive_queries: List[str], negative_queries: List[str]) -> List[Tuple[float, int]]:
 
-    text_features, image_features = self.compute_features_for_queries(positive_queries)
-    n_text_features, n_image_features = self.compute_features_for_queries(negative_queries)
+    positive_features = self.compute_features_for_queries(positive_queries)
+    negative_features = self.compute_features_for_queries(negative_queries)
 
-    features = np.zeros(Model.VECTOR_SIZE)
-    if text_features is not None:
-        features += text_features
-    if image_features is not None:
-        features += image_features
-    if n_text_features is not None:
-        features -= n_text_features
-    if n_image_features is not None:
-        features -= n_image_features
+    features = positive_features - negative_features
 
     similarities = features @ item_features.T
     sorted_similarities = sorted(zip(similarities, range(item_features.shape[0])), key=lambda x: x[0], reverse=True)
