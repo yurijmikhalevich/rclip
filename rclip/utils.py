@@ -8,6 +8,10 @@ import sys
 from rclip import config
 
 
+MAX_DOWNLOAD_SIZE_BYTES = 50_000_000
+DOWNLOAD_TIMEOUT_SECONDS = 60
+
+
 def get_system_datadir() -> pathlib.Path:
   '''
   Returns a parent directory path
@@ -76,9 +80,9 @@ def download_image(url: str) -> Image.Image:
   headers = {'User-agent': 'rclip - (https://github.com/yurijmikhalevich/rclip)'}
   check_size = requests.request('HEAD', url, headers=headers, timeout=60)
   if length := check_size.headers.get('Content-Length'):
-      if int(length) > 50_000_000:
+      if int(length) > MAX_DOWNLOAD_SIZE_BYTES:
           raise(ValueError(f"Avoiding download of large ({length} byte) file."))
-  img = Image.open(requests.get(url, headers=headers, stream=True, timeout=60).raw)
+  img = Image.open(requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS).raw)
   return img
 
 
