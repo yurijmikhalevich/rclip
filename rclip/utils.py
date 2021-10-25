@@ -1,6 +1,8 @@
 import argparse
 import os
 import pathlib
+from PIL import Image
+import requests
 import sys
 
 from rclip import config
@@ -67,3 +69,20 @@ def init_arg_parser() -> argparse.ArgumentParser:
     ' WARNING: the default will be removed in v2'
   )
   return parser
+
+
+# See: https://meta.wikimedia.org/wiki/User-Agent_policy
+def download_image(url: str) -> Image.Image:
+  headers = {'User-agent': 'rclip - (https://github.com/yurijmikhalevich/rclip)'}
+  check_size = requests.request('HEAD', url, headers=headers, timeout=60)
+  if length := check_size.headers.get('Content-Length'):
+      if int(length) > 50_000_000:
+          raise(ValueError(f"Avoiding download of large ({length} byte) file."))
+  img = Image.open(requests.get(url, headers=headers, stream=True, timeout=60).raw)
+  return img
+
+
+def image_from_file(query: str) -> Image.Image:
+  path = query.removeprefix('file://')
+  img = Image.open(path)
+  return img

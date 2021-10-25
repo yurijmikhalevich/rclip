@@ -4,8 +4,8 @@ import clip
 import clip.model
 import numpy as np
 from PIL import Image
+from rclip import utils
 import re
-import requests
 import torch
 import torch.nn
 
@@ -39,21 +39,6 @@ class Model:
 
     return text_encoded.cpu().numpy()
 
-  # See: https://meta.wikimedia.org/wiki/User-Agent_policy
-  def download_image(self, url: str) -> Image.Image:
-    headers = {'User-agent': 'rclip - (https://github.com/yurijmikhalevich/rclip)'}
-    check_size = requests.request('HEAD', url, headers=headers, timeout=60)
-    if length := check_size.headers.get('Content-Length'):
-        if int(length) > 50_000_000:
-            raise(ValueError(f"Avoiding download of large ({length} byte) file."))
-    img = Image.open(requests.get(url, headers=headers, stream=True, timeout=60).raw)
-    return img
-
-  def image_from_file(self, query: str) -> Image.Image:
-    path = query.removeprefix('file://')
-    img = Image.open(path)
-    return img
-
   def group_query_parameters_by_type(self, queries: List[str]) -> Tuple[List[str], List[str], List[str]]:
     phrase_queries: List[str] = []
     local_file_queries: List[str] = []
@@ -77,8 +62,8 @@ class Model:
     if phrases:
       text_features = np.add.reduce(self.compute_text_features(phrases))
     if files or urls:
-      images = ([self.download_image(q) for q in urls] +
-                [self.image_from_file(q) for q in files])
+      images = ([utils.download_image(q) for q in urls] +
+                [utils.image_from_file(q) for q in files])
       image_features = np.add.reduce(self.compute_image_features(images))
 
     if text_features is not None and image_features is not None:
