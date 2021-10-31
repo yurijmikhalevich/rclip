@@ -86,7 +86,7 @@ def download_image(url: str) -> Image.Image:
   return img
 
 
-def image_from_file(query: str) -> Image.Image:
+def read_image(query: str) -> Image.Image:
   path = query.removeprefix('file://')
   img = Image.open(path)
   return img
