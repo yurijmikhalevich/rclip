@@ -63,7 +63,7 @@ class Model:
       text_features = np.add.reduce(self.compute_text_features(phrases))
     if files or urls:
       images = ([utils.download_image(q) for q in urls] +
-                [utils.image_from_file(q) for q in files])
+                [utils.read_image(q) for q in files])
       image_features = np.add.reduce(self.compute_image_features(images))
 
     if text_features is not None and image_features is not None:
