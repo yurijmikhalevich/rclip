@@ -1,9 +1,10 @@
-from typing import Callable, List, Tuple, cast
+from typing import Callable, List, Tuple, Optional, cast
 
 import clip
 import clip.model
 import numpy as np
 from PIL import Image
+from rclip import utils
 import torch
 import torch.nn
 
@@ -37,17 +38,49 @@ class Model:
 
     return text_encoded.cpu().numpy()
 
+  def group_query_parameters_by_type(self, queries: List[str]) -> Tuple[List[str], List[str], List[str]]:
+    phrase_queries: List[str] = []
+    local_file_queries: List[str] = []
+    url_queries: List[str] = []
+    for query in queries:
+        if utils.is_http_url(query):
+          url_queries.append(query)
+        elif utils.is_file_path(query):
+          local_file_queries.append(query)
+        else:
+          phrase_queries.append(query)
+    return phrase_queries, local_file_queries, url_queries
+
+  def compute_features_for_queries(self, queries: List[str]) -> np.ndarray:
+    text_features: Optional[np.ndarray] = None
+    image_features: Optional[np.ndarray] = None
+    phrases, files, urls = self.group_query_parameters_by_type(queries)
+    if phrases:
+      text_features = np.add.reduce(self.compute_text_features(phrases))
+    if files or urls:
+      images = ([utils.download_image(q) for q in urls] +
+                [utils.read_image(q) for q in files])
+      image_features = np.add.reduce(self.compute_image_features(images))
+
+    if text_features is not None and image_features is not None:
+        return text_features + image_features
+    elif text_features is not None:
+        return text_features
+    elif image_features is not None:
+        return image_features
+    else:
+        return np.zeros(Model.VECTOR_SIZE)
+
   def compute_similarities_to_text(
       self, item_features: np.ndarray,
       positive_queries: List[str], negative_queries: List[str]) -> List[Tuple[float, int]]:
 
-    positive_features = self.compute_text_features(positive_queries)
-    text_features = np.add.reduce(positive_features)
-    if negative_queries:
-        negative_features = self.compute_text_features(negative_queries)
-        text_features -= np.add.reduce(negative_features)
+    positive_features = self.compute_features_for_queries(positive_queries)
+    negative_features = self.compute_features_for_queries(negative_queries)
 
-    similarities = text_features @ item_features.T
+    features = positive_features - negative_features
+
+    similarities = features @ item_features.T
     sorted_similarities = sorted(zip(similarities, range(item_features.shape[0])), key=lambda x: x[0], reverse=True)
 
     return sorted_similarities

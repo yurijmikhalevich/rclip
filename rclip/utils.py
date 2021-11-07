@@ -1,9 +1,17 @@
 import argparse
 import os
 import pathlib
+from PIL import Image
+import re
+import requests
 import sys
 
 from rclip import config
+
+
+MAX_DOWNLOAD_SIZE_BYTES = 50_000_000
+DOWNLOAD_TIMEOUT_SECONDS = 60
+WIN_ABSOLUTE_FILE_PATH_REGEX = re.compile(r'^[a-z]:\\', re.I)
 
 
 def get_system_datadir() -> pathlib.Path:
@@ -67,3 +75,41 @@ def init_arg_parser() -> argparse.ArgumentParser:
     ' WARNING: the default will be removed in v2'
   )
   return parser
+
+
+def remove_prefix(string: str, prefix: str) -> str:
+  '''
+  Removes prefix from a string (if present) and returns a new string without a prefix
+  TODO(yurij): replace with str.removeprefix once updated to Python 3.9+
+  '''
+  return string[len(prefix):] if string.startswith(prefix) else string
+
+
+# See: https://meta.wikimedia.org/wiki/User-Agent_policy
+def download_image(url: str) -> Image.Image:
+  headers = {'User-agent': 'rclip - (https://github.com/yurijmikhalevich/rclip)'}
+  check_size = requests.request('HEAD', url, headers=headers, timeout=60)
+  if length := check_size.headers.get('Content-Length'):
+      if int(length) > MAX_DOWNLOAD_SIZE_BYTES:
+          raise(ValueError(f"Avoiding download of large ({length} byte) file."))
+  img = Image.open(requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS).raw)
+  return img
+
+
+def read_image(query: str) -> Image.Image:
+  path = remove_prefix(query, 'file://')
+  img = Image.open(path)
+  return img
+
+
+def is_http_url(path: str) -> bool:
+  return path.startswith('https://') or path.startswith('http://')
+
+
+def is_file_path(path: str) -> bool:
+  return (
+    path.startswith('/') or
+    path.startswith('file://') or
+    path.startswith('./') or
+    WIN_ABSOLUTE_FILE_PATH_REGEX.match(path) is not None
+  )
