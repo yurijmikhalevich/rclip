@@ -5,7 +5,6 @@ import clip.model
 import numpy as np
 from PIL import Image
 from rclip import utils
-import re
 import torch
 import torch.nn
 
@@ -44,12 +43,9 @@ class Model:
     local_file_queries: List[str] = []
     url_queries: List[str] = []
     for query in queries:
-        if query.startswith('https://') or query.startswith('http://'):
+        if utils.is_http_url(query):
           url_queries.append(query)
-        elif (query.startswith('/') or
-              query.startswith('file://') or
-              query.startswith('./') or
-              re.match(r'(?i)^[a-z]:\\', query)):
+        elif utils.is_file_path(query):
           local_file_queries.append(query)
         else:
           phrase_queries.append(query)

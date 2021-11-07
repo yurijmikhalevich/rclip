@@ -2,6 +2,7 @@ import argparse
 import os
 import pathlib
 from PIL import Image
+import re
 import requests
 import sys
 
@@ -10,6 +11,7 @@ from rclip import config
 
 MAX_DOWNLOAD_SIZE_BYTES = 50_000_000
 DOWNLOAD_TIMEOUT_SECONDS = 60
+WIN_ABSOLUTE_FILE_PATH_REGEX = re.compile(r'^[a-z]:\\', re.I)
 
 
 def get_system_datadir() -> pathlib.Path:
@@ -98,3 +100,16 @@ def read_image(query: str) -> Image.Image:
   path = remove_prefix(query, 'file://')
   img = Image.open(path)
   return img
+
+
+def is_http_url(path: str) -> bool:
+  return path.startswith('https://') or path.startswith('http://')
+
+
+def is_file_path(path: str) -> bool:
+  return (
+    path.startswith('/') or
+    path.startswith('file://') or
+    path.startswith('./') or
+    WIN_ABSOLUTE_FILE_PATH_REGEX.match(path) is not None
+  )
