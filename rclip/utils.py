@@ -75,6 +75,14 @@ def init_arg_parser() -> argparse.ArgumentParser:
   return parser
 
 
+def remove_prefix(string: str, prefix: str) -> str:
+  '''
+  Removes prefix from a string (if present) and returns a new string without a prefix
+  TODO(yurij): replace with str.removeprefix once updated to Python 3.9+
+  '''
+  return string[len(prefix):] if string.startswith(prefix) else string
+
+
 # See: https://meta.wikimedia.org/wiki/User-Agent_policy
 def download_image(url: str) -> Image.Image:
   headers = {'User-agent': 'rclip - (https://github.com/yurijmikhalevich/rclip)'}
@@ -87,6 +95,6 @@ def download_image(url: str) -> Image.Image:
 
 
 def read_image(query: str) -> Image.Image:
-  path = query.removeprefix('file://')
+  path = remove_prefix(query, 'file://')
   img = Image.open(path)
   return img
