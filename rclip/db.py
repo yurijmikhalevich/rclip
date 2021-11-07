@@ -61,7 +61,7 @@ class DB:
   def commit(self):
     self._con.commit()
 
-  def upsert_image(self, image: NewImage, commit=True):
+  def upsert_image(self, image: NewImage, commit: bool = True):
     self._con.execute('''
       INSERT INTO images(deleted, filepath, modified_at, size, vector)
       VALUES (:deleted, :filepath, :modified_at, :size, :vector)
@@ -75,7 +75,7 @@ class DB:
     self._con.execute('UPDATE images SET deleted = 1 WHERE filepath LIKE ?', (path + '/%',))
     self._con.commit()
 
-  def remove_deleted_flag(self, filepath: str, commit=True):
+  def remove_deleted_flag(self, filepath: str, commit: bool = True):
     self._con.execute('UPDATE images SET deleted = NULL WHERE filepath = ?', (filepath,))
     if commit:
       self._con.commit()
