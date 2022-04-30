@@ -19,7 +19,7 @@ class Image(NewImage):
 
 
 class DB:
-  VERSION = 1
+  VERSION = 2
 
   def __init__(self, filename: Union[str, pathlib.Path]):
     self._con = sqlite3.connect(filename)
@@ -51,7 +51,13 @@ class DB:
       self._con.execute('INSERT INTO db_version(version) VALUES (?)', (self.VERSION,))
       self._con.commit()
     elif db_version['version'] < self.VERSION:
-      raise Exception('migration to a newer index version isn\'t implemented')
+      if db_version['version'] < 2:
+        # Switch to ViT-L/14@336px, remove all previously ingested images
+        self._con.execute('DELETE FROM images')
+        self._con.execute('UPDATE db_version SET version = ?', (self.VERSION,))
+        self._con.commit()
+      else:
+        raise Exception(f'migration to a version {db_version["version"]} index isn\'t implemented')
     elif db_version['version'] > self.VERSION:
       raise Exception(
         'found index version newer than this version of rclip can support;'
