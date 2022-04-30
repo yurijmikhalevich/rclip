@@ -10,9 +10,9 @@ import torch.nn
 
 
 class Model:
-  VECTOR_SIZE = 512
+  VECTOR_SIZE = 768
   _device = 'cpu'
-  _model_name = 'ViT-B/32'
+  _model_name = 'ViT-L/14@336px'
 
   def __init__(self):
     model, preprocess = cast(

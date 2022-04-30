@@ -4,7 +4,7 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-clip = {git = "https://github.com/openai/CLIP.git"}
+clip = {git = "https://github.com/openai/CLIP.git", ref = "b4ae44927b78d0093b556e3ce43cbdcff422017a"}
 torch = {version = "==1.9.0", sys_platform = "!= 'linux'"}
 torchvision = {version = "==0.10.0", sys_platform = "!= 'linux'"}
 torch_linux = {file = "https://download.pytorch.org/whl/cpu/torch-1.9.0%2Bcpu-cp38-cp38-linux_x86_64.whl", version = "==1.9.0+cpu", sys_platform = "== 'linux'"}
