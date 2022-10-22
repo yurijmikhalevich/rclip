@@ -91,7 +91,7 @@ def download_image(url: str) -> Image.Image:
   check_size = requests.request('HEAD', url, headers=headers, timeout=60)
   if length := check_size.headers.get('Content-Length'):
       if int(length) > MAX_DOWNLOAD_SIZE_BYTES:
-          raise(ValueError(f"Avoiding download of large ({length} byte) file."))
+          raise ValueError(f"Avoiding download of large ({length} byte) file.")
   img = Image.open(requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS).raw)
   return img
 
