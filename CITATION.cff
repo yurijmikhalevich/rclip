@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you want to cite rclip, feel free to use this"
+authors:
+- family-names: "Mikhalevich"
+  given-names: "Yurij"
+title: "rclip"
+version: 1.2.4
+date-released: 2021-08-25
+license: "MIT"
+url: "https://github.com/yurijmikhalevich/rclip"
+repository-code: "https://github.com/yurijmikhalevich/rclip/tree/ab2d8ee28c176dec297921dc56b91741167db0e6"
+keywords:
+  - machine learning
+  - deep learning
+  - artificial intelligence
+  - computer vision
+  - photography
