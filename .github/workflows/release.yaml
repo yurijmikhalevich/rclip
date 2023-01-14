@@ -22,7 +22,7 @@ jobs:
       - name: Set up APPDIR for after_bundle
         run: echo "APPDIR=$PWD/AppDir" >> $GITHUB_ENV
       - name: Build AppImage
-        uses: AppImageCrafters/build-appimage@v1.1
+        uses: AppImageCrafters/build-appimage@v1.3
         with:
           recipe: './appimage-builder.yml'
         env:
