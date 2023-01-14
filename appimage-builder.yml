@@ -1,5 +1,7 @@
 version: 1
 script:
+  # Ensure that the mksquashfs tool is installed (workaround for the AppImageCrafters/build-appimage GHA)
+  - which mksquashfs || apt install squashfs-tools
   # Remove any previous build
   - rm -rf AppDir | true
   # Make usr and icons dirs
