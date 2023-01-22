@@ -14,14 +14,14 @@ DOWNLOAD_TIMEOUT_SECONDS = 60
 WIN_ABSOLUTE_FILE_PATH_REGEX = re.compile(r'^[a-z]:\\', re.I)
 
 
-def get_system_datadir() -> pathlib.Path:
+def __get_system_datadir() -> pathlib.Path:
   '''
   Returns a parent directory path
   where persistent application data can be stored.
 
-  # linux: ~/.local/share
-  # macOS: ~/Library/Application Support
-  # windows: C:/Users/<USER>/AppData/Roaming
+  - linux: ~/.local/share
+  - macOS: ~/Library/Application Support
+  - windows: C:/Users/<USER>/AppData/Roaming
   '''
 
   home = pathlib.Path.home()
@@ -37,11 +37,11 @@ def get_system_datadir() -> pathlib.Path:
 
 
 def get_app_datadir() -> pathlib.Path:
-  app_datadir = os.getenv('DATADIR')
+  app_datadir = os.getenv('RCLIP_DATADIR')
   if app_datadir:
     app_datadir = pathlib.Path(app_datadir)
   else:
-    app_datadir = get_system_datadir() / config.NAME
+    app_datadir = __get_system_datadir() / config.NAME
   os.makedirs(app_datadir, exist_ok=True)
   return app_datadir
 
