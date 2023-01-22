@@ -14,6 +14,7 @@ requests = "~=2.26"
 
 [dev-packages]
 pycodestyle = "~=2.7"
+pytest = "~=7.2.1"
 
 [requires]
 python_version = "3.8"
@@ -24,3 +25,4 @@ check_style = "pycodestyle ."
 check_types = "pyright ."
 install_pyright = "npm i -g pyright@1.1.185"
 lint = "bash -c 'pipenv run check_style && pipenv run check_types'"
+test = "bash -c 'PYTHONPATH=. pytest tests'"
