@@ -34,5 +34,5 @@ def test_search(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
   with tempfile.TemporaryDirectory() as tmpdirname:
     monkeypatch.setenv('RCLIP_DATADIR', tmpdirname)
     monkeypatch.chdir(test_images_dir)
-    set_argv('cat')
+    set_argv('kitty')
     main()
