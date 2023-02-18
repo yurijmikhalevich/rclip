@@ -8,11 +8,12 @@ if [[ "$GITHUB_ACTIONS" ]]; then
   apt-get update && apt-get purge -y python3 && apt-get install -y git python3 python3-pip python3-setuptools
 fi
 
+which appimage-builder || echo "no appimage-builder"
+
 PYTHONHOME=$APPDIR/usr \
 PYTHONPATH=$APPDIR/usr/lib/python3.8/site-packages:$APPDIR/usr/lib/python3.8 \
 LD_LIBRARY_PATH=$APPDIR/usr/lib/x86_64-linux-gnu \
 cat /etc/lsb-release &&
-whomai &&
 which python3.8 &&
 python3.8 -m pip install setuptools &&
 python3.8 -m pip install poetry==1.3.2 &&
