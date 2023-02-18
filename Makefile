@@ -21,7 +21,7 @@ build-docker:
 release:
 	@test $(VERSION) || (echo "VERSION arg is required" && exit 1)
 	poetry version $(VERSION)
-	git commit -am "release: v$(shell poetry version -s)"
+	git commit -am "release: v$$(poetry version -s)"
 	# git push origin main
-	git tag v$(shell poetry version -s)
-	git push origin v$(shell poetry version -s)
+	git tag v$$(poetry version -s)
+	git push origin v$$(poetry version -s)
