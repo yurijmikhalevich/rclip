@@ -19,7 +19,7 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.10"
-clip = { git = "https://github.com/openai/CLIP.git" }
+clip = { git = "https://github.com/openai/CLIP.git", rev = "3702849800aa56e2223035bccd1c6ef91c704ca8" }
 pillow = ">=9.0.1"
 requests = "~=2.26"
 torch = [

@@ -152,7 +152,7 @@ dev = ["pytest"]
 [package.source]
 type = "git"
 url = "https://github.com/openai/CLIP.git"
-reference = "HEAD"
+reference = "3702849800aa56e2223035bccd1c6ef91c704ca8"
 resolved_reference = "3702849800aa56e2223035bccd1c6ef91c704ca8"
 
 [[package]]
@@ -735,4 +735,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.10"
-content-hash = "3bc8b1af100a9140f4e5926830f5b72e8ddae93c7d9b137a0f345248836bda40"
+content-hash = "ea443058a8a0366124c603193d6779948cdd94df171ce4421391f75a92cdc221"
