@@ -1,0 +1,48 @@
+[tool.poetry]
+name = "rclip"
+version = "1.2.5"
+description = "AI-Powered Command-Line Photo Search Tool"
+authors = ["Yurij Mikhalevich <yurij@mikhalevi.ch>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/yurijmikhalevich/rclip"
+keywords = ["image search", "computer vision", "photography"]
+classifiers = [
+  "Intended Audience :: End Users/Desktop",
+  "Intended Audience :: Science/Research",
+  "Topic :: Multimedia :: Graphics",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Scientific/Engineering :: Image Processing",
+  "Topic :: Scientific/Engineering :: Image Recognition",
+  "Topic :: Utilities",
+]
+
+[tool.poetry.dependencies]
+python = ">=3.8,<3.10"
+clip = { git = "https://github.com/openai/CLIP.git", rev = "3702849800aa56e2223035bccd1c6ef91c704ca8" }
+pillow = ">=9.0.1"
+requests = "~=2.26"
+torch = [
+  { version = "==1.9.0", source = "pypi", markers = "sys_platform != 'linux'" },
+  { version = "==1.9.0+cpu", source = "pytorch-cpu", markers = "sys_platform == 'linux'" }
+]
+torchvision = [
+  { version = "==0.10.0", source = "pypi", markers = "sys_platform != 'linux'" },
+  { version = "==0.10.0+cpu", source = "pytorch-cpu", markers = "sys_platform == 'linux'" }
+]
+
+[tool.poetry.group.dev.dependencies]
+pycodestyle = ">=2.7,<3.0"
+pytest = ">=7.2.1,<8.0"
+
+[tool.poetry.scripts]
+rclip = "rclip.main:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[[tool.poetry.source]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+secondary = true
