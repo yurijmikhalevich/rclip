@@ -27,8 +27,8 @@ jobs:
           python-version: 3.8
       - name: Install AppImage
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libglib2.0-0 libsm6 libxext6 libxrender-dev
+          apt-get update
+          apt-get install -y libglib2.0-0 libsm6 libxext6 libxrender-dev
           pip install appimage-builder==1.1.0
       - name: Build AppImage
         run: appimage-builder --recipe appimage-builder.yml
