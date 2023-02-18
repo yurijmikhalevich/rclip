@@ -6,8 +6,6 @@ import re
 import requests
 import sys
 
-from rclip import config
-
 
 MAX_DOWNLOAD_SIZE_BYTES = 50_000_000
 DOWNLOAD_TIMEOUT_SECONDS = 60
@@ -41,7 +39,7 @@ def get_app_datadir() -> pathlib.Path:
   if app_datadir:
     app_datadir = pathlib.Path(app_datadir)
   else:
-    app_datadir = __get_system_datadir() / config.NAME
+    app_datadir = __get_system_datadir() / 'rclip'
   os.makedirs(app_datadir, exist_ok=True)
   return app_datadir
 
