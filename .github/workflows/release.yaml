@@ -12,10 +12,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-      - name: Set up Python 3.8
-        uses: actions/setup-python@v4
-        with:
-          python-version: 3.8
       - name: Parse the Version
         id: version
         run: |
@@ -25,10 +21,17 @@ jobs:
           )
       - name: Set up APPDIR for after_bundle
         run: echo "APPDIR=$PWD/AppDir" >> $GITHUB_ENV
-      - name: Build AppImage
-        uses: AppImageCrafters/build-appimage@57c3bc6963f870ce3be103117de5b5e33ffbaeb6
+      - name: Set up Python 3.8
+        uses: actions/setup-python@v4
         with:
-          recipe: './appimage-builder.yml'
+          python-version: 3.8
+      - name: Install AppImage
+        run: |
+          apt-get update
+          apt-get install -y libglib2.0-0 libsm6 libxext6 libxrender-dev
+          pip install appimage-builder==1.1.0
+      - name: Build AppImage
+        run: appimage-builder --recipe appimage-builder.yml
         env:
           APP_VERSION: ${{ steps.version.outputs.VERSION }}
       - name: Generate Changelog
