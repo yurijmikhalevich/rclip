@@ -4,8 +4,7 @@ set -e
 
 if [[ "$GITHUB_ACTIONS" ]]; then
   # Install git into the appimage-builder docker image
-  # And reinstall Python to ensure compatibility with libffi7
-  apt-get update && apt-get purge -y python3 && apt-get install -y git python3 python3-pip python3-setuptools
+  apt-get update && apt-get install -y git
 fi
 
 which appimage-builder || echo "no appimage-builder"
