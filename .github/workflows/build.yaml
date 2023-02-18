@@ -18,13 +18,13 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install --upgrade pipenv
-          pipenv sync --dev
-          pipenv run install_pyright
+          pip install --upgrade poetry
+          poetry install
+          make install-pyright
       - name: Check Style
-        run: pipenv run check_style
+        run: make lint-style
       - name: Check Types
-        run: pipenv run check_types
+        run: make lint-types
 
   test:
     runs-on: ubuntu-latest
@@ -37,7 +37,7 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install --upgrade pipenv
-          pipenv sync --dev
+          pip install --upgrade poetry
+          poetry install
       - name: Run Tests
-        run: pipenv run test
+        run: make test
