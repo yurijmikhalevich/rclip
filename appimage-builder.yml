@@ -37,7 +37,7 @@ AppDir:
         key_url: 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x17e1dd50b8a4f9c1'
 
     include:
-      - libffi6
+      - libffi7
       - libpython3.8-minimal
       - libpython3.8-stdlib
       - python3.8
