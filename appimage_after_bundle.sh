@@ -11,6 +11,9 @@ fi
 PYTHONHOME=$APPDIR/usr \
 PYTHONPATH=$APPDIR/usr/lib/python3.8/site-packages:$APPDIR/usr/lib/python3.8 \
 LD_LIBRARY_PATH=$APPDIR/usr/lib/x86_64-linux-gnu \
+cat /etc/lsb-release &&
+whomai &&
+which python3.8 &&
 python3.8 -m pip install setuptools &&
 python3.8 -m pip install poetry==1.3.2 &&
 python3.8 -m poetry export --without-hashes --without dev -f requirements.txt --output requirements.txt &&
