@@ -17,3 +17,11 @@ test:
 
 build-docker:
 	DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build . -t rclip
+
+release:
+	@test $(VERSION) || (echo "VERSION arg is required" && exit 1)
+	poetry version $(VERSION)
+	git commit -am "release: v$(shell poetry version -s)"
+	# git push origin main
+	git tag v$(shell poetry version -s)
+	git push origin v$(shell poetry version -s)
