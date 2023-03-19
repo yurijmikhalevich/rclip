@@ -1,7 +1,8 @@
 {
   "exclude": [
     "AppDir",
-    "appimage-builder-cache"
+    "appimage-builder-cache",
+    "benchmarks/datasets"
   ],
   "typeCheckingMode": "strict",
   "reportMissingTypeStubs": "none",
