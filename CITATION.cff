@@ -4,14 +4,17 @@ authors:
 - family-names: "Mikhalevich"
   given-names: "Yurij"
 title: "rclip"
-version: 1.2.4
-date-released: 2021-08-25
+version: 1.2.5
+date-released: 2023-01-14
 license: "MIT"
 url: "https://github.com/yurijmikhalevich/rclip"
-repository-code: "https://github.com/yurijmikhalevich/rclip/tree/ab2d8ee28c176dec297921dc56b91741167db0e6"
+repository-code: "https://github.com/yurijmikhalevich/rclip/commit/0ded434ee826dae2823a897813a21d8012d7ed9b"
 keywords:
   - machine learning
   - deep learning
   - artificial intelligence
   - computer vision
-  - photography
+  - image search
+  - image indexing
+  - photo management
+  - natural language processing
