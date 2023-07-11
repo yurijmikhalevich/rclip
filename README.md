@@ -62,7 +62,7 @@ This repository follows the [Conventional Commits](https://www.conventionalcommi
 
 ### Running locally from the source code
 
-To run `rclip` locally from the source code, you must have [Python](https://www.python.org/downloads/)](https://www.python.org/downloads/) and Poetry(https://python-poetry.org/) installed.
+To run `rclip` locally from the source code, you must have [Python](https://www.python.org/downloads/) and [Poetry](https://python-poetry.org/) installed.
 
 Then do:
 ```bash
