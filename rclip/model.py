@@ -1,9 +1,10 @@
 from typing import Callable, List, Tuple, Optional, cast
+import sys
 
 import clip
 import clip.model
 import numpy as np
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from rclip import utils
 import torch
 import torch.nn
@@ -58,8 +59,15 @@ class Model:
     if phrases:
       text_features = np.add.reduce(self.compute_text_features(phrases))
     if files or urls:
-      images = ([utils.download_image(q) for q in urls] +
-                [utils.read_image(q) for q in files])
+      try:
+        images = ([utils.download_image(q) for q in urls] +
+                  [utils.read_image(q) for q in files])
+      except FileNotFoundError as e:
+        print(f'File "{e.filename}" not found. Check if you have typos in the filename.')
+        sys.exit(1)
+      except UnidentifiedImageError as e:
+        print(f'File "{e.filename}" is not an image. You can only use image files or phrases as queries.')
+        sys.exit(1)
       image_features = np.add.reduce(self.compute_image_features(images))
 
     if text_features is not None and image_features is not None:

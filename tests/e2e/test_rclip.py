@@ -24,9 +24,10 @@ def assert_output_snapshot(test_images_dir: Path, request: pytest.FixtureRequest
   yield
   out, _ = capsys.readouterr()
   snapshot_path = Path(__file__).parent / 'output_snapshots' / f'{request.node.name}.txt'
+  snapshot = out.replace(str(test_images_dir), '<test_images_dir>')
   if not snapshot_path.exists():
-    snapshot_path.write_text(out.replace(str(test_images_dir), ''))
-  assert out.replace(str(test_images_dir), '') == snapshot_path.read_text()
+    snapshot_path.write_text(snapshot)
+  assert snapshot == snapshot_path.read_text()
 
 
 @pytest.mark.usefixtures('assert_output_snapshot')
@@ -54,3 +55,23 @@ def test_search_by_image_from_url(test_images_dir: Path, monkeypatch: pytest.Mon
     monkeypatch.chdir(test_images_dir)
     set_argv('https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/tests/e2e/images/cat.jpg')
     main()
+
+
+@pytest.mark.usefixtures('assert_output_snapshot')
+def test_search_by_non_existing_file(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
+  with tempfile.TemporaryDirectory() as tmpdirname:
+    monkeypatch.setenv('RCLIP_DATADIR', tmpdirname)
+    monkeypatch.chdir(test_images_dir)
+    set_argv('./non-existing-file.jpg')
+    with pytest.raises(SystemExit):
+      main()
+
+
+@pytest.mark.usefixtures('assert_output_snapshot')
+def test_search_by_not_an_image(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
+  with tempfile.TemporaryDirectory() as tmpdirname:
+    monkeypatch.setenv('RCLIP_DATADIR', tmpdirname)
+    monkeypatch.chdir(test_images_dir)
+    set_argv(str(test_images_dir / 'not-an-image.txt'))
+    with pytest.raises(SystemExit):
+      main()
