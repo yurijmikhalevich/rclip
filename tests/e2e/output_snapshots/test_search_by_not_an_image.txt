@@ -1,0 +1,1 @@
+File "<test_images_dir>/not-an-image.txt" is not an image. You can only use image files or text as queries.

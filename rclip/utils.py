@@ -1,7 +1,7 @@
 import argparse
 import os
 import pathlib
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 import re
 import requests
 import sys
@@ -96,7 +96,12 @@ def download_image(url: str) -> Image.Image:
 
 def read_image(query: str) -> Image.Image:
   path = remove_prefix(query, 'file://')
-  img = Image.open(path)
+  try:
+    img = Image.open(path)
+  except UnidentifiedImageError as e:
+    # by default the filename on the UnidentifiedImageError is None
+    e.filename = path
+    raise e
   return img
 
 

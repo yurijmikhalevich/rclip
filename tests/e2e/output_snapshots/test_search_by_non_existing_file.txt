@@ -1,0 +1,1 @@
+File "./non-existing-file.jpg" not found. Check if you have typos in the filename.
