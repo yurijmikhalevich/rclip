@@ -36,3 +36,21 @@ def test_search(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.chdir(test_images_dir)
     set_argv('kitty')
     main()
+
+
+@pytest.mark.usefixtures('assert_output_snapshot')
+def test_search_by_image(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
+  with tempfile.TemporaryDirectory() as tmpdirname:
+    monkeypatch.setenv('RCLIP_DATADIR', tmpdirname)
+    monkeypatch.chdir(test_images_dir)
+    set_argv(str(test_images_dir / 'cat.jpg'))
+    main()
+
+
+@pytest.mark.usefixtures('assert_output_snapshot')
+def test_search_by_image_from_url(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
+  with tempfile.TemporaryDirectory() as tmpdirname:
+    monkeypatch.setenv('RCLIP_DATADIR', tmpdirname)
+    monkeypatch.chdir(test_images_dir)
+    set_argv('https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/tests/e2e/images/cat.jpg')
+    main()

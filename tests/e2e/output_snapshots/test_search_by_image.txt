@@ -1,0 +1,11 @@
+score	filepath
+1.000	"/cat.jpg"
+0.787	"/black kitty.jpg"
+0.780	"/black cat sleeping on a chair.JPG"
+0.744	"/black cat at night.jpg"
+0.700	"/cautious cat.jpg"
+0.611	"/chessboard with rocks.JPG"
+0.564	"/bee.jpg"
+0.560	"/cake.jpg"
+0.558	"/camera.jpg"
+0.531	"/books.jpg"
