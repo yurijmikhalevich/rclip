@@ -34,7 +34,7 @@ cd photos && rclip "search query"
 
 When you run **rclip** for the first time in a particular directory, it's going to extract features from the photos, and this takes time. How long it takes depends on your CPU and the number of pictures you will search through. It took about a day to process 73 thousand photos on my NAS, which runs an old-ish Intel Celeron J3455.
 
-You can also use another image as a query by passing a file path or even an URL to the image file, and `rclip` will find the images most similar to the one you used as a query. For example:
+You can also use another image as a query by passing a file path or even an URL to the image file, and `rclip` will find the images most similar to the one you used as a query. If you are referencing an image located in the current directory, you **must** prefix it with "./". For example:
 
 ```bash
 cd photos && rclip ./cat.jpg
@@ -71,7 +71,7 @@ This repository follows the [Conventional Commits](https://www.conventionalcommi
 
 ### Running locally from the source code
 
-To run `rclip` locally from the source code, you must have [Python](https://www.python.org/downloads/) and [Poetry](https://python-poetry.org/) installed.
+To run **rclip** locally from the source code, you must have [Python](https://www.python.org/downloads/) and [Poetry](https://python-poetry.org/) installed.
 
 Then do:
 ```bash
@@ -86,7 +86,7 @@ poetry install
 poetry shell
 ```
 
-If the poetry environment is active, you can use `rclip` locally, as described in the [Usage](#usage) section above.
+If the poetry environment is active, you can use **rclip** locally, as described in the [Usage](#usage) section above.
 
 ## Contributors ✨
 
