@@ -66,7 +66,7 @@ class Model:
         print(f'File "{e.filename}" not found. Check if you have typos in the filename.')
         sys.exit(1)
       except UnidentifiedImageError as e:
-        print(f'File "{e.filename}" is not an image. You can only use image files or phrases as queries.')
+        print(f'File "{e.filename}" is not an image. You can only use image files or text as queries.')
         sys.exit(1)
       image_features = np.add.reduce(self.compute_image_features(images))
 
