@@ -34,6 +34,8 @@ cd photos && rclip "search query"
 
 When you run **rclip** for the first time in a particular directory, it's going to extract features from the photos, and this takes time. How long it takes depends on your CPU and the number of pictures you will search through. It took about a day to process 73 thousand photos on my NAS, which runs an old-ish Intel Celeron J3455.
 
+For a detailed demonstration, watch the video: https://www.youtube.com/watch?v=tAJHXOkHidw.
+
 You can also use another image as a query by passing a file path or even an URL to the image file, and **rclip** will find the images most similar to the one you used as a query. If you are referencing a local image via a relative path, you **must** prefix it with `./`. For example:
 
 ```bash
@@ -43,7 +45,7 @@ cd photos && rclip ./cat.jpg
 cd photos && rclip https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/tests/e2e/images/cat.jpg
 ```
 
-For a detailed demonstration, watch the video: https://www.youtube.com/watch?v=tAJHXOkHidw.
+Check this video out for the image-to-image search demo: https://www.youtube.com/watch?v=1YQZKeCBxWM.
 
 ### How do I preview the results?
 
