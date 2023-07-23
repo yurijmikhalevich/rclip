@@ -19,9 +19,12 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.10"
+# ftfy and regex are deps of clip; specifying them directly because poetry stopped
+# resolving deps of the { url = "..." } dependencies
 clip = { url = "https://github.com/openai/CLIP/archive/a1d071733d7111c9c014f024669f959182114e33.tar.gz" }
 ftfy = "^6.1.1"
 pillow = ">=9.0.1"
+regex = "*"
 requests = "~=2.26"
 torch = [
   { version = "==1.13.1", source = "pypi", markers = "sys_platform != 'linux'" },
