@@ -52,11 +52,22 @@ def top_arg_type(arg: str) -> int:
 
 
 def init_arg_parser() -> argparse.ArgumentParser:
-  parser = argparse.ArgumentParser()
+  parser = argparse.ArgumentParser(
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    prefix_chars='-+',
+    epilog='hints:\n'
+    '  relative file path should be prefixed with ./, e.g. "./cat.jpg", not "cat.jpg"\n'
+    '  any query can be prefixed with a multiplier, e.g. "2:cat", "0.5:./cat-sleeps-on-a-chair.jpg";'
+    ' adding a multiplier is especially useful when combining image and text queries because'
+    ' image queries are usually weighted more than text ones\n',
+  )
   parser.add_argument('query', help='a text query or a path/URL to an image file')
-  parser.add_argument('--add', '-a', action='append', default=[], help='queries to add to the "original" query')
-  parser.add_argument('--subtract', '--sub', '-s', action='append', default=[],
-                      help='queries to subtract from the "original" query')
+  parser.add_argument('--add', '-a', '+', metavar='QUERY', action='append', default=[],
+                      help='a text query or a path/URL to an image file to add to the "original" query,'
+                      ' can be used multiple times')
+  parser.add_argument('--subtract', '--sub', '-s', '-', metavar='QUERY', action='append', default=[],
+                      help='a text query or a path/URL to an image file to add to the "original" query,'
+                      ' can be used multiple times')
   parser.add_argument('--top', '-t', type=top_arg_type, default=10, help='number of top results to display')
   parser.add_argument('--filepath-only', '-f', action='store_true', default=False, help='outputs only filepaths')
   parser.add_argument(
@@ -68,7 +79,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
   parser.add_argument(
     '--exclude-dir',
     action='append',
-    help='dir to exclude from search, can be specified multiple times;'
+    help='dir to exclude from search, can be used multiple times;'
     ' adding this argument overrides the default of ("@eaDir", "node_modules", ".git");'
     ' WARNING: the default will be removed in v2'
   )

@@ -1,3 +1,4 @@
+import re
 from typing import Callable, List, Tuple, Optional, cast
 import sys
 
@@ -8,6 +9,9 @@ from PIL import Image, UnidentifiedImageError
 from rclip import utils
 import torch
 import torch.nn
+
+QUERY_WITH_MULTIPLIER_RE = re.compile(r'^(?P<multiplier>(\d+(\.\d+)?|\.\d+|\d+\.)):(?P<query>.+)$')
+QueryWithMultiplier = Tuple[float, str]
 
 
 class Model:
@@ -39,36 +43,56 @@ class Model:
 
     return text_encoded.cpu().numpy()
 
-  def group_query_parameters_by_type(self, queries: List[str]) -> Tuple[List[str], List[str], List[str]]:
-    phrase_queries: List[str] = []
-    local_file_queries: List[str] = []
-    url_queries: List[str] = []
+  @staticmethod
+  def _extract_query_multiplier(query: str) -> QueryWithMultiplier:
+    match = QUERY_WITH_MULTIPLIER_RE.match(query)
+    if not match:
+      return 1., query
+    multiplier = float(match.group('multiplier'))
+    query = match.group('query')
+    return multiplier, query
+
+  @staticmethod
+  def _group_queries_by_type(queries: List[str]) -> Tuple[
+    List[QueryWithMultiplier],
+    List[QueryWithMultiplier],
+    List[QueryWithMultiplier]
+  ]:
+    phrase_queries: List[Tuple[float, str]] = []
+    local_file_queries: List[Tuple[float, str]] = []
+    url_queries: List[Tuple[float, str]] = []
     for query in queries:
+        multiplier, query = Model._extract_query_multiplier(query)
         if utils.is_http_url(query):
-          url_queries.append(query)
+          url_queries.append((multiplier, query))
         elif utils.is_file_path(query):
-          local_file_queries.append(query)
+          local_file_queries.append((multiplier, query))
         else:
-          phrase_queries.append(query)
+          phrase_queries.append((multiplier, query))
     return phrase_queries, local_file_queries, url_queries
 
   def compute_features_for_queries(self, queries: List[str]) -> np.ndarray:
     text_features: Optional[np.ndarray] = None
     image_features: Optional[np.ndarray] = None
-    phrases, files, urls = self.group_query_parameters_by_type(queries)
+    phrases, files, urls = self._group_queries_by_type(queries)
     if phrases:
-      text_features = np.add.reduce(self.compute_text_features(phrases))
+      phrase_multipliers, phrase_queries = cast(Tuple[Tuple[float], Tuple[str]], zip(*phrases))
+      phrase_multipliers_np = np.array(phrase_multipliers).reshape(-1, 1)
+      text_features = np.add.reduce(self.compute_text_features([*phrase_queries]) * phrase_multipliers_np)
     if files or urls:
+      file_multipliers, file_paths = cast(Tuple[Tuple[float], Tuple[str]], zip(*(files))) if files else ((), ())
+      url_multipliers, url_paths = cast(Tuple[Tuple[float], Tuple[str]], zip(*(urls))) if urls else ((), ())
       try:
-        images = ([utils.download_image(q) for q in urls] +
-                  [utils.read_image(q) for q in files])
+        images = ([utils.download_image(q) for q in url_paths] +
+                  [utils.read_image(q) for q in file_paths])
       except FileNotFoundError as e:
         print(f'File "{e.filename}" not found. Check if you have typos in the filename.')
         sys.exit(1)
       except UnidentifiedImageError as e:
         print(f'File "{e.filename}" is not an image. You can only use image files or text as queries.')
         sys.exit(1)
-      image_features = np.add.reduce(self.compute_image_features(images))
+      image_multipliers = np.array(url_multipliers + file_multipliers)
+      image_features = np.add.reduce(self.compute_image_features(images) * image_multipliers.reshape(-1, 1))
 
     if text_features is not None and image_features is not None:
         return text_features + image_features
