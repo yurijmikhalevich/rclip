@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "rclip"
-version = "1.3.1"
+version = "1.3.2a0"
 description = "AI-Powered Command-Line Photo Search Tool"
 authors = ["Yurij Mikhalevich <yurij@mikhalevi.ch>"]
 license = "MIT"
@@ -19,7 +19,7 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = ">=3.8,<3.10"
-clip = { git = "https://github.com/openai/CLIP.git", rev = "3702849800aa56e2223035bccd1c6ef91c704ca8" }
+clip = { url = "https://github.com/openai/CLIP/archive/a1d071733d7111c9c014f024669f959182114e33.zip" }
 pillow = ">=9.0.1"
 requests = "~=2.26"
 torch = [
