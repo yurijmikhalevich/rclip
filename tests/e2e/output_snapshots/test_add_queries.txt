@@ -1,0 +1,11 @@
+score	filepath
+0.910	"<test_images_dir>/black cat at night.jpg"
+0.881	"<test_images_dir>/black cat sleeping on a chair.JPG"
+0.877	"<test_images_dir>/cautious cat.jpg"
+0.841	"<test_images_dir>/cat.jpg"
+0.822	"<test_images_dir>/black kitty.jpg"
+0.774	"<test_images_dir>/chessboard with rocks.JPG"
+0.744	"<test_images_dir>/camera.jpg"
+0.722	"<test_images_dir>/boats on a lake.jpg"
+0.717	"<test_images_dir>/cake.jpg"
+0.713	"<test_images_dir>/bee.jpg"
