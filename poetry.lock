@@ -102,7 +102,7 @@ description = ""
 optional = false
 python-versions = "*"
 files = [
-    {file = "a1d071733d7111c9c014f024669f959182114e33.zip", hash = "sha256:cf960c62355f70ad5f18659c7a948203299dae0eda9fb49040bf83a5ab70f81c"},
+    {file = "a1d071733d7111c9c014f024669f959182114e33.tar.gz", hash = "sha256:d8777f02a0e61f9383f0ac4aec4f3b3655fa22c39763f37ff6afbfa7d2e29692"},
 ]
 
 [package.extras]
@@ -110,7 +110,7 @@ dev = ["pytest"]
 
 [package.source]
 type = "url"
-url = "https://github.com/openai/CLIP/archive/a1d071733d7111c9c014f024669f959182114e33.zip"
+url = "https://github.com/openai/CLIP/archive/a1d071733d7111c9c014f024669f959182114e33.tar.gz"
 
 [[package]]
 name = "colorama"
@@ -617,4 +617,4 @@ test = ["pytest (>=6.0.0)", "setuptools (>=65)"]
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.8,<3.10"
-content-hash = "0be32705165b3fc0379a7cab577f214fe4031a4eef4f1e27fe030f912fab67e9"
+content-hash = "b6c72060d72d7fb15b540a353f15993f18e2a1b0e4f7e041104112330b309cf4"
