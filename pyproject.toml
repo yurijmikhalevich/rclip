@@ -30,6 +30,7 @@ torchvision = [
   { version = "==0.14.1", source = "pypi", markers = "sys_platform != 'linux'" },
   { version = "==0.14.1+cpu", source = "pytorch-cpu", markers = "sys_platform == 'linux'" }
 ]
+tqdm = "^4.65.0"
 
 [tool.poetry.group.dev.dependencies]
 pycodestyle = ">=2.7,<3.0"
