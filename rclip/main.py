@@ -129,8 +129,16 @@ class RClip:
     positive_queries = [query] + positive_queries
     sorted_similarities = self._model.compute_similarities_to_text(features, positive_queries, negative_queries)
 
+    # exclude images that were part of the query from the results
+    exclude_files = [
+      os.path.abspath(query) for query in positive_queries + negative_queries if utils.is_file_path(query)
+    ]
+
     filtered_similarities = filter(
-      lambda similarity: not self._exclude_dir_regex.match(filepaths[similarity[1]]),
+      lambda similarity: (
+        not self._exclude_dir_regex.match(filepaths[similarity[1]]) and
+        not filepaths[similarity[1]] in exclude_files
+      ),
       sorted_similarities
     )
     top_k_similarities = itertools.islice(filtered_similarities, top_k)
