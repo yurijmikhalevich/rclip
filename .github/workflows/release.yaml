@@ -8,6 +8,8 @@ on:
 jobs:
   pypi:
     runs-on: ubuntu-22.04
+    permissions:
+      id-token: write
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
@@ -18,8 +20,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade poetry
           poetry install
-      - name: Build and publish
-        run: poetry publish --build
+      - name: Build wheel
+        run: poetry build
+      - name: Publish wheel to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
 
   appimage:
     runs-on:  ubuntu-20.04
