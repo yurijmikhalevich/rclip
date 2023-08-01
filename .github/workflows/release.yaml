@@ -6,10 +6,22 @@ on:
       - v*
 
 jobs:
-  build-appimage:
+  pypi:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.8
+          cache: poetry
+      - name: Install dependencies
+        run: poetry install
+      - name: Build and publish
+        run: poetry publish --build
 
+  appimage:
     runs-on:  ubuntu-20.04
-
     steps:
       - uses: actions/checkout@v3
       - name: Parse the Version
