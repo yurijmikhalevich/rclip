@@ -22,6 +22,6 @@ release:
 	@test $(VERSION) || (echo "VERSION arg is required" && exit 1)
 	poetry version $(VERSION)
 	git commit -am "release: v$$(poetry version -s)"
-	git push
+	git push origin $$(git branch --show-current)
 	git tag v$$(poetry version -s)
 	git push origin v$$(poetry version -s)
