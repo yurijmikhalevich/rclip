@@ -36,7 +36,9 @@ When you run **rclip** for the first time in a particular directory, it's going 
 
 For a detailed demonstration, watch the video: https://www.youtube.com/watch?v=tAJHXOkHidw.
 
-You can also use another image as a query by passing a file path or even an URL to the image file, and **rclip** will find the images most similar to the one you used as a query. If you are referencing a local image via a relative path, you **must** prefix it with `./`. For example:
+### Similar image search
+
+You can use another image as a query by passing a file path or even an URL to the image file, and **rclip** will find the images most similar to the one you used as a query. If you are referencing a local image via a relative path, you **must** prefix it with `./`. For example:
 
 ```bash
 cd photos && rclip ./cat.jpg
@@ -46,6 +48,20 @@ cd photos && rclip https://raw.githubusercontent.com/yurijmikhalevich/rclip/main
 ```
 
 Check this video out for the image-to-image search demo: https://www.youtube.com/watch?v=1YQZKeCBxWM.
+
+### Combining multiple queries
+
+You can add and subtract image and text queries from each other; here are a few usage examples:
+
+```bash
+cd photos && rclip horse + stripes
+cd photos && rclip apple - fruit
+cd photos && rclip "./new york city.jpg" + night
+cd photos && rclip "2:golden retriever" + "./swimming pool.jpg"
+cd photos && rclip "./racing car.jpg" - "2:sports car" + "2:snow"
+```
+
+If you want to see how these queries perform when executed on the 1.28 million images ImageNet-1k dataset, check out the demo on YouTube: https://www.youtube.com/watch?v=MsTgYdOpgcQ.
 
 ### How do I preview the results?
 
