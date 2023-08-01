@@ -14,7 +14,7 @@
 ## Installation
 
 <details>
-  <summary><strong>Using <code>pip</code> (macOS/Windows/Linux/etc.)<strong></summary>
+  <summary><strong>Using <code>pip</code> (macOS/Windows/Linux/etc.)</strong></summary>
   
   ```bash
   pip install rclip
