@@ -20,7 +20,7 @@ classifiers = [
 [tool.poetry.dependencies]
 python = "^3.8"
 open_clip_torch = "^2.20.0"
-pillow = "^9.0.1"
+pillow = "^10.0.0"
 requests = "~=2.26"
 torch = [
   { version = "==2.0.1", source = "pypi", markers = "sys_platform != 'linux'" },
