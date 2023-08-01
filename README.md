@@ -14,7 +14,7 @@
 ## Installation
 
 <details>
-  <summary><h3>Using <code>pip</code> (any os)<h3></summary>
+  <summary><h4>Using <code>pip</code> (macOS/Windows/Linux/etc.)<h4></summary>
   
   ```bash
   pip install rclip
@@ -22,7 +22,7 @@
 </details>
 
 <details>
-  <summary><h3>Linux x86_64 (self-containing binary)</h3></summary>
+  <summary><h4>Linux x86_64 (self-containing binary)</h4></summary>
   
   On Linux x86_64, you can install **rclip** as a self-containing binary.
 
