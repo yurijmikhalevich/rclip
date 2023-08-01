@@ -14,15 +14,7 @@
 ## Installation
 
 <details>
-  <summary><strong>Using <code>pip</code> (macOS/Windows/Linux/etc.)</strong></summary>
-  
-  ```bash
-  pip install rclip
-  ```
-</details>
-
-<details>
-  <summary><strong>Linux x86_64 (self-containing binary)</strong></summary>
+  <summary><strong>Linux x86_64</strong></summary>
   
   On Linux x86_64, you can install **rclip** as a self-containing binary.
 
@@ -33,6 +25,14 @@
   ```bash
   chmod +x <downloaded AppImage filename>
   sudo mv <downloaded AppImage filename> /usr/local/bin/rclip
+  ```
+</details>
+
+<details>
+  <summary><strong>macOS/Windows/Linux (using <code>pip</code>)</strong></summary>
+
+  ```bash
+  pip install rclip
   ```
 </details>
 
