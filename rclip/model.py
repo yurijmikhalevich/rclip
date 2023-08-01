@@ -1,9 +1,8 @@
 import re
-from typing import Callable, List, Tuple, Optional, cast
+from typing import List, Tuple, Optional, cast
 import sys
 
-import clip
-import clip.model
+import open_clip
 import numpy as np
 from PIL import Image, UnidentifiedImageError
 from rclip import utils
@@ -17,31 +16,50 @@ QueryWithMultiplier = Tuple[float, str]
 class Model:
   VECTOR_SIZE = 512
   _device = 'cpu'
-  _model_name = 'ViT-B/32'
+  _model_name = 'ViT-B-32'
+  _checkpoint_name = 'openai'
 
   def __init__(self):
-    model, preprocess = cast(
-      Tuple[clip.model.CLIP, Callable[[Image.Image], torch.Tensor]],
-      clip.load(self._model_name, device=self._device)
-    )
-    self._model = model
-    self._preprocess = preprocess
+    self.__model = None
+    self.__preprocess = None
+    self.__tokenizer = None
+
+  @property
+  def _tokenizer(self):
+    if not self.__tokenizer:
+      self.__tokenizer = open_clip.get_tokenizer(self._model_name)
+    return self.__tokenizer
+
+  @property
+  def _model(self):
+    if not self.__model:
+      self.__model, _, self.__preprocess = open_clip.create_model_and_transforms(
+        self._model_name,
+        pretrained=self._checkpoint_name,
+      )
+    return self.__model
+
+  @property
+  def _preprocess(self):
+    if not self.__preprocess:
+      self.__model, _, self.__preprocess = open_clip.create_model_and_transforms(
+        self._model_name,
+        pretrained=self._checkpoint_name,
+      )
+    return self.__preprocess
 
   def compute_image_features(self, images: List[Image.Image]) -> np.ndarray:
     images_preprocessed = torch.stack([self._preprocess(thumb) for thumb in images]).to(self._device)
-
     with torch.no_grad():
       image_features = self._model.encode_image(images_preprocessed)
       image_features /= image_features.norm(dim=-1, keepdim=True)
-
     return image_features.cpu().numpy()
 
   def compute_text_features(self, text: List[str]) -> np.ndarray:
     with torch.no_grad():
-      text_encoded = self._model.encode_text(clip.tokenize(text).to(self._device))
-      text_encoded /= text_encoded.norm(dim=-1, keepdim=True)
-
-    return text_encoded.cpu().numpy()
+      text_features = self._model.encode_text(self._tokenizer(text).to(self._device))
+      text_features /= text_features.norm(dim=-1, keepdim=True)
+    return text_features.cpu().numpy()
 
   @staticmethod
   def _extract_query_multiplier(query: str) -> QueryWithMultiplier:
