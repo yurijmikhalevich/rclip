@@ -13,16 +13,28 @@
 
 ## Installation
 
-Currently, pre-built distributable is available only for Linux x86_64.
+<details>
+  <summary><h3>Using <code>pip</code> (any os)<h3></summary>
+  
+  ```bash
+  pip install rclip
+  ```
+</details>
 
-1. Download the AppImage from the latest [release](https://github.com/yurijmikhalevich/rclip/releases).
+<details>
+  <summary><h3>Linux x86_64 (self-containing binary)</h3></summary>
+  
+  On Linux x86_64, you can install **rclip** as a self-containing binary.
 
-2. Execute the following commands:
+  1. Download the AppImage from the latest [release](https://github.com/yurijmikhalevich/rclip/releases).
 
-```bash
-chmod +x <downloaded AppImage filename>
-sudo mv <downloaded AppImage filename> /usr/local/bin/rclip
-```
+  2. Execute the following commands:
+
+  ```bash
+  chmod +x <downloaded AppImage filename>
+  sudo mv <downloaded AppImage filename> /usr/local/bin/rclip
+  ```
+</details>
 
 ## Usage
 
