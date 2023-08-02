@@ -9,4 +9,3 @@ python3.8 -m pip install poetry==1.5.1 &&
 python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="$APPDIR/usr" certifi setuptools wheel &&
 python3.8 -m poetry build &&
 python3.8 -m pip install --extra-index-url https://download.pytorch.org/whl/cpu --upgrade --isolated --no-input --ignore-installed --prefix="$APPDIR/usr" dist/*.whl &&
-which rclip

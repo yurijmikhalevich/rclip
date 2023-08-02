@@ -19,7 +19,7 @@ AppDir:
     name: rclip
     icon: rclip
     version: !ENV ${APP_VERSION}
-    exec: rclip
+    exec: usr/bin/rclip
 
   apt:
     arch: amd64
@@ -46,7 +46,6 @@ AppDir:
 
   runtime:
     env:
-      PATH: ${APPDIR}/usr/bin:${APPDIR}/usr/lib/python3.8/bin:${PATH}
       # Set python home
       # See https://docs.python.org/3/using/cmdline.html#envvar-PYTHONHOME
       PYTHONHOME: '${APPDIR}/usr'
