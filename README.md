@@ -29,10 +29,18 @@
 </details>
 
 <details>
-  <summary><strong>macOS/Windows/Linux (using <code>pip</code>)</strong></summary>
+  <summary><strong>macOS or Windows (using <code>pip</code>)</strong></summary>
 
   ```bash
   pip install rclip
+  ```
+</details>
+
+<details>
+  <summary><strong>Linux (using <code>pip</code>)</strong></summary>
+
+  ```bash
+  pip install --extra-index-url https://download.pytorch.org/whl/cpu rclip
   ```
 </details>
 

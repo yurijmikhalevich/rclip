@@ -22,7 +22,7 @@ AppDir:
     # Set the python executable as entry point
     exec: usr/bin/python3.8
     # Set the application main script path as argument. Use '$@' to forward CLI parameters
-    exec_args: "${APPDIR}/usr/src/rclip/main.py $@"
+    exec_args: "${APPDIR}/usr/bin/rclip $@"
 
   apt:
     arch: amd64
