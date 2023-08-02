@@ -19,7 +19,7 @@ AppDir:
     name: rclip
     icon: rclip
     version: !ENV ${APP_VERSION}
-    exec: bin/bash
+    exec: bin/sh
     exec_args: -c "rclip $@"
 
   apt:
