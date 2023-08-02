@@ -40,7 +40,8 @@
   <summary><strong>Linux (using <code>pip</code>)</strong></summary>
 
   ```bash
-  pip install --index-url https://download.pytorch.org/whl/cpu rclip
+  pip install --index-url https://download.pytorch.org/whl/cpu torch==2.0.1+cpu torchvision==0.15.2+cpu
+  pip install rclip
   ```
 </details>
 
