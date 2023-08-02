@@ -2,12 +2,9 @@ import re
 from typing import List, Tuple, Optional, cast
 import sys
 
-import open_clip
 import numpy as np
 from PIL import Image, UnidentifiedImageError
 from rclip import utils
-import torch
-import torch.nn
 
 QUERY_WITH_MULTIPLIER_RE = re.compile(r'^(?P<multiplier>(\d+(\.\d+)?|\.\d+|\d+\.)):(?P<query>.+)$')
 QueryWithMultiplier = Tuple[float, str]
@@ -26,12 +23,14 @@ class Model:
 
   @property
   def _tokenizer(self):
+    import open_clip
     if not self.__tokenizer:
       self.__tokenizer = open_clip.get_tokenizer(self._model_name)
     return self.__tokenizer
 
   @property
   def _model(self):
+    import open_clip
     if not self.__model:
       self.__model, _, self.__preprocess = open_clip.create_model_and_transforms(
         self._model_name,
@@ -41,6 +40,7 @@ class Model:
 
   @property
   def _preprocess(self):
+    import open_clip
     if not self.__preprocess:
       self.__model, _, self.__preprocess = open_clip.create_model_and_transforms(
         self._model_name,
@@ -49,6 +49,7 @@ class Model:
     return self.__preprocess
 
   def compute_image_features(self, images: List[Image.Image]) -> np.ndarray:
+    import torch
     images_preprocessed = torch.stack([self._preprocess(thumb) for thumb in images]).to(self._device)
     with torch.no_grad():
       image_features = self._model.encode_image(images_preprocessed)
@@ -56,6 +57,7 @@ class Model:
     return image_features.cpu().numpy()
 
   def compute_text_features(self, text: List[str]) -> np.ndarray:
+    import torch
     with torch.no_grad():
       text_features = self._model.encode_text(self._tokenizer(text).to(self._device))
       text_features /= text_features.norm(dim=-1, keepdim=True)
