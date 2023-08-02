@@ -19,7 +19,8 @@ AppDir:
     name: rclip
     icon: rclip
     version: !ENV ${APP_VERSION}
-    exec: usr/bin/rclip
+    exec: bin/bash
+    exec_args: -c "rclip $@"
 
   apt:
     arch: amd64
