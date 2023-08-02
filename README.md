@@ -29,7 +29,7 @@
 </details>
 
 <details>
-  <summary><strong>macOS/Windows (using <code>pip</code>)</strong></summary>
+  <summary><strong>macOS or Windows (using <code>pip</code>)</strong></summary>
 
   ```bash
   pip install rclip
