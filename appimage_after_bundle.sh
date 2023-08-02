@@ -8,5 +8,4 @@ LD_LIBRARY_PATH=$APPDIR/usr/lib/x86_64-linux-gnu \
 python3.8 -m pip install poetry==1.5.1 &&
 python3.8 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="$APPDIR/usr" certifi setuptools wheel &&
 python3.8 -m poetry build &&
-python3.8 -m pip install --index-url https://download.pytorch.org/whl/cpu --upgrade --isolated --no-input --ignore-installed --prefix="$APPDIR/usr" torch==2.0.1+cpu torchvision==0.15.2+cpu &&
-python3.8 -m pip install --isolated --no-input --prefix="$APPDIR/usr" dist/*.whl
+python3.8 -m pip install --extra-index-url https://download.pytorch.org/whl/cpu --upgrade --isolated --no-input --ignore-installed --prefix="$APPDIR/usr" dist/*.whl
