@@ -35,6 +35,7 @@ class Model:
       self.__model, _, self.__preprocess = open_clip.create_model_and_transforms(
         self._model_name,
         pretrained=self._checkpoint_name,
+        device=self._device,
       )
     return self.__model
 
@@ -45,6 +46,7 @@ class Model:
       self.__model, _, self.__preprocess = open_clip.create_model_and_transforms(
         self._model_name,
         pretrained=self._checkpoint_name,
+        device=self._device,
       )
     return self.__preprocess
 
