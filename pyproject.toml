@@ -22,14 +22,8 @@ python = "^3.8"
 open_clip_torch = "^2.20.0"
 pillow = "^10.0.0"
 requests = "~=2.26"
-torch = [
-  { version = "==2.0.1", source = "pypi", markers = "sys_platform != 'linux'" },
-  { version = "==2.0.1+cpu", source = "pytorch-cpu", markers = "sys_platform == 'linux'" }
-]
-torchvision = [
-  { version = "==0.15.2", source = "pypi", markers = "sys_platform != 'linux'" },
-  { version = "==0.15.2+cpu", source = "pytorch-cpu", markers = "sys_platform == 'linux'" }
-]
+torch = "2.0.1"
+torchvision = "0.15.2"
 tqdm = "^4.65.0"
 
 [tool.poetry.group.dev.dependencies]
@@ -42,12 +36,3 @@ rclip = "rclip.main:main"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
-
-[[tool.poetry.source]]
-name = "pypi"
-priority = "default"
-
-[[tool.poetry.source]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-priority = "explicit"
