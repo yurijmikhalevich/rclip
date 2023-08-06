@@ -37,8 +37,9 @@ jobs:
           poetry install
       - run: poetry build
       - run: sudo snap install snapcraft --classic
+      - uses: canonical/setup-lxd
       - run: sudo snap install multipass
-      - run: snapcraft
+      - run: snapcraft --use-lxd
       - run: ls -lah
 
   # appimage:
