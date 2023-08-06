@@ -21,9 +21,9 @@ confinement: strict
 base: core20
 architectures:
   - build-on: amd64
-    runs-on: amd64
+    run-on: amd64
   - build-on: arm64
-    runs-on: arm64
+    run-on: arm64
 
 apps:
   rclip:
