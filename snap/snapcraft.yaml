@@ -34,6 +34,8 @@ parts:
     source: ./dist/rclip-1.4.9a3.tar.gz
     build-packages:
       - python3-pip
+    build-environment:
+      - PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
     override-build: |
       pip3 install --user dephell[full]==0.8.3
       PATH=$HOME/.local/bin:$PATH dephell deps convert --from-path pyproject.toml --from-format pyproject --to-path setup.py --to-format setuppy
