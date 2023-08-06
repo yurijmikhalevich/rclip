@@ -20,10 +20,8 @@ jobs:
   #         python -m pip install --upgrade pip
   #         pip install --upgrade poetry
   #         poetry install
-  #     - name: Build wheel
-  #       run: poetry build
-  #     - name: Publish wheel to PyPI
-  #       uses: pypa/gh-action-pypi-publish@release/v1
+  #     - run: poetry build
+  #     - uses: pypa/gh-action-pypi-publish@release/v1
 
   snap:
     runs-on: ubuntu-20.04
@@ -37,14 +35,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade poetry
           poetry install
-      - name: Build wheel
-        run: poetry build
-      - uses: snapcore/action-build@v1
-        id: snapcraft
-      - uses: actions/upload-artifact@v3
-        with:
-          name: snap
-          path: ${{ steps.snapcraft.outputs.snap }}
+      - run: poetry build
+      - run: snap install snapcraft --classic
+      - run: snapcraft
 
   # appimage:
   #   runs-on:  ubuntu-20.04
