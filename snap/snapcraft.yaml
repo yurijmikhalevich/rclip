@@ -1,0 +1,19 @@
+name: rclip
+summary: AI-Powered Command-Line Photo Search Tool
+description: |
+  rclip is a command-line photo search tool powered by the awesome OpenAI's CLIP neural network.
+version: 1.4.8
+grade: stable
+confinement: devmode
+base: core20
+architectures:
+  - build-on: [arm64, armhf, amd64]
+
+apps:
+  rclip:
+    command: bin/rclip
+
+parts:
+  rclip:
+    plugin: python
+    source: https://files.pythonhosted.org/packages/c6/16/625d1e7bbb300e01919a6f31d2f092c73d06417e126744ebdb922d7ea327/rclip-1.4.8-py3-none-any.whl

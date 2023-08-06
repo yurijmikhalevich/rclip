@@ -9,7 +9,7 @@
   <img alt="rclip logo" src="https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/resources/logo-transparent.png" width="600px" />
 </div>
 
-**rclip** is a command-line photo search tool based on the awesome OpenAI's [CLIP](https://github.com/openai/CLIP) neural network.
+**rclip** is a command-line photo search tool powered by the awesome OpenAI's [CLIP](https://github.com/openai/CLIP) neural network.
 
 ## Installation
 
