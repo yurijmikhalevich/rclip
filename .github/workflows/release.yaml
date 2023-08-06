@@ -36,8 +36,9 @@ jobs:
           pip install --upgrade poetry
           poetry install
       - run: poetry build
-      - run: snap install snapcraft --classic
+      - run: sudo snap install snapcraft --classic
       - run: snapcraft
+      - run: ls -lah
 
   # appimage:
   #   runs-on:  ubuntu-20.04
