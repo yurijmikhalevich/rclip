@@ -29,7 +29,7 @@ release:
 	@test $(VERSION) || (echo "VERSION arg is required" && exit 1)
 	poetry version $(VERSION)
 	$(SED) -i "s/version: .*/version: $$(poetry version -s)/" snap/snapcraft.yaml
-	$(SED) -i "s/source: .*/source: .\/snap\/rclip-$$(poetry version -s).tar.gz/" snap/snapcraft.yaml
+	$(SED) -i "s/source: .*/source: .\/snap\/local\/rclip-$$(poetry version -s).tar.gz/" snap/snapcraft.yaml
 	git commit -am "release: v$$(poetry version -s)"
 	git push origin $$(git branch --show-current)
 	git tag v$$(poetry version -s)

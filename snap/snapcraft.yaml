@@ -33,7 +33,7 @@ apps:
 parts:
   rclip:
     plugin: python
-    source: ./snap/rclip-1.4.9a11.tar.gz
+    source: ./snap/local/rclip-1.4.9a11.tar.gz
     build-packages:
       - python3-pip
     build-environment:

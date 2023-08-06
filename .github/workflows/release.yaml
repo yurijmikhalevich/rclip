@@ -38,7 +38,8 @@ jobs:
       - name: Build wheel
         run: |
           poetry build
-          cp -v dist/rclip-*.tar.gz snap
+          mkdir snap/local
+          cp -v dist/rclip-*.tar.gz snap/local
       - run: sudo snap install snapcraft --classic
       - run: snapcraft remote-build --launchpad-accept-public-upload
         env:

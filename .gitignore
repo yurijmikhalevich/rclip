@@ -145,5 +145,5 @@ requirements.txt
 
 # snapcraft
 *.snap
-/snap/rclip-*tar.gz
+/snap/local/
 /rclip_*.txt
