@@ -21,6 +21,8 @@ build-docker:
 release:
 	@test $(VERSION) || (echo "VERSION arg is required" && exit 1)
 	poetry version $(VERSION)
+	sed -i "s/version: .*/version: $$(poetry version -s)/" snap/snapcraft.yaml
+	sed -i "s/source: .*/source: .\/dist\/rclip-$$(poetry version -s).tar.gz/" snap/snapcraft.yaml
 	git commit -am "release: v$$(poetry version -s)"
 	git push origin $$(git branch --show-current)
 	git tag v$$(poetry version -s)
