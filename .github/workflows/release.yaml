@@ -37,6 +37,7 @@ jobs:
           poetry install
       - run: poetry build
       - run: sudo snap install snapcraft --classic
+      - run: sudo snap install multipass
       - run: snapcraft
       - run: ls -lah
 
