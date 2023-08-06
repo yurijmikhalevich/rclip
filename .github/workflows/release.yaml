@@ -35,11 +35,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade poetry
           poetry install
-      - run: poetry build
+      - name: Build wheel
+        run: |
+          poetry build
+          cp -v dist/rclip-*.tar.gz snap
       - run: sudo snap install snapcraft --classic
-      - uses: canonical/setup-lxd@v0.1.1
-      - run: sudo snap install multipass
-      - run: snapcraft --use-lxd
+      - run: snapcraft remote-build --launchpad-accept-public-upload
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
       - run: ls -lah
 
   # appimage:
