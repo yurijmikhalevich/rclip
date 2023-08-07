@@ -64,7 +64,7 @@ jobs:
           mkdir snap/local
           cp -v dist/rclip-*.tar.gz snap/local
       - run: sudo snap install snapcraft --classic
-      - uses: canonical/setup-lxd
+      - uses: canonical/setup-lxd@v0.1.1
       - run: snapcraft --use-lxd --build-for amd64,arm64
       - run: ls -lah
 
