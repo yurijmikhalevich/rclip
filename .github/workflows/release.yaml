@@ -23,6 +23,29 @@ jobs:
   #     - run: poetry build
   #     - uses: pypa/gh-action-pypi-publish@release/v1
 
+  # snap-remote-build:
+  #   runs-on: ubuntu-20.04
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - uses: actions/setup-python@v4
+  #       with:
+  #         python-version: 3.8
+  #     - name: Install dependencies
+  #       run: |
+  #         python -m pip install --upgrade pip
+  #         pip install --upgrade poetry
+  #         poetry install
+  #     - name: Build wheel
+  #       run: |
+  #         poetry build
+  #         mkdir snap/local
+  #         cp -v dist/rclip-*.tar.gz snap/local
+  #     - run: sudo snap install snapcraft --classic
+  #     - run: snapcraft remote-build --launchpad-accept-public-upload
+  #       env:
+  #         SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
+  #     - run: ls -lah
+
   snap:
     runs-on: ubuntu-20.04
     steps:
@@ -41,9 +64,8 @@ jobs:
           mkdir snap/local
           cp -v dist/rclip-*.tar.gz snap/local
       - run: sudo snap install snapcraft --classic
-      - run: snapcraft remote-build --launchpad-accept-public-upload
-        env:
-          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
+      - uses: canonical/setup-lxd
+      - run: snapcraft --use-lxd --build-for amd64,arm64
       - run: ls -lah
 
   # appimage:
