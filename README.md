@@ -13,55 +13,48 @@
 
 ## Installation
 
-<details>
-  <summary><strong>Linux</strong></summary>
+### Linux
 
-  ```bash
-  sudo snap install rclip
-  ```
+```bash
+sudo snap install rclip
+```
 
-  If your Linux distributive doesn't support [snap](https://snapcraft.io/rclip), you can use one of the alternative options below:
-
-  <details>
-    <summary>Prebuilt x86_64 binary</summary>
-    
-    On Linux x86_64, you can install **rclip** as a self-containing binary.
-
-    1. Download the AppImage from the latest [release](https://github.com/yurijmikhalevich/rclip/releases).
-
-    2. Execute the following commands:
-
-    ```bash
-    chmod +x <downloaded AppImage filename>
-    sudo mv <downloaded AppImage filename> /usr/local/bin/rclip
-    ```
-  </details>
-
-  <details>
-    <summary>Using <code>pip</code></summary>
-    
-    ```bash
-    pip install --extra-index-url https://download.pytorch.org/whl/cpu rclip
-    ```
-  </details>
-
-</details>
+If your Linux distributive doesn't support [snap](https://snapcraft.io/rclip), you can use one of the alternative options below:
 
 <details>
-  <summary><strong>macOS</strong></summary>
+  <summary>Prebuilt x86_64 binary</summary>
+
+  On Linux x86_64, you can install **rclip** as a self-containing binary.
+
+  1. Download the AppImage from the latest [release](https://github.com/yurijmikhalevich/rclip/releases).
+
+  2. Execute the following commands:
 
   ```bash
-  pip install rclip
+  chmod +x <downloaded AppImage filename>
+  sudo mv <downloaded AppImage filename> /usr/local/bin/rclip
   ```
 </details>
 
 <details>
-  <summary><strong>Windows</strong></summary>
+  <summary>Using <code>pip</code></summary>
 
   ```bash
-  pip install rclip
+  pip install --extra-index-url https://download.pytorch.org/whl/cpu rclip
   ```
 </details>
+
+### macOS
+
+```bash
+pip install rclip
+```
+
+### Windows
+
+```bash
+pip install rclip
+```
 
 ## Usage
 
