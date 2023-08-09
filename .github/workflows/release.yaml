@@ -94,6 +94,9 @@ jobs:
         with:
           architecture: ${{ matrix.platform }}
       - run: ls -lah ${{ steps.snapcraft.outputs.snap }}
+      - uses: actions/upload-artifact@v3
+        with:
+          path: ${{ steps.snapcraft.outputs.snap }}
 
   # appimage:
   #   runs-on:  ubuntu-20.04
