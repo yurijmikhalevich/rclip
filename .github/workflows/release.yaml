@@ -65,63 +65,11 @@ jobs:
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
       - name: Promote snaps to the stable channel
-        if: ${{ steps.version.outputs.PRERELEASE }} != "true"
+        if: ${{ steps.version.outputs.PRERELEASE != "true" }}
         run: echo "promoted"
         # run: snapcraft promote --from-channel=beta --to-channel=stable --yes rclip
         # env:
         #   SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
-
-  # snap:
-  #   runs-on: ubuntu-20.04
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - uses: actions/setup-python@v4
-  #       with:
-  #         python-version: 3.8
-  #     - name: Install dependencies
-  #       run: |
-  #         python -m pip install --upgrade pip
-  #         pip install --upgrade poetry
-  #         poetry install
-  #     - name: Build wheel
-  #       run: |
-  #         poetry build
-  #         mkdir snap/local
-  #         cp -v dist/rclip-*.tar.gz snap/local
-  #     - run: sudo snap install snapcraft --classic
-  #     - uses: canonical/setup-lxd@v0.1.1
-  #     - run: snapcraft --use-lxd
-  #     - run: ls -lah
-
-  # snap:
-  #   runs-on: ubuntu-20.04
-  #   strategy:
-  #     matrix:
-  #       platform: [amd64, arm64]
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - uses: actions/setup-python@v4
-  #       with:
-  #         python-version: 3.8
-  #     - name: Install dependencies
-  #       run: |
-  #         python -m pip install --upgrade pip
-  #         pip install --upgrade poetry
-  #         poetry install
-  #     - name: Build wheel
-  #       run: |
-  #         poetry build
-  #         mkdir snap/local
-  #         cp -v dist/rclip-*.tar.gz snap/local
-  #     - uses: docker/setup-qemu-action@v1
-  #     - uses: diddlesnaps/snapcraft-multiarch-action@v1.8.0
-  #       id: snapcraft
-  #       with:
-  #         architecture: ${{ matrix.platform }}
-  #     - run: ls -lah ${{ steps.snapcraft.outputs.snap }}
-  #     - uses: actions/upload-artifact@v3
-  #       with:
-  #         path: ${{ steps.snapcraft.outputs.snap }}
 
   # appimage:
   #   runs-on:  ubuntu-20.04
