@@ -64,9 +64,12 @@ jobs:
           done
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
-      - run: snapcraft promote --from-channel=beta --to-channel=stable --yes rclip
-        if: ${{ steps.version.outputs.PRERELEASE }} != true
-
+      - name: Promote snaps to the stable channel
+        if: ${{ steps.version.outputs.PRERELEASE }} != "true"
+        run: echo "promoted"
+        # run: snapcraft promote --from-channel=beta --to-channel=stable --yes rclip
+        # env:
+        #   SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
 
   # snap:
   #   runs-on: ubuntu-20.04
