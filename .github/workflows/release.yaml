@@ -110,7 +110,7 @@ jobs:
         id: build
         with:
           arch: ${{ matrix.platform }}
-          distro: ubuntu-20.04
+          distro: ubuntu20.04
 
           # Create an artifacts directory
           setup: |
