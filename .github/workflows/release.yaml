@@ -68,6 +68,36 @@ jobs:
   #     - run: snapcraft --use-lxd
   #     - run: ls -lah
 
+  # snap:
+  #   runs-on: ubuntu-20.04
+  #   strategy:
+  #     matrix:
+  #       platform: [amd64, arm64]
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - uses: actions/setup-python@v4
+  #       with:
+  #         python-version: 3.8
+  #     - name: Install dependencies
+  #       run: |
+  #         python -m pip install --upgrade pip
+  #         pip install --upgrade poetry
+  #         poetry install
+  #     - name: Build wheel
+  #       run: |
+  #         poetry build
+  #         mkdir snap/local
+  #         cp -v dist/rclip-*.tar.gz snap/local
+  #     - uses: docker/setup-qemu-action@v1
+  #     - uses: diddlesnaps/snapcraft-multiarch-action@v1.8.0
+  #       id: snapcraft
+  #       with:
+  #         architecture: ${{ matrix.platform }}
+  #     - run: ls -lah ${{ steps.snapcraft.outputs.snap }}
+  #     - uses: actions/upload-artifact@v3
+  #       with:
+  #         path: ${{ steps.snapcraft.outputs.snap }}
+
   snap:
     runs-on: ubuntu-20.04
     strategy:
@@ -75,28 +105,46 @@ jobs:
         platform: [amd64, arm64]
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: uraimo/run-on-arch-action@v2
+        name: Build artifact
+        id: build
         with:
-          python-version: 3.8
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install --upgrade poetry
-          poetry install
-      - name: Build wheel
-        run: |
-          poetry build
-          mkdir snap/local
-          cp -v dist/rclip-*.tar.gz snap/local
-      - uses: docker/setup-qemu-action@v1
-      - uses: diddlesnaps/snapcraft-multiarch-action@v1.8.0
-        id: snapcraft
-        with:
-          architecture: ${{ matrix.platform }}
-      - run: ls -lah ${{ steps.snapcraft.outputs.snap }}
-      - uses: actions/upload-artifact@v3
-        with:
-          path: ${{ steps.snapcraft.outputs.snap }}
+          arch: ${{ matrix.platform }}
+          distro: ubuntu-20.04
+
+          # Create an artifacts directory
+          setup: |
+            mkdir -p "${PWD}/artifacts"
+
+          # Mount the artifacts directory as /artifacts in the container
+          dockerRunArgs: |
+            --volume "${PWD}/artifacts:/artifacts"
+
+          # Pass some environment variables to the container
+          env: | # YAML, but pipe character is necessary
+            artifact_name: git-${{ matrix.distro }}_${{ matrix.arch }}
+
+          # The shell to run commands with in the container
+          shell: /bin/sh
+
+          # Install some dependencies in the container. This speeds up builds if
+          # you are also using githubToken. Any dependencies installed here will
+          # be part of the container image that gets cached, so subsequent
+          # builds don't have to re-install them. The image layer is cached
+          # publicly in your project's package repository, so it is vital that
+          # no secrets are present in the container state or logs.
+          install: |
+            apt-get -y install python3 python3-pip python3-distutils
+            snap install snapcraft --classic
+            snap install lxd --channel=5.0/stable
+
+          # Produce a binary artifact and place it in the mounted volume
+          run: |
+            snapcraft --use-lxd
+            cp rclip-*.snap "/artifacts/${artifact_name}"
+            echo "Produced artifact at /artifacts/${artifact_name}"
+
+      - run: ls -al "${PWD}/artifacts"
 
   # appimage:
   #   runs-on:  ubuntu-20.04
