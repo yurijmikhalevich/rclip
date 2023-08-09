@@ -43,6 +43,8 @@ jobs:
       - run: sudo snap install snapcraft --classic
       - name: Setup launchpad creds
         run: |
+          git config --global user.email "yurij@mikhalevi.ch"
+          git config --global user.name "Yurij Mikhalevich"
           mkdir -p ~/.local/share/snapcraft/provider/launchpad
           echo "${{ secrets.LAUNCHPAD_CREDENTIALS }}" > ~/.local/share/snapcraft/provider/launchpad/credentials
       - run: snapcraft remote-build --launchpad-accept-public-upload
