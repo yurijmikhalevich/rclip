@@ -19,7 +19,7 @@
 sudo snap install rclip
 ```
 
-If your Linux distributive doesn't support [snap](https://snapcraft.io/rclip), you can use one of the alternative options below:
+If your Linux distribution doesn't support [snap](https://snapcraft.io/rclip), you can use one of the alternative options below:
 
 <details>
   <summary>Prebuilt x86_64 binary</summary>
