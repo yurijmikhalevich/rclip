@@ -1,0 +1,44 @@
+name: rclip
+summary: AI-Powered Command-Line Photo Search Tool
+description: |
+  **rclip** is a command-line photo search tool powered by the awesome OpenAI's CLIP neural network.
+
+  Usage: `cd photos && rclip "search query"`
+
+  When you run **rclip** for the first time in a particular directory, it's going to extract features from the photos, and this takes time. How long it takes depends on your CPU and the number of pictures you will search through. It took about a day to process 73 thousand photos on a NAS, which runs an old-ish Intel Celeron J3455.
+
+  For a detailed demonstration, watch the video: https://www.youtube.com/watch?v=tAJHXOkHidw.
+
+  You can use another image as a query by passing a file path or even an URL to the image file to **rclip** and combine multiple queries. Check out the project's README on GitHub for more usage examples: https://github.com/yurijmikhalevich/rclip#readme.
+version: 1.4.9a37
+website: https://github.com/yurijmikhalevich/rclip
+contact: yurij@mikhalevi.ch
+passthrough:
+  license: MIT
+
+grade: stable
+confinement: strict
+base: core20
+architectures:
+  - build-on: amd64
+    run-on: amd64
+  - build-on: arm64
+    run-on: arm64
+
+apps:
+  rclip:
+    command: bin/rclip
+    plugs: [network, home, removable-media]
+
+parts:
+  rclip:
+    plugin: python
+    source: ./snap/local/rclip-1.4.9a37.tar.gz
+    build-packages:
+      - python3-pip
+    build-environment:
+      - PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
+    override-build: |
+      pip3 install --user dephell[full]==0.8.3
+      PATH=$HOME/.local/bin:$PATH dephell deps convert --from-path pyproject.toml --from-format pyproject --to-path setup.py --to-format setuppy
+      snapcraftctl build

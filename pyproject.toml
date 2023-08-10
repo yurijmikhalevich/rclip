@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "rclip"
-version = "1.4.8"
+version = "1.4.9a37"
 description = "AI-Powered Command-Line Photo Search Tool"
 authors = ["Yurij Mikhalevich <yurij@mikhalevi.ch>"]
 license = "MIT"
@@ -31,6 +31,8 @@ torchvision = [
   { version = "==0.15.2+cpu", source = "pytorch-cpu", markers = "sys_platform == 'linux' and platform_machine != 'aarch64'" }
 ]
 tqdm = "^4.65.0"
+# safetensors is a dep of `open_clip_torch`; 0.3.2 breaks arm64 snap build
+safetensors = "0.3.1"
 
 [tool.poetry.group.dev.dependencies]
 pycodestyle = ">=2.7,<3.0"

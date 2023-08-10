@@ -20,10 +20,55 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade poetry
           poetry install
+      - run: poetry build
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  snap:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+      - name: Parse the Version
+        id: version
+        run: |
+          echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+          echo ::set-output name=PRERELEASE::$(
+            [[ ! $GITHUB_REF =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo "true"
+          )
+      - name: Configure git for "snapcraft remote-build"
+        run: |
+          git config --global user.email "yurij@mikhalevi.ch"
+          git config --global user.name "Yurij Mikhalevich"
+      - name: Setup launchpad creds
+        run: |
+          mkdir -p ~/.local/share/snapcraft/provider/launchpad
+          echo "${{ secrets.LAUNCHPAD_CREDENTIALS }}" > ~/.local/share/snapcraft/provider/launchpad/credentials
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.8
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade poetry
+          poetry install
       - name: Build wheel
-        run: poetry build
-      - name: Publish wheel to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        run: |
+          poetry build
+          mkdir snap/local
+          cp -v dist/rclip-*.tar.gz snap/local
+      - run: sudo snap install snapcraft --classic
+      - run: snapcraft remote-build --launchpad-accept-public-upload
+      - name: Upload snaps to the beta channel
+        run: |
+          for snap in *.snap; do
+            snapcraft upload --release=beta "$snap"
+          done
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
+      - name: Promote snaps to the stable channel
+        if: ${{ steps.version.outputs.PRERELEASE != 'true' }}
+        run: snapcraft promote --from-channel=beta --to-channel=stable --yes rclip
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
 
   appimage:
     runs-on:  ubuntu-20.04

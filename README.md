@@ -9,13 +9,21 @@
   <img alt="rclip logo" src="https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/resources/logo-transparent.png" width="600px" />
 </div>
 
-**rclip** is a command-line photo search tool based on the awesome OpenAI's [CLIP](https://github.com/openai/CLIP) neural network.
+**rclip** is a command-line photo search tool powered by the awesome OpenAI's [CLIP](https://github.com/openai/CLIP) neural network.
 
 ## Installation
 
+### Linux
+
+```bash
+sudo snap install rclip
+```
+
+If your Linux distributive doesn't support [snap](https://snapcraft.io/rclip), you can use one of the alternative options below:
+
 <details>
-  <summary><strong>Linux x86_64</strong></summary>
-  
+  <summary>Prebuilt x86_64 binary</summary>
+
   On Linux x86_64, you can install **rclip** as a self-containing binary.
 
   1. Download the AppImage from the latest [release](https://github.com/yurijmikhalevich/rclip/releases).
@@ -29,20 +37,24 @@
 </details>
 
 <details>
-  <summary><strong>macOS or Windows (using <code>pip</code>)</strong></summary>
-
-  ```bash
-  pip install rclip
-  ```
-</details>
-
-<details>
-  <summary><strong>Linux (using <code>pip</code>)</strong></summary>
+  <summary>Using <code>pip</code></summary>
 
   ```bash
   pip install --extra-index-url https://download.pytorch.org/whl/cpu rclip
   ```
 </details>
+
+### macOS
+
+```bash
+pip install rclip
+```
+
+### Windows
+
+```bash
+pip install rclip
+```
 
 ## Usage
 
