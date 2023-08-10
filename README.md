@@ -19,6 +19,11 @@
 sudo snap install rclip
 ```
 
+By default, **rclip** snap has access only to your home directory. If you need to give it access to the `/media`, execute:
+```bash
+sudo snap connect rclip:removable-media
+```
+
 If your Linux distribution doesn't support [snap](https://snapcraft.io/rclip), you can use one of the alternative options below:
 
 <details>
