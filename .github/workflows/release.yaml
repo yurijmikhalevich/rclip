@@ -57,6 +57,10 @@ jobs:
           cp -v dist/rclip-*.tar.gz snap/local
       - run: sudo snap install snapcraft --classic
       - run: snapcraft remote-build --launchpad-accept-public-upload
+      - name: Validate built snap
+        run: |
+          sudo snap install rclip_*_amd64.snap --dangerous
+          rclip cat
       - name: Upload snaps to the beta channel
         run: |
           for snap in *.snap; do
