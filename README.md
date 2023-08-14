@@ -55,6 +55,8 @@ If your Linux distribution doesn't support [snap](https://snapcraft.io/rclip), y
 brew install yurijmikhalevich/tap/rclip
 ```
 
+Alternative options:
+
 <details>
   <summary>Using <code>pip</code></summary>
 
