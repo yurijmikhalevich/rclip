@@ -52,8 +52,18 @@ If your Linux distribution doesn't support [snap](https://snapcraft.io/rclip), y
 ### macOS
 
 ```bash
-pip install rclip
+brew install yurijmikhalevich/tap/rclip
 ```
+
+Alternative option:
+
+<details>
+  <summary>Using <code>pip</code></summary>
+
+  ```bash
+  pip install rclip
+  ```
+</details>
 
 ### Windows
 
