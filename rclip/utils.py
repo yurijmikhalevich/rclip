@@ -60,7 +60,8 @@ def init_arg_parser() -> argparse.ArgumentParser:
     '  relative file path should be prefixed with ./, e.g. "./cat.jpg", not "cat.jpg"\n'
     '  any query can be prefixed with a multiplier, e.g. "2:cat", "0.5:./cat-sleeps-on-a-chair.jpg";'
     ' adding a multiplier is especially useful when combining image and text queries because'
-    ' image queries are usually weighted more than text ones\n',
+    ' image queries are usually weighted more than text ones\n\n'
+    'report a problem or suggest an improvement: https://github.com/yurijmikhalevich/rclip/issues',
   )
   version_str = f'rclip {version("rclip")}'
   parser.add_argument('--version', '-v', action='version', version=version_str, help=f'prints "{version_str}"')
