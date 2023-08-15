@@ -76,7 +76,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
   parser.add_argument('--top', '-t', type=top_arg_type, default=10, help='number of top results to display')
   parser.add_argument('--filepath-only', '-f', action='store_true', default=False, help='outputs only filepaths')
   parser.add_argument(
-    '--skip-index', '-n',
+    '--no-indexing', '--skip-index', '-n',
     action='store_true',
     default=False,
     help='don\'t attempt image indexing, saves time on consecutive runs on huge directories'
