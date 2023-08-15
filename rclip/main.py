@@ -170,7 +170,7 @@ def main():
   database = db.DB(datadir / 'db.sqlite3')
   rclip = RClip(model_instance, database, args.exclude_dir)
 
-  if not args.skip_index:
+  if not args.no_indexing:
     rclip.ensure_index(current_directory)
 
   result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
