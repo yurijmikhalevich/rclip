@@ -10,6 +10,7 @@ import PIL
 from PIL import Image, ImageFile
 
 from rclip import db, model, utils
+from rclip.snap_utils import check_snap_permissions, is_snap
 
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -161,6 +162,8 @@ def main():
   args = arg_parser.parse_args()
 
   current_directory = os.getcwd()
+  if is_snap():
+    check_snap_permissions(current_directory)
 
   model_instance = model.Model()
   datadir = utils.get_app_datadir()
