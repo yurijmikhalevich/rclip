@@ -165,7 +165,7 @@ def main():
   if is_snap():
     check_snap_permissions(current_directory)
 
-  model_instance = model.Model()
+  model_instance = model.Model(device=vars(args).get("device", "cpu"))
   datadir = utils.get_app_datadir()
   database = db.DB(datadir / 'db.sqlite3')
   rclip = RClip(model_instance, database, args.exclude_dir)
