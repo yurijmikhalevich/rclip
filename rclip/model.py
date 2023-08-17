@@ -12,11 +12,11 @@ QueryWithMultiplier = Tuple[float, str]
 
 class Model:
   VECTOR_SIZE = 512
-  _device = 'cpu'
   _model_name = 'ViT-B-32'
   _checkpoint_name = 'openai'
 
-  def __init__(self):
+  def __init__(self, device: str = 'cpu'):
+    self._device = device
     self.__model = None
     self.__preprocess = None
     self.__tokenizer = None
