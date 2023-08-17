@@ -90,7 +90,7 @@ jobs:
       - name: Build AppImage
         uses: AppImageCrafters/build-appimage@v1.3
         with:
-          recipe: './appimage-builder.yml'
+          recipe: './release-utils/appimage/appimage-builder.yml'
         env:
           APP_VERSION: ${{ steps.version.outputs.VERSION }}
       - name: Generate Changelog
