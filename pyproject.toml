@@ -35,6 +35,8 @@ tqdm = "^4.65.0"
 [tool.poetry.group.dev.dependencies]
 pycodestyle = ">=2.7,<3.0"
 pytest = ">=7.2.1,<8.0"
+homebrew-pypi-poet = "^0.10.0"
+jinja2 = "^3.1.2"
 
 [tool.poetry.scripts]
 rclip = "rclip.main:main"
