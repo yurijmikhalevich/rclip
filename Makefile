@@ -6,7 +6,7 @@ else
 endif
 
 build-appimage:
-	poetry run appimage-builder --recipe appimage-builder.yml
+	poetry run appimage-builder --recipe ./release-utils/appimage/appimage-builder.yml
 
 lint-style:
 	poetry run pycodestyle .

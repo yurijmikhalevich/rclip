@@ -8,7 +8,7 @@ script:
   - mkdir -p AppDir/usr/src AppDir/usr/share/icons/hicolor/256x256/apps/
   # Copy the python application code and icon into the AppDir
   - cp rclip AppDir/usr/src -r
-  - cp logo@256.png AppDir/usr/share/icons/hicolor/256x256/apps/rclip.png
+  - cp release-utils/appimage/logo@256.png AppDir/usr/share/icons/hicolor/256x256/apps/rclip.png
 
 
 AppDir:
@@ -45,7 +45,7 @@ AppDir:
     exclude: []
 
   after_bundle: >
-    PATH=${APPDIR}/usr/bin:${PATH} ./appimage_after_bundle.sh
+    PATH=${APPDIR}/usr/bin:${PATH} ./release-utils/appimage/appimage_after_bundle.sh
 
   runtime:
     env:
