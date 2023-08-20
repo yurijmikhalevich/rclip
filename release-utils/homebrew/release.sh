@@ -18,7 +18,11 @@ function handle_exit() {
 }
 trap handle_exit 0 SIGHUP SIGINT SIGQUIT SIGABRT SIGTERM
 
-git clone git@github.com:yurijmikhalevich/homebrew-tap.git homebrew-tap
+if [[ "$GITHUB_ACTIONS" ]]; then
+  git clone https://github.com/yurijmikhalevich/homebrew-tap.git homebrew-tap
+else
+  git clone git@github.com:yurijmikhalevich/homebrew-tap.git homebrew-tap
+fi
 cd homebrew-tap
 
 PR_BRANCH="rclip-$VERSION"

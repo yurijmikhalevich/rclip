@@ -25,6 +25,7 @@ jobs:
 
   brew:
     runs-on: ubuntu-22.04
+    # the Formula references the rclip package published to PyPI
     needs: pypi
     steps:
       - uses: actions/checkout@v3
