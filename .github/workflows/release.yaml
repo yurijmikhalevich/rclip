@@ -43,7 +43,7 @@ jobs:
           git config --global user.email "zhibot.gh@gmail.com"
           git config --global user.name "Zhi Bot"
       - name: Release
-        run: ./release-utils/brew/release.sh
+        run: ./release-utils/homebrew/release.sh
 
   snap:
     runs-on: ubuntu-20.04
