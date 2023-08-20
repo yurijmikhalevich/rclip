@@ -42,9 +42,8 @@ jobs:
           git config --global user.email "zhibot.gh@gmail.com"
           git config --global user.name "Zhi Bot"
       - name: Release
-        with:
-          env:
-            GITHUB_TOKEN: ${{ secrets.ZHIBOT_GITHUB_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.ZHIBOT_GITHUB_TOKEN }}
         run: make release-brew
 
   # snap:
