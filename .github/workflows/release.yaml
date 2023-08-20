@@ -23,6 +23,40 @@ jobs:
       - run: poetry build
       - uses: pypa/gh-action-pypi-publish@release/v1
 
+  brew:
+    runs-on: ubuntu-22.04
+    # the Formula references the rclip package published to PyPI
+    needs: pypi
+    steps:
+      - name: Parse the Version
+        id: version
+        run: |
+          echo ::set-output name=PRERELEASE::$(
+            [[ ! $GITHUB_REF =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo "true"
+          )
+      - uses: actions/checkout@v3
+        if: ${{ steps.version.outputs.PRERELEASE != 'true' }}
+      - uses: actions/setup-python@v4
+        if: ${{ steps.version.outputs.PRERELEASE != 'true' }}
+        with:
+          python-version: 3.8
+      - name: Install dependencies
+        if: ${{ steps.version.outputs.PRERELEASE != 'true' }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade poetry
+          poetry install
+      - name: Setup git
+        if: ${{ steps.version.outputs.PRERELEASE != 'true' }}
+        run: |
+          git config --global user.email "zhibot.gh@gmail.com"
+          git config --global user.name "Zhi Bot"
+      - name: Release
+        if: ${{ steps.version.outputs.PRERELEASE != 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.ZHIBOT_GITHUB_TOKEN }}
+        run: make release-brew
+
   snap:
     runs-on: ubuntu-20.04
     steps:

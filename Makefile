@@ -25,6 +25,10 @@ test:
 build-docker:
 	DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build . -t rclip
 
+# CI runs release-brew as part of the `release` action
+release-brew:
+	poetry run ./release-utils/homebrew/release.sh
+
 release:
 	@test $(VERSION) || (echo "VERSION arg is required" && exit 1)
 	poetry version $(VERSION)
