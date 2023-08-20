@@ -29,8 +29,6 @@ jobs:
     needs: pypi
     steps:
       - uses: actions/checkout@v3
-        with:
-          token: ${{ secrets.ZHIBOT_GITHUB_TOKEN }}
       - uses: actions/setup-python@v4
         with:
           python-version: 3.8
@@ -44,10 +42,14 @@ jobs:
           git config --global user.email "zhibot.gh@gmail.com"
           git config --global user.name "Zhi Bot"
       - name: Release
+        with:
+          env:
+            GITHUB_TOKEN: ${{ secrets.ZHIBOT_GITHUB_TOKEN }}
         run: make release-brew
 
   snap:
     runs-on: ubuntu-20.04
+    if: false
     steps:
       - uses: actions/checkout@v3
       - name: Parse the Version
@@ -99,6 +101,7 @@ jobs:
 
   appimage:
     runs-on:  ubuntu-20.04
+    if: false
     steps:
       - uses: actions/checkout@v3
       - name: Parse the Version
