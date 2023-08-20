@@ -18,6 +18,7 @@ function handle_exit() {
 }
 trap handle_exit 0 SIGHUP SIGINT SIGQUIT SIGABRT SIGTERM
 
+# The auth in GHA is configured for https
 if [[ "$GITHUB_ACTIONS" ]]; then
   git clone https://github.com/yurijmikhalevich/homebrew-tap.git homebrew-tap
 else
