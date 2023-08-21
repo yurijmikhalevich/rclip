@@ -2,8 +2,8 @@ name: build
 
 on:
   push:
-    branches: [*]
-    tags: [v*]
+    branches: *
+    tags: v*
 
 jobs:
   lint:
