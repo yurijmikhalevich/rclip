@@ -21,20 +21,28 @@ jobs:
     runs-on: ubuntu-22.04
     needs: [validate, parse_tag]
     steps:
-      - env:
-          IS_PRERELEASE: ${{ needs.parse_tag.outputs.is_prerelease }}
-        run: |
-          echo "IS_PRERELEASE=$IS_PRERELEASE"
+      - run: echo "IS_PRERELEASE=${{ needs.parse_tag.outputs.is_prerelease }}"
 
   release_test_only_release:
     runs-on: ubuntu-22.04
     needs: [validate, parse_tag]
     if: needs.parse_tag.outputs.is_prerelease == 'false'
     steps:
-      - env:
-          IS_PRERELEASE: ${{ needs.parse_tag.outputs.is_prerelease }}
-        run:
-          echo "IS_PRERELEASE=$IS_PRERELEASE"
+      - run: echo "Not a pre-release"
+
+  release_test_only_release_2:
+    runs-on: ubuntu-22.04
+    needs: [validate, parse_tag]
+    if: needs.parse_tag.outputs.is_prerelease != 'true'
+    steps:
+      - run: echo "Not a pre-release"
+
+  release_test_only_prerelease:
+    runs-on: ubuntu-22.04
+    needs: [validate, parse_tag]
+    if: needs.parse_tag.outputs.is_prerelease == 'true'
+    steps:
+      - run: echo "A pre-release"
 
   # release_pypi:
   #   runs-on: ubuntu-22.04
