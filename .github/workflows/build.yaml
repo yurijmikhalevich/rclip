@@ -66,7 +66,7 @@ jobs:
       env:
         release_requested: ${{ needs.parse_ref.outputs.release_requested }}
         IS_PRERELEASE: ${{ needs.parse_ref.outputs.is_prerelease }}
-      run:
+      run: |
         echo "release_requested=$release_requested"
         echo "IS_PRERELEASE=$IS_PRERELEASE"
 
