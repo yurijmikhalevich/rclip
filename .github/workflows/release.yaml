@@ -129,7 +129,7 @@ jobs:
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
-          name: ${{ GITHUB_REF_NAME }}
+          name: ${{ github.ref_name }}
           artifacts: 'rclip-*.AppImage'
           body: ${{ steps.changelog.outputs.CHANGELOG || 'internal release' }}
           prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
