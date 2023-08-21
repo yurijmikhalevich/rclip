@@ -29,7 +29,7 @@ jobs:
   release_test_only_release:
     runs-on: ubuntu-22.04
     needs: [validate, parse_tag]
-    if: ${{ needs.parse_tag.outputs.is_prerelease == 'false' }}
+    if: needs.parse_tag.outputs.is_prerelease == 'false'
     steps:
       - env:
           IS_PRERELEASE: ${{ needs.parse_tag.outputs.is_prerelease }}
