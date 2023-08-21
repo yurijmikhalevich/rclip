@@ -1,14 +1,18 @@
-name: build
+name: validate
 
-on: [pull_request]
+on:
+  workflow_call:
+  pull_request:
+  push:
+    branches:
+      - main
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
-      - name: Set up Python 3.8
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: 3.8
       - name: Set up Node.js for pyright
@@ -21,17 +25,14 @@ jobs:
           pip install --upgrade poetry
           poetry install
           make install-pyright
-      - name: Check Style
-        run: make lint-style
-      - name: Check Types
-        run: make lint-types
+      - run: make lint-style
+      - run: make lint-types
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
-      - name: Set up Python 3.8
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: 3.8
       - name: Install Dependencies
@@ -39,5 +40,4 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade poetry
           poetry install
-      - name: Run Tests
-        run: make test
+      - run: make test
