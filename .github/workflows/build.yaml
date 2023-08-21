@@ -26,10 +26,8 @@ jobs:
           pip install --upgrade poetry
           poetry install
           make install-pyright
-      - name: Check Style
-        run: make lint-style
-      - name: Check Types
-        run: make lint-types
+      - run: make lint-style
+      - run: make lint-types
 
   test:
     runs-on: ubuntu-22.04
@@ -43,49 +41,42 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade poetry
           poetry install
-      - name: Run Tests
-        run: make test
+      - run: make test
 
-  parse_ref:
+  parse_tag:
     runs-on: ubuntu-22.04
     needs: [lint, test]
+    if: startsWith(github.ref, 'refs/tags/v')
     outputs:
-      release_requested: ${{ steps.parse.outputs.release_requested }}
       is_prerelease: ${{ steps.parse.outputs.is_prerelease }}
     steps:
       - id: parse
-        run: |
-          echo "release_requested=$([[ $GITHUB_REF =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+ ]] && echo \"true\")" >> $GITHUB_ENV
-          echo "is_prerelease=$([[ ! $GITHUB_REF =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo \"true\")" >> $GITHUB_ENV
+        run: echo "is_prerelease=$([[ ! $GITHUB_REF =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo \"true\" || echo \"false\")" >> $GITHUB_ENV
 
   release_test:
     runs-on: ubuntu-22.04
-    needs: parse_ref
-    if: ${{ needs.parse_ref.outputs.release_requested == 'true' }}
+    needs: parse_tag
+    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - env:
-          RELEASE_REQUESTED: ${{ needs.parse_ref.outputs.release_requested }}
-          IS_PRERELEASE: ${{ needs.parse_ref.outputs.is_prerelease }}
+          IS_PRERELEASE: ${{ needs.parse_tag.outputs.is_prerelease }}
         run: |
-          echo "RELEASE_REQUESTED=$RELEASE_REQUESTED"
           echo "IS_PRERELEASE=$IS_PRERELEASE"
 
   release_test_only_release:
     runs-on: ubuntu-22.04
-    needs: parse_ref
-    if: ${{ needs.parse_ref.outputs.release_requested == 'true' && needs.parse_ref.outputs.is_prerelease != 'false' }}
+    needs: parse_tag
+    if: startsWith(github.ref, 'refs/tags/v') && needs.parse_tag.outputs.is_prerelease == 'false'
     steps:
-      env:
-        RELEASE_REQUESTED: ${{ needs.parse_ref.outputs.release_requested }}
-        IS_PRERELEASE: ${{ needs.parse_ref.outputs.is_prerelease }}
-      run:
-        echo "RELEASE_REQUESTED=$RELEASE_REQUESTED"
-        echo "IS_PRERELEASE=$IS_PRERELEASE"
+      - env:
+          IS_PRERELEASE: ${{ needs.parse_tag.outputs.is_prerelease }}
+        run:
+          echo "IS_PRERELEASE=$IS_PRERELEASE"
 
   # release_pypi:
   #   runs-on: ubuntu-22.04
-  #   needs: parse_ref
-  #   if: ${{ needs.parse_ref.outputs.release_requested == 'true' }}
+  #   needs: parse_tag
+  #   if: ${{ needs.parse_tag.outputs.release_requested == 'true' }}
   #   permissions:
   #     id-token: write
   #   steps:
@@ -104,8 +95,8 @@ jobs:
   # release_brew:
   #   runs-on: ubuntu-22.04
   #   # the Formula references the rclip package published to PyPI
-  #   needs: [parse_ref, pypi]
-  #   if: ${{ needs.parse_ref.outputs.release_requested == 'true' }}
+  #   needs: [parse_tag, pypi]
+  #   if: ${{ needs.parse_tag.outputs.release_requested == 'true' }}
   #   steps:
   #     - name: Parse the Version
   #       id: version
@@ -138,8 +129,8 @@ jobs:
 
   # release_snap:
   #   runs-on: ubuntu-20.04
-  #   needs: parse_ref
-  #   if: ${{ needs.parse_ref.outputs.release_requested == 'true' }}
+  #   needs: parse_tag
+  #   if: ${{ needs.parse_tag.outputs.release_requested == 'true' }}
   #   steps:
   #     - uses: actions/checkout@v3
   #     - name: Parse the Version
@@ -190,8 +181,8 @@ jobs:
 
   # release_appimage:
   #   runs-on:  ubuntu-20.04
-  #   needs: parse_ref
-  #   if: ${{ needs.parse_ref.outputs.release_requested == 'true' }}
+  #   needs: parse_tag
+  #   if: ${{ needs.parse_tag.outputs.release_requested == 'true' }}
   #   steps:
   #     - uses: actions/checkout@v3
   #     - name: Parse the Version
