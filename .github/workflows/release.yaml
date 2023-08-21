@@ -18,29 +18,29 @@ jobs:
         run: echo "is_prerelease=$([[ ! $GITHUB_REF =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo \"true\" || echo \"false\")" >> $GITHUB_OUTPUT
 
   release_test:
-    runs-on: ubuntu-22.04
     needs: [validate, parse_tag]
+    runs-on: ubuntu-22.04
     steps:
       - run: echo "IS_PRERELEASE=${{ needs.parse_tag.outputs.is_prerelease }}"
 
   release_test_only_release:
-    runs-on: ubuntu-22.04
     needs: [validate, parse_tag]
     if: needs.parse_tag.outputs.is_prerelease == 'false'
+    runs-on: ubuntu-22.04
     steps:
       - run: echo "Not a pre-release"
 
   release_test_only_release_2:
-    runs-on: ubuntu-22.04
     needs: [validate, parse_tag]
     if: needs.parse_tag.outputs.is_prerelease != 'true'
+    runs-on: ubuntu-22.04
     steps:
       - run: echo "Not a pre-release"
 
   release_test_only_prerelease:
-    runs-on: ubuntu-22.04
     needs: [validate, parse_tag]
     if: needs.parse_tag.outputs.is_prerelease == 'true'
+    runs-on: ubuntu-22.04
     steps:
       - run: echo "A pre-release"
 
