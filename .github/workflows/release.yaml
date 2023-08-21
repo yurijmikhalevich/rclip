@@ -15,7 +15,7 @@ jobs:
       is_prerelease: ${{ steps.parse.outputs.is_prerelease }}
     steps:
       - id: parse
-        run: echo "is_prerelease=$([[ ! $GITHUB_REF =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo true || echo false)" >> $GITHUB_OUTPUT
+        run: echo "is_prerelease=$([[ $GITHUB_REF =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo false || echo true)" >> $GITHUB_OUTPUT
 
   release_test:
     needs: [validate, parse_tag]
