@@ -98,7 +98,7 @@ jobs:
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
       - name: Promote snaps to the stable channel
-        if: steps.parse_tag.outputs.is_stable_version == 'true'
+        if: needs.parse_tag.outputs.is_stable_version == 'true'
         run: snapcraft promote --from-channel=beta --to-channel=stable --yes rclip
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
