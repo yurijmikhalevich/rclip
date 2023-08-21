@@ -55,8 +55,8 @@ jobs:
     steps:
       - id: parse
         run: |
-          echo "release_requested=$([[ $GITHUB_REF =~ ^refs\\/tags\\/v[0-9]+\\.[0-9]+\\.[0-9]+ ]] && echo \"true\")" >> $GITHUB_ENV
-          echo "is_prerelease=$([[ ! $GITHUB_REF =~ ^refs\\/tags\\/v[0-9]+\\.[0-9]+\\.[0-9]+$ ]] && echo \"true\")" >> $GITHUB_ENV
+          echo "release_requested=$([[ $GITHUB_REF =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+ ]] && echo \"true\")" >> $GITHUB_ENV
+          echo "is_prerelease=$([[ ! $GITHUB_REF =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo \"true\")" >> $GITHUB_ENV
 
   release_test:
     runs-on: ubuntu-22.04
@@ -70,17 +70,17 @@ jobs:
           echo "RELEASE_REQUESTED=$RELEASE_REQUESTED"
           echo "IS_PRERELEASE=$IS_PRERELEASE"
 
-  # release_test_only_release:
-  #   runs-on: ubuntu-22.04
-  #   needs: parse_ref
-  #   if: ${{ needs.parse_ref.outputs.release_requested == 'true' && needs.parse_ref.outputs.is_prerelease != 'false' }}
-  #   steps:
-  #     env:
-  #       release_requested: ${{ needs.parse_ref.outputs.release_requested }}
-  #       IS_PRERELEASE: ${{ needs.parse_ref.outputs.is_prerelease }}
-  #     run:
-  #       echo "release_requested=$release_requested"
-  #       echo "IS_PRERELEASE=$IS_PRERELEASE"
+  release_test_only_release:
+    runs-on: ubuntu-22.04
+    needs: parse_ref
+    if: ${{ needs.parse_ref.outputs.release_requested == 'true' && needs.parse_ref.outputs.is_prerelease != 'false' }}
+    steps:
+      env:
+        RELEASE_REQUESTED: ${{ needs.parse_ref.outputs.release_requested }}
+        IS_PRERELEASE: ${{ needs.parse_ref.outputs.is_prerelease }}
+      run:
+        echo "RELEASE_REQUESTED=$RELEASE_REQUESTED"
+        echo "IS_PRERELEASE=$IS_PRERELEASE"
 
   # release_pypi:
   #   runs-on: ubuntu-22.04
