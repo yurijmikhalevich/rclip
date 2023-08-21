@@ -115,7 +115,7 @@ jobs:
         with:
           recipe: './release-utils/appimage/appimage-builder.yml'
         env:
-          APP_VERSION: ${{ GITHUB_REF_NAME }}
+          APP_VERSION: ${{ github.ref_name }}
       - name: Generate Changelog
         id: changelog
         run: |
