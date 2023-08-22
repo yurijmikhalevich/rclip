@@ -1,7 +1,9 @@
 import hashlib
+from time import sleep
 import jinja2
 import poet
 import requests
+import sys
 
 env = jinja2.Environment(trim_blocks=True)
 
@@ -57,7 +59,13 @@ RESOURCE_URL_OVERRIDES = {
 
 
 def main():
-  deps = poet.make_graph('rclip')
+  if len(sys.argv) != 2:
+    print('Usage: generate_formula.py <version>')
+    sys.exit(1)
+
+  target_version = sys.argv[1]
+  deps = get_deps_for_requested_rclip_version_or_die(target_version)
+
   for dep in DEPS_TO_IGNORE:
     deps.pop(dep, None)
   for dep, url in RESOURCE_URL_OVERRIDES.items():
@@ -65,7 +73,7 @@ def main():
     deps[dep]['url'] = new_url
     deps[dep]['checksum'] = compute_checksum(new_url)
   for _, dep in deps.items():
-    dep["name"] = dep["name"].lower()
+    dep['name'] = dep['name'].lower()
 
   rclip_metadata = deps.pop('rclip')
   resources = '\n\n'.join([poet.RESOURCE_TEMPLATE.render(resource=dep) for dep in deps.values()])
@@ -75,6 +83,26 @@ def main():
 def compute_checksum(url: str):
   response = requests.get(url)
   return hashlib.sha256(response.content).hexdigest()
+
+
+def get_deps_for_requested_rclip_version_or_die(target_version: str):
+  deps = poet.make_graph('rclip')
+  rclip_metadata = deps['rclip']
+  retries_left = 5
+  while rclip_metadata['version'] != target_version:
+    if retries_left == 0:
+      print(f'Version mismatch: {rclip_metadata["version"]} != {target_version}. Exiting.', file=sys.stderr)
+      sys.exit(1)
+    retries_left -= 1
+    print(
+      f'Version mismatch: {rclip_metadata["version"]} != {target_version}. Retrying in 10 seconds.',
+      file=sys.stderr,
+    )
+    # it takes a few seconds for a published wheel appear in PyPI
+    sleep(10)
+    deps = poet.make_graph('rclip')
+    rclip_metadata = deps['rclip']
+  return deps
 
 
 if __name__ == '__main__':
