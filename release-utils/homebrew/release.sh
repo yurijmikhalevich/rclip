@@ -29,7 +29,7 @@ PR_BRANCH="rclip-$VERSION"
 PR_TITLE="rclip $VERSION"
 
 git checkout -b "$PR_BRANCH"
-python "$ORIG_PWD/release-utils/homebrew/generate_formula.py ${VERSION}" > Formula/rclip.rb
+python "$ORIG_PWD/release-utils/homebrew/generate_formula.py" ${VERSION} > Formula/rclip.rb
 git commit -am "$PR_TITLE"
 git push origin "$PR_BRANCH"
 gh pr create --title "$PR_TITLE" --body "Automated commit updating **rclip** formula to $VERSION" --base main --head "$PR_BRANCH"
