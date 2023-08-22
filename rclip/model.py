@@ -4,7 +4,7 @@ import sys
 
 import numpy as np
 from PIL import Image, UnidentifiedImageError
-from rclip import utils
+from rclip.utils import helpers
 
 QUERY_WITH_MULTIPLIER_RE = re.compile(r'^(?P<multiplier>(\d+(\.\d+)?|\.\d+|\d+\.)):(?P<query>.+)$')
 QueryWithMultiplier = Tuple[float, str]
@@ -85,9 +85,9 @@ class Model:
     url_queries: List[Tuple[float, str]] = []
     for query in queries:
         multiplier, query = Model._extract_query_multiplier(query)
-        if utils.is_http_url(query):
+        if helpers.is_http_url(query):
           url_queries.append((multiplier, query))
-        elif utils.is_file_path(query):
+        elif helpers.is_file_path(query):
           local_file_queries.append((multiplier, query))
         else:
           phrase_queries.append((multiplier, query))
@@ -105,8 +105,8 @@ class Model:
       file_multipliers, file_paths = cast(Tuple[Tuple[float], Tuple[str]], zip(*(files))) if files else ((), ())
       url_multipliers, url_paths = cast(Tuple[Tuple[float], Tuple[str]], zip(*(urls))) if urls else ((), ())
       try:
-        images = ([utils.download_image(q) for q in url_paths] +
-                  [utils.read_image(q) for q in file_paths])
+        images = ([helpers.download_image(q) for q in url_paths] +
+                  [helpers.read_image(q) for q in file_paths])
       except FileNotFoundError as e:
         print(f'File "{e.filename}" not found. Check if you have typos in the filename.')
         sys.exit(1)

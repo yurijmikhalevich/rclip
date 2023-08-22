@@ -107,17 +107,29 @@ If you want to see how these queries perform when executed on the 1.28 million i
 
 ### How do I preview the results?
 
-The command from below will open top-5 results for "kitty" in your default image viewer:
+If you are using either one of iTerm2, Konsole, wezterm, Mintty, MacTerm, mlterm, all you need to do is pass `--preview` (or `-p`) argument to **rclip**:
 
 ```bash
-rclip -f -t 5 kitty | xargs -d '\n' -n 1 xdg-open
+rclip -p kitty
 ```
 
-I prefer to use `feh`'s thumbnail mode to preview multiple results:
+<details>
+  <summary>Using a different terminal or viewer</summary>
 
-```bash
-rclip -f -t 5 kitty | feh -f - -t
-```
+  If you are using any other terminal or want to view the results in your viewer of choice, you can pass the output of **rclip** to it. For example, on Linux, the command from below will open top-5 results for "kitty" in your default image viewer:
+
+  ```bash
+  rclip -f -t 5 kitty | xargs -d '\n' -n 1 xdg-open
+  ```
+
+  The `-f` param or `--filepath-only` makes **rclip** print the file paths only, without scores or the header, which makes it ideal to use together with a custom viewer as in the example.
+  
+  I prefer to use **feh**'s thumbnail mode to preview multiple results:
+
+  ```bash
+  rclip -f -t 5 kitty | feh -f - -t
+  ```
+</details>
 
 ## Help
 
