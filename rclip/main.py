@@ -2,6 +2,7 @@ import itertools
 import os
 from os import path
 import re
+import textwrap
 from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
 
 import numpy as np
@@ -175,7 +176,62 @@ def main():
   database = db.DB(datadir / 'db.sqlite3')
   rclip = RClip(model_instance, database, args.exclude_dir)
 
+  has_any_images = database.has_any_images()
+  if args.no_indexing and not has_any_images:
+    print('you shouldn\'t use --no-indexing on the first run')
+    return
+
   if not args.no_indexing:
+    if not has_any_images:
+      text_width = min(70, os.get_terminal_size().columns - 2)
+      print(
+        '\n' +
+        textwrap.fill(
+          'When you first run rclip in a new directory, it will index all'
+          ' images to build its search database. This indexing process may'
+          ' take some time depending on your hardware and number of images.',
+          width=text_width,
+        ) +
+        '\n\n'
+        'In the past, indexing took approximately:\n' +
+        textwrap.fill(
+          '- 1 day to index 73 thousand photos on an NAS with an Intel Celeron J3455 CPU',
+          subsequent_indent='  ',
+          width=text_width,
+        ) +
+        '\n' +
+        textwrap.fill(
+          '- 3 hours to index 1.28 million images on a MacBook with an M1 Max CPU',
+          subsequent_indent='  ',
+          width=text_width,
+        ) +
+        '\n\n' +
+        textwrap.fill(
+          'On subsequent runs in the same directory, rclip will only check for'
+          ' and add any new images to the existing index. This is much faster than a full re-index.',
+          break_on_hyphens=False,
+          width=text_width,
+        ) +
+        '\n\n' +
+        textwrap.fill(
+          'You can skip re-indexing entirely on future runs by using'
+          ' the "--no-indexing" or "-n" flag if you know no new images were added.',
+          break_on_hyphens=False,
+          width=text_width,
+        ) +
+        '\n\n' +
+        textwrap.fill(
+          'This message is showed only on the first run. Later uses will proceed'
+          ' directly to indexing or searching. You can read this message'
+          ' again (and find other helpful tips) by running "rclip --help".',
+          width=text_width,
+        ),
+        '\n\n'
+        'Proceed? [y/n] ',
+        end='',
+      )
+      if input().lower() != 'y':
+        return
     rclip.ensure_index(current_directory)
 
   result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)

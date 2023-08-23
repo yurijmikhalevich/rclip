@@ -1,6 +1,7 @@
 import argparse
 import os
 import pathlib
+import textwrap
 from PIL import Image, UnidentifiedImageError
 import re
 import requests
@@ -54,15 +55,34 @@ def top_arg_type(arg: str) -> int:
   return arg_int
 
 
+class HelpFormatter(argparse.RawDescriptionHelpFormatter):
+  def __init__(self, prog: str, indent_increment: int = 2, max_help_position: int = 24) -> None:
+    text_width = min(70, os.get_terminal_size().columns - 2)
+    super().__init__(prog, indent_increment, max_help_position, width=text_width)
+
+
 def init_arg_parser() -> argparse.ArgumentParser:
+  text_width = min(70, os.get_terminal_size().columns - 2)
   parser = argparse.ArgumentParser(
-    formatter_class=argparse.RawDescriptionHelpFormatter,
+    formatter_class=HelpFormatter,
     prefix_chars='-+',
-    epilog='hints:\n'
-    '  relative file path should be prefixed with ./, e.g. "./cat.jpg", not "cat.jpg"\n'
-    '  any query can be prefixed with a multiplier, e.g. "2:cat", "0.5:./cat-sleeps-on-a-chair.jpg";'
-    ' adding a multiplier is especially useful when combining image and text queries because'
-    ' image queries are usually weighted more than text ones\n\n'
+    epilog='hints:\n' +
+    textwrap.fill(
+      '- relative file path should be prefixed with ./, e.g. "./cat.jpg", not "cat.jpg"',
+      initial_indent='  ',
+      subsequent_indent='    ',
+      width=text_width,
+    ) +
+    '\n' +
+    textwrap.fill(
+      '- any query can be prefixed with a multiplier, e.g. "2:cat", "0.5:./cat-sleeps-on-a-chair.jpg";'
+      ' adding a multiplier is especially useful when combining image and text queries because'
+      ' image queries are usually weighted more than text ones',
+      initial_indent='  ',
+      subsequent_indent='    ',
+      width=text_width,
+    ) +
+    '\n\n'
     'report a problem or suggest an improvement:\n'
     '  https://github.com/yurijmikhalevich/rclip/issues\n\n',
   )
