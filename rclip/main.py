@@ -9,8 +9,10 @@ from tqdm import tqdm
 import PIL
 from PIL import Image, ImageFile
 
-from rclip import db, model, utils
-from rclip.snap_utils import check_snap_permissions, is_snap
+from rclip import db, model
+from rclip.utils.preview import preview
+from rclip.utils.snap import check_snap_permissions, is_snap
+from rclip.utils import helpers
 
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -132,7 +134,7 @@ class RClip:
 
     # exclude images that were part of the query from the results
     exclude_files = [
-      os.path.abspath(query) for query in positive_queries + negative_queries if utils.is_file_path(query)
+      os.path.abspath(query) for query in positive_queries + negative_queries if helpers.is_file_path(query)
     ]
 
     filtered_similarities = filter(
@@ -158,7 +160,7 @@ class RClip:
 
 
 def main():
-  arg_parser = utils.init_arg_parser()
+  arg_parser = helpers.init_arg_parser()
   args = arg_parser.parse_args()
 
   current_directory = os.getcwd()
@@ -166,7 +168,7 @@ def main():
     check_snap_permissions(current_directory)
 
   model_instance = model.Model(device=vars(args).get("device", "cpu"))
-  datadir = utils.get_app_datadir()
+  datadir = helpers.get_app_datadir()
   database = db.DB(datadir / 'db.sqlite3')
   rclip = RClip(model_instance, database, args.exclude_dir)
 
@@ -181,6 +183,8 @@ def main():
     print('score\tfilepath')
     for r in result:
       print(f'{r.score:.3f}\t"{r.filepath}"')
+      if args.preview:
+        preview(r.filepath, args.preview_height)
 
 
 if __name__ == '__main__':

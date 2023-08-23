@@ -77,7 +77,23 @@ def init_arg_parser() -> argparse.ArgumentParser:
                       ' can be used multiple times')
   parser.add_argument('--top', '-t', type=top_arg_type, default=10,
                       help='number of top results to display, default: 10')
-  parser.add_argument('--filepath-only', '-f', action='store_true', default=False, help='outputs only filepaths')
+  display_mode_group = parser.add_mutually_exclusive_group()
+  display_mode_group.add_argument(
+    '--preview', '-p',
+    action='store_true',
+    default=False,
+    help='preview results in the terminal (supported by iTerm2, wezterm, Mintty, mlterm)',
+  )
+  display_mode_group.add_argument(
+    '--filepath-only', '-f', action='store_true', default=False, help='outputs only filepaths',
+  )
+  parser.add_argument(
+    '--preview-height', '-H', metavar='PREVIEW_HEIGHT_PX',
+    action='store',
+    type=int,
+    default=400,
+    help='preview height in pixels, default: 400',
+  )
   parser.add_argument(
     '--no-indexing', '--skip-index', '-n',
     action='store_true',
