@@ -84,7 +84,9 @@ def init_arg_parser() -> argparse.ArgumentParser:
     default=False,
     help='preview results in the terminal (supported by iTerm2, Konsole, wezterm, Mintty, MacTerm, mlterm)',
   )
-  display_mode_group.add_argument('--filepath-only', '-f', action='store_true', default=False, help='outputs only filepaths')
+  display_mode_group.add_argument(
+    '--filepath-only', '-f', action='store_true', default=False, help='outputs only filepaths',
+  )
   parser.add_argument(
     '--preview-height', '-H', metavar='PREVIEW_HEIGHT_PX',
     action='store',
