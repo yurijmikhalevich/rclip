@@ -107,7 +107,7 @@ If you want to see how these queries perform when executed on the 1.28 million i
 
 ### How do I preview the results?
 
-If you are using either one of [iTerm2](https://iterm2.com/), [wezterm](https://wezfurlong.org/wezterm/), [Mintty](https://mintty.github.io/), or [mlterm](https://mlterm.sourceforge.net/) all you need to do is pass `--preview` (or `-p`) argument to **rclip**:
+If you are using either one of [iTerm2](https://iterm2.com/), [Konsole](https://konsole.kde.org/) (version 22.04 and higher), [wezterm](https://wezfurlong.org/wezterm/), [Mintty](https://mintty.github.io/), or [mlterm](https://mlterm.sourceforge.net/) all you need to do is pass `--preview` (or `-p`) argument to **rclip**:
 
 ```bash
 rclip -p kitty

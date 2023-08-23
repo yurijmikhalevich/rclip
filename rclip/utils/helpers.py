@@ -82,7 +82,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
     '--preview', '-p',
     action='store_true',
     default=False,
-    help='preview results in the terminal (supported by iTerm2, wezterm, Mintty, mlterm)',
+    help='preview results in the terminal (supported in iTerm2, Konsole 22.04+, wezterm, Mintty, mlterm)',
   )
   display_mode_group.add_argument(
     '--filepath-only', '-f', action='store_true', default=False, help='outputs only filepaths',
