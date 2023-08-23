@@ -20,7 +20,10 @@ def _get_end_sequence():
 
 def preview(filepath: str, img_height_px: int):
   with Image.open(filepath) as img:
-    width_px, height_px = int(img_height_px * img.width / img.height), img_height_px
+    if img_height_px >= img.height:
+      width_px, height_px = img.width, img.height
+    else:
+      width_px, height_px = int(img_height_px * img.width / img.height), img_height_px
     img = img.resize((width_px, height_px), Image.LANCZOS)
     buffer = BytesIO()
     img.convert('RGB').save(buffer, format='JPEG')
