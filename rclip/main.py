@@ -23,6 +23,9 @@ class ImageMeta(TypedDict):
   size: int
 
 
+PathMetaVector = Tuple[str, ImageMeta, model.FeatureVector]
+
+
 def get_image_meta(filepath: str) -> ImageMeta:
   return ImageMeta(
     modified_at=os.path.getmtime(filepath),
@@ -72,7 +75,7 @@ class RClip:
     except Exception as ex:
       print('error computing features:', ex)
       return
-    for path, meta, vector in cast(Iterable[Tuple[str, ImageMeta, np.ndarray]], zip(filtered_paths, metas, features)):
+    for path, meta, vector in cast(Iterable[PathMetaVector], zip(filtered_paths, metas, features)):
       self._db.upsert_image(db.NewImage(
         filepath=path,
         modified_at=meta['modified_at'],
@@ -148,9 +151,9 @@ class RClip:
 
     return [RClip.SearchResult(filepath=filepaths[th[1]], score=th[0]) for th in top_k_similarities]
 
-  def _get_features(self, directory: str) -> Tuple[List[str], np.ndarray]:
+  def _get_features(self, directory: str) -> Tuple[List[str], model.FeatureVector]:
     filepaths: List[str] = []
-    features: List[np.ndarray] = []
+    features: List[model.FeatureVector] = []
     for image in self._db.get_image_vectors_by_dir_path(directory):
       filepaths.append(image['filepath'])
       features.append(np.frombuffer(image['vector'], np.float32))
