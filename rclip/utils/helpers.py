@@ -84,7 +84,7 @@ def get_onboarding_message() -> str:
     ) +
     '\n' +
     textwrap.fill(
-      '- 1 day to index 73 thousand photos on an NAS with an Intel Celeron J3455 CPU',
+      '- 1 day to index 73 thousand photos on an NAS with an old-ish Intel Celeron J3455 CPU',
       subsequent_indent='  ',
       width=text_width,
     ) +

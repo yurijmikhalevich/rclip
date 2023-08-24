@@ -19,10 +19,12 @@
 sudo snap install rclip
 ```
 
-If your Linux distribution doesn't support [snap](https://snapcraft.io/rclip), you can use one of the alternative installation options:
-
 <details>
-  <summary>Prebuilt x86_64 binary</summary>
+  <summary>Alternative options</summary>
+
+  If your Linux distribution doesn't support [snap](https://snapcraft.io/rclip), you can use one of the alternative installation options:
+
+  #### Prebuilt x86_64 binary
 
   On Linux x86_64, you can install **rclip** as a self-containing binary.
 
@@ -34,10 +36,8 @@ If your Linux distribution doesn't support [snap](https://snapcraft.io/rclip), y
   chmod +x <downloaded AppImage filename>
   sudo mv <downloaded AppImage filename> /usr/local/bin/rclip
   ```
-</details>
 
-<details>
-  <summary>Using <code>pip</code></summary>
+  #### Using <code>pip</code>
 
   ```bash
   pip install --extra-index-url https://download.pytorch.org/whl/cpu rclip
@@ -50,10 +50,8 @@ If your Linux distribution doesn't support [snap](https://snapcraft.io/rclip), y
 brew install yurijmikhalevich/tap/rclip
 ```
 
-Alternative option:
-
 <details>
-  <summary>Using <code>pip</code></summary>
+  <summary>Alternative option (using <code>pip</code>)</summary>
 
   ```bash
   pip install rclip
@@ -74,7 +72,7 @@ cd photos && rclip "search query"
 
 <img alt="rclip usage demo" src="https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/resources/rclip-usage.gif" width="640px" />
 
-When you run **rclip** for the first time in a particular directory, it's going to extract features from the photos, and this takes time. How long it will take depends on your CPU and the number of pictures you will search through. It took about a day to process 73 thousand photos on my NAS, which runs an old-ish Intel Celeron J3455, and three hours to process 1.28 million images on my MacBook, which runs M1 Max.
+When you run **rclip** for the first time in a particular directory, it will extract features from the photos, which takes time. How long it will take depends on your CPU and the number of pictures you will search through. It took about a day to process 73 thousand photos on my NAS, which runs an old-ish Intel Celeron J3455, 7 minutes to index 50 thousand images on my MacBook with an M1 Max CPU, and three hours to process 1.28 million images on the same MacBook.
 
 For a detailed demonstration, watch the video: https://www.youtube.com/watch?v=tAJHXOkHidw.
 
