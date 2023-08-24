@@ -90,6 +90,3 @@ class DB:
     return self._con.execute(
       f'SELECT filepath, vector FROM images WHERE filepath LIKE ? AND deleted IS NULL', (path + f'{os.path.sep}%',)
     )
-
-  def has_any_images(self) -> bool:
-    return bool(self._con.execute('SELECT id FROM images LIMIT 1').fetchone())

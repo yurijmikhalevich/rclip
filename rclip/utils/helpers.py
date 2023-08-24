@@ -55,17 +55,77 @@ def top_arg_type(arg: str) -> int:
   return arg_int
 
 
+def get_terminal_text_width() -> int:
+  return min(100, os.get_terminal_size().columns - 2)
+
+
+def get_onboarding_message() -> str:
+  text_width = get_terminal_text_width()
+  return (
+    textwrap.fill(
+      'When you first run rclip in a new directory, it will index all'
+      ' images in that directory and its subdirectories to build a search database.'
+      ' This indexing process may take some time depending on your hardware'
+      ' and number of images.',
+      width=text_width,
+    ) +
+    '\n\n' +
+    'In the past, indexing took approximately:\n' +
+    textwrap.fill(
+      '- 7 minutes to index 50 thousand images on a MacBook with an M1 Max CPU',
+      subsequent_indent='  ',
+      width=text_width,
+    ) +
+    '\n' +
+    textwrap.fill(
+      '- 3 hours to index 1.28 million images on a MacBook with an M1 Max CPU',
+      subsequent_indent='  ',
+      width=text_width,
+    ) +
+    '\n' +
+    textwrap.fill(
+      '- 1 day to index 73 thousand photos on an NAS with an Intel Celeron J3455 CPU',
+      subsequent_indent='  ',
+      width=text_width,
+    ) +
+    '\n\n' +
+    textwrap.fill(
+      'On subsequent runs in the same directory, rclip will only check for'
+      ' and add any new images to the existing index. This is much faster than a full re-index.',
+      break_on_hyphens=False,
+      width=text_width,
+    ) +
+    '\n\n' +
+    textwrap.fill(
+      'You can skip re-indexing entirely on future runs by using'
+      ' the "--no-indexing" or "-n" flag if you know no new images were added.',
+      break_on_hyphens=False,
+      width=text_width,
+    ) +
+    '\n\n' +
+    textwrap.fill(
+      'This message is showed only on the first run. Later uses will proceed'
+      ' directly to indexing or searching. You can always get help'
+      ' by running "rclip --help",'
+      ' creating a discussion on GitHub https://github.com/yurijmikhalevich/rclip/discussions,'
+      ' or raising an issue https://github.com/yurijmikhalevich/rclip/issues.',
+      width=text_width,
+    )
+  )
+
+
 class HelpFormatter(argparse.RawDescriptionHelpFormatter):
   def __init__(self, prog: str, indent_increment: int = 2, max_help_position: int = 24) -> None:
-    text_width = min(70, os.get_terminal_size().columns - 2)
+    text_width = get_terminal_text_width()
     super().__init__(prog, indent_increment, max_help_position, width=text_width)
 
 
 def init_arg_parser() -> argparse.ArgumentParser:
-  text_width = min(70, os.get_terminal_size().columns - 2)
+  text_width = get_terminal_text_width()
   parser = argparse.ArgumentParser(
     formatter_class=HelpFormatter,
     prefix_chars='-+',
+    description='rclip is an AI-powered command-line photo search tool',
     epilog='hints:\n' +
     textwrap.fill(
       '- relative file path should be prefixed with ./, e.g. "./cat.jpg", not "cat.jpg"',
@@ -118,7 +178,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
     '--no-indexing', '--skip-index', '-n',
     action='store_true',
     default=False,
-    help='don\'t attempt image indexing, saves time on consecutive runs on huge directories'
+    help='allows to skip re-indexing entirely on repeated runs if you know no new images were added'
   )
   parser.add_argument(
     '--exclude-dir',
