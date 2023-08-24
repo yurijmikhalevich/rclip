@@ -1,3 +1,4 @@
+import os.path
 import pathlib
 import sqlite3
 from typing import Any, Optional, TypedDict, Union
@@ -72,7 +73,7 @@ class DB:
       self._con.commit()
 
   def flag_images_in_a_dir_as_deleted(self, path: str):
-    self._con.execute('UPDATE images SET deleted = 1 WHERE filepath LIKE ?', (path + '/%',))
+    self._con.execute('UPDATE images SET deleted = 1 WHERE filepath LIKE ?', (path + f'{os.path.sep}%',))
     self._con.commit()
 
   def remove_deleted_flag(self, filepath: str, commit: bool = True):
@@ -87,5 +88,5 @@ class DB:
 
   def get_image_vectors_by_dir_path(self, path: str) -> sqlite3.Cursor:
     return self._con.execute(
-      f'SELECT filepath, vector FROM images WHERE filepath LIKE ? AND deleted IS NULL', (path + '/%',)
+      f'SELECT filepath, vector FROM images WHERE filepath LIKE ? AND deleted IS NULL', (path + f'{os.path.sep}%',)
     )

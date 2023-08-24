@@ -52,7 +52,7 @@ class RClip:
     self._db = database
 
     excluded_dirs = '|'.join(re.escape(dir) for dir in exclude_dirs or self.EXCLUDE_DIRS_DEFAULT)
-    self._exclude_dir_regex = re.compile(f'^.+\\/({excluded_dirs})(\\/.+)?$')
+    self._exclude_dir_regex = re.compile(f'^.+\\{os.path.sep}({excluded_dirs})(\\{os.path.sep}.+)?$')
 
   def _index_files(self, filepaths: List[str], metas: List[ImageMeta]):
     images: List[Image.Image] = []
