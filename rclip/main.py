@@ -3,6 +3,7 @@ import os
 from os import path
 import re
 import sys
+import threading
 from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
 
 import numpy as np
@@ -10,7 +11,7 @@ from tqdm import tqdm
 import PIL
 from PIL import Image, ImageFile
 
-from rclip import db, model
+from rclip import db, model, fs
 from rclip.utils.preview import preview
 from rclip.utils.snap import check_snap_permissions, is_snap
 from rclip.utils import helpers
@@ -88,45 +89,56 @@ class RClip:
     # We will mark existing images as existing later
     self._db.flag_images_in_a_dir_as_deleted(directory)
 
-    images_processed = 0
-    batch: List[str] = []
-    metas: List[ImageMeta] = []
-    for root, _, files in os.walk(directory):
-      if self._exclude_dir_regex.match(root):
-        continue
-      filtered_files = list(f for f in files if self.IMAGE_REGEX.match(f))
-      if not filtered_files:
-        continue
-      for file in cast(Iterable[str], tqdm(filtered_files, desc=root)):
-        filepath = path.join(root, file)
+    with tqdm(total=None, unit='images') as pbar:
+      def update_total_images(count: int):
+        pbar.total = count
+        pbar.refresh()
+      counter_thread = threading.Thread(
+        target=fs.count_files,
+        args=(directory, self._exclude_dir_regex, self.IMAGE_REGEX, update_total_images),
+      )
+      counter_thread.start()
 
-        image = self._db.get_image(filepath=filepath)
-        try:
-          meta = get_image_meta(filepath)
-        except Exception as ex:
-          print(f'error getting fs metadata for {filepath}:', ex)
+      images_processed = 0
+      batch: List[str] = []
+      metas: List[ImageMeta] = []
+      for root, _, files in os.walk(directory):
+        if self._exclude_dir_regex.match(root):
           continue
-
-        if not images_processed % self.DB_IMAGES_BEFORE_COMMIT:
-          self._db.commit()
-        images_processed += 1
-
-        if image and is_image_meta_equal(image, meta):
-          self._db.remove_deleted_flag(filepath, commit=False)
+        filtered_files = list(f for f in files if self.IMAGE_REGEX.match(f))
+        if not filtered_files:
           continue
+        for file in filtered_files:
+          filepath = path.join(root, file)
 
-        batch.append(filepath)
-        metas.append(meta)
+          image = self._db.get_image(filepath=filepath)
+          try:
+            meta = get_image_meta(filepath)
+          except Exception as ex:
+            print(f'error getting fs metadata for {filepath}:', ex)
+            continue
 
-        if len(batch) >= self.BATCH_SIZE:
-          self._index_files(batch, metas)
-          batch = []
-          metas = []
+          if not images_processed % self.DB_IMAGES_BEFORE_COMMIT:
+            self._db.commit()
+          images_processed += 1
+          pbar.update()
 
-    if len(batch) != 0:
-      self._index_files(batch, metas)
+          if image and is_image_meta_equal(image, meta):
+            self._db.remove_deleted_flag(filepath, commit=False)
+            continue
 
-    self._db.commit()
+          batch.append(filepath)
+          metas.append(meta)
+
+          if len(batch) >= self.BATCH_SIZE:
+            self._index_files(batch, metas)
+            batch = []
+            metas = []
+
+      if len(batch) != 0:
+        self._index_files(batch, metas)
+
+      self._db.commit()
 
   def search(
       self, query: str, directory: str, top_k: int = 10,
