@@ -56,7 +56,10 @@ def top_arg_type(arg: str) -> int:
 
 
 def get_terminal_text_width() -> int:
-  return min(100, os.get_terminal_size().columns - 2)
+  try:
+    return min(100, os.get_terminal_size().columns - 2)
+  except OSError:
+    return 100
 
 
 class HelpFormatter(argparse.RawDescriptionHelpFormatter):
