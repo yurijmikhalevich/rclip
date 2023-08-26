@@ -1,14 +1,13 @@
 import os
-import re
-from typing import Callable
+from typing import Callable, Pattern
 
 COUNT_FILES_UPDATE_EVERY = 1000
 
 
 def count_files(
   directory: str,
-  exclude_dir_re: re.Pattern[str],
-  file_re: re.Pattern[str],
+  exclude_dir_re: Pattern[str],
+  file_re: Pattern[str],
   on_change: Callable[[int], None]
 ) -> None:
   prev_update_count = 0
