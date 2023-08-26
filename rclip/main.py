@@ -2,6 +2,7 @@ import itertools
 import os
 from os import path
 import re
+import sys
 from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
 
 import numpy as np
@@ -178,7 +179,9 @@ def main():
   rclip = RClip(model_instance, database, args.exclude_dir)
 
   if not args.no_indexing:
+    print('checking the current directory for new images, use "--no-indexing" to skip this', file=sys.stderr)
     rclip.ensure_index(current_directory)
+    print('', file=sys.stderr)
 
   result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
   if args.filepath_only:
