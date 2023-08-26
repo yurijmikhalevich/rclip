@@ -2,7 +2,6 @@ import itertools
 import os
 from os import path
 import re
-import sys
 from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
 
 import numpy as np
