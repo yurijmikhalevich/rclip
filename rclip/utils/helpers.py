@@ -1,6 +1,7 @@
 import argparse
 import os
 import pathlib
+import textwrap
 from PIL import Image, UnidentifiedImageError
 import re
 import requests
@@ -54,17 +55,44 @@ def top_arg_type(arg: str) -> int:
   return arg_int
 
 
+def get_terminal_text_width() -> int:
+  try:
+    return min(100, os.get_terminal_size().columns - 2)
+  except OSError:
+    return 100
+
+
+class HelpFormatter(argparse.RawDescriptionHelpFormatter):
+  def __init__(self, prog: str, indent_increment: int = 2, max_help_position: int = 24) -> None:
+    text_width = get_terminal_text_width()
+    super().__init__(prog, indent_increment, max_help_position, width=text_width)
+
+
 def init_arg_parser() -> argparse.ArgumentParser:
+  text_width = get_terminal_text_width()
   parser = argparse.ArgumentParser(
-    formatter_class=argparse.RawDescriptionHelpFormatter,
+    formatter_class=HelpFormatter,
     prefix_chars='-+',
-    epilog='hints:\n'
-    '  relative file path should be prefixed with ./, e.g. "./cat.jpg", not "cat.jpg"\n'
-    '  any query can be prefixed with a multiplier, e.g. "2:cat", "0.5:./cat-sleeps-on-a-chair.jpg";'
-    ' adding a multiplier is especially useful when combining image and text queries because'
-    ' image queries are usually weighted more than text ones\n\n'
-    'report a problem or suggest an improvement:\n'
-    '  https://github.com/yurijmikhalevich/rclip/issues\n\n',
+    description='rclip is an AI-powered command-line photo search tool',
+    epilog='hints:\n' +
+    textwrap.fill(
+      '- relative file path should be prefixed with ./, e.g. "./cat.jpg", not "cat.jpg"',
+      initial_indent='  ',
+      subsequent_indent='    ',
+      width=text_width,
+    ) +
+    '\n' +
+    textwrap.fill(
+      '- any query can be prefixed with a multiplier, e.g. "2:cat", "0.5:./cat-sleeps-on-a-chair.jpg";'
+      ' adding a multiplier is especially useful when combining image and text queries because'
+      ' image queries are usually weighted more than text ones',
+      initial_indent='  ',
+      subsequent_indent='    ',
+      width=text_width,
+    ) +
+    '\n\n'
+    'get help:\n'
+    '  https://github.com/yurijmikhalevich/rclip/discussions/new/choose\n\n',
   )
   version_str = f'rclip {version("rclip")}'
   parser.add_argument('--version', '-v', action='version', version=version_str, help=f'prints "{version_str}"')
@@ -98,7 +126,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
     '--no-indexing', '--skip-index', '-n',
     action='store_true',
     default=False,
-    help='don\'t attempt image indexing, saves time on consecutive runs on huge directories'
+    help='allows to skip re-indexing entirely on repeated runs if you know no new images were added'
   )
   parser.add_argument(
     '--exclude-dir',

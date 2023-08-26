@@ -170,9 +170,11 @@ def main():
   if is_snap():
     check_snap_permissions(current_directory)
 
-  model_instance = model.Model(device=vars(args).get("device", "cpu"))
   datadir = helpers.get_app_datadir()
-  database = db.DB(datadir / 'db.sqlite3')
+  db_path = datadir / 'db.sqlite3'
+
+  database = db.DB(db_path)
+  model_instance = model.Model(device=vars(args).get("device", "cpu"))
   rclip = RClip(model_instance, database, args.exclude_dir)
 
   if not args.no_indexing:
