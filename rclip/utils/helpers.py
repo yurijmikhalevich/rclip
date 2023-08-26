@@ -59,61 +59,6 @@ def get_terminal_text_width() -> int:
   return min(100, os.get_terminal_size().columns - 2)
 
 
-def get_onboarding_message() -> str:
-  text_width = get_terminal_text_width()
-  return (
-    textwrap.fill(
-      'When you first run rclip in a new directory, it will index all'
-      ' images in that directory and its subdirectories to build a search database.'
-      ' This indexing process may take some time depending on your hardware'
-      ' and number of images.',
-      width=text_width,
-    ) +
-    '\n\n' +
-    'In the past, indexing took approximately:\n' +
-    textwrap.fill(
-      '- 7 minutes to index 50 thousand images on a MacBook with an M1 Max CPU',
-      subsequent_indent='  ',
-      width=text_width,
-    ) +
-    '\n' +
-    textwrap.fill(
-      '- 3 hours to index 1.28 million images on a MacBook with an M1 Max CPU',
-      subsequent_indent='  ',
-      width=text_width,
-    ) +
-    '\n' +
-    textwrap.fill(
-      '- 1 day to index 73 thousand photos on an NAS with an old-ish Intel Celeron J3455 CPU',
-      subsequent_indent='  ',
-      width=text_width,
-    ) +
-    '\n\n' +
-    textwrap.fill(
-      'On subsequent runs in the same directory, rclip will only check for'
-      ' and add any new images to the existing index. This is much faster than a full re-index.',
-      break_on_hyphens=False,
-      width=text_width,
-    ) +
-    '\n\n' +
-    textwrap.fill(
-      'You can skip re-indexing entirely on future runs by using'
-      ' the "--no-indexing" or "-n" flag if you know no new images were added.',
-      break_on_hyphens=False,
-      width=text_width,
-    ) +
-    '\n\n' +
-    textwrap.fill(
-      'This message is showed only on the first run. Later uses will proceed'
-      ' directly to indexing or searching. You can always get help'
-      ' by running "rclip --help",'
-      ' creating a discussion on GitHub https://github.com/yurijmikhalevich/rclip/discussions,'
-      ' or raising an issue https://github.com/yurijmikhalevich/rclip/issues.',
-      width=text_width,
-    )
-  )
-
-
 class HelpFormatter(argparse.RawDescriptionHelpFormatter):
   def __init__(self, prog: str, indent_increment: int = 2, max_help_position: int = 24) -> None:
     text_width = get_terminal_text_width()
@@ -143,8 +88,8 @@ def init_arg_parser() -> argparse.ArgumentParser:
       width=text_width,
     ) +
     '\n\n'
-    'report a problem or suggest an improvement:\n'
-    '  https://github.com/yurijmikhalevich/rclip/issues\n\n',
+    'get help:\n'
+    '  https://github.com/yurijmikhalevich/rclip/discussions/new/choose\n\n',
   )
   version_str = f'rclip {version("rclip")}'
   parser.add_argument('--version', '-v', action='version', version=version_str, help=f'prints "{version_str}"')

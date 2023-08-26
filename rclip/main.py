@@ -2,6 +2,7 @@ import itertools
 import os
 from os import path
 import re
+import sys
 from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
 
 import numpy as np
@@ -172,13 +173,6 @@ def main():
 
   datadir = helpers.get_app_datadir()
   db_path = datadir / 'db.sqlite3'
-  if not os.path.exists(db_path):
-    if args.no_indexing:
-      print('ERROR: you shouldn\'t use --no-indexing on the first run')
-      return
-    print(f'\n{helpers.get_onboarding_message()}\n\nProceed? [y/n] ', end='')
-    if input().lower() != 'y':
-      return
 
   database = db.DB(db_path)
   model_instance = model.Model(device=vars(args).get("device", "cpu"))
