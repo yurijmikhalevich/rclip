@@ -3,11 +3,13 @@ from typing import List, Tuple, Optional, cast
 import sys
 
 import numpy as np
+import numpy.typing as npt
 from PIL import Image, UnidentifiedImageError
 from rclip.utils import helpers
 
 QUERY_WITH_MULTIPLIER_RE = re.compile(r'^(?P<multiplier>(\d+(\.\d+)?|\.\d+|\d+\.)):(?P<query>.+)$')
 QueryWithMultiplier = Tuple[float, str]
+FeatureVector = npt.NDArray[np.float32]
 
 
 class Model:
@@ -93,9 +95,9 @@ class Model:
           phrase_queries.append((multiplier, query))
     return phrase_queries, local_file_queries, url_queries
 
-  def compute_features_for_queries(self, queries: List[str]) -> np.ndarray:
-    text_features: Optional[np.ndarray] = None
-    image_features: Optional[np.ndarray] = None
+  def compute_features_for_queries(self, queries: List[str]) -> FeatureVector:
+    text_features: Optional[FeatureVector] = None
+    image_features: Optional[FeatureVector] = None
     phrases, files, urls = self._group_queries_by_type(queries)
     if phrases:
       phrase_multipliers, phrase_queries = cast(Tuple[Tuple[float], Tuple[str]], zip(*phrases))
@@ -123,10 +125,10 @@ class Model:
     elif image_features is not None:
         return image_features
     else:
-        return np.zeros(Model.VECTOR_SIZE)
+        return np.zeros(Model.VECTOR_SIZE, dtype=np.float32)
 
   def compute_similarities_to_text(
-      self, item_features: np.ndarray,
+      self, item_features: FeatureVector,
       positive_queries: List[str], negative_queries: List[str]) -> List[Tuple[float, int]]:
 
     positive_features = self.compute_features_for_queries(positive_queries)
