@@ -34,4 +34,4 @@ def recursive_walk(
           if not exclude_dir_re.match(entry.path):
             dirs_to_process.append(entry.path)
         elif entry.is_file() and file_re.match(entry.name):
-          yield entry.path
+          yield entry

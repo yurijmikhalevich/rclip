@@ -1,10 +1,9 @@
 import itertools
 import os
-from os import path
 import re
 import sys
 import threading
-from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
+from typing import AnyStr, Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
 
 import numpy as np
 from tqdm import tqdm
@@ -28,11 +27,9 @@ class ImageMeta(TypedDict):
 PathMetaVector = Tuple[str, ImageMeta, model.FeatureVector]
 
 
-def get_image_meta(filepath: str) -> ImageMeta:
-  return ImageMeta(
-    modified_at=os.path.getmtime(filepath),
-    size=os.path.getsize(filepath)
-  )
+def get_image_meta(entry: os.DirEntry[AnyStr]) -> ImageMeta:
+  stat = entry.stat()
+  return ImageMeta(modified_at=stat.st_mtime, size=stat.st_size)
 
 
 def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
@@ -70,12 +67,12 @@ class RClip:
       except PIL.UnidentifiedImageError as ex:
         pass
       except Exception as ex:
-        print(f'error loading image {path}:', ex)
+        print(f'error loading image {path}:', ex, file=sys.stderr)
 
     try:
       features = self._model.compute_image_features(images)
     except Exception as ex:
-      print('error computing features:', ex)
+      print('error computing features:', ex, file=sys.stderr)
       return
     for path, meta, vector in cast(Iterable[PathMetaVector], zip(filtered_paths, metas, features)):
       self._db.upsert_image(db.NewImage(
@@ -102,38 +99,31 @@ class RClip:
       images_processed = 0
       batch: List[str] = []
       metas: List[ImageMeta] = []
-      for root, _, files in os.walk(directory):
-        if self._exclude_dir_regex.match(root):
+      for entry in fs.recursive_walk(directory, self._exclude_dir_regex, self.IMAGE_REGEX):
+        filepath = entry.path
+        image = self._db.get_image(filepath=filepath)
+        try:
+          meta = get_image_meta(entry)
+        except Exception as ex:
+          print(f'error getting fs metadata for {filepath}:', ex, file=sys.stderr)
           continue
-        filtered_files = list(f for f in files if self.IMAGE_REGEX.match(f))
-        if not filtered_files:
+
+        if not images_processed % self.DB_IMAGES_BEFORE_COMMIT:
+          self._db.commit()
+        images_processed += 1
+        pbar.update()
+
+        if image and is_image_meta_equal(image, meta):
+          self._db.remove_deleted_flag(filepath, commit=False)
           continue
-        for file in filtered_files:
-          filepath = path.join(root, file)
 
-          image = self._db.get_image(filepath=filepath)
-          try:
-            meta = get_image_meta(filepath)
-          except Exception as ex:
-            print(f'error getting fs metadata for {filepath}:', ex)
-            continue
+        batch.append(filepath)
+        metas.append(meta)
 
-          if not images_processed % self.DB_IMAGES_BEFORE_COMMIT:
-            self._db.commit()
-          images_processed += 1
-          pbar.update()
-
-          if image and is_image_meta_equal(image, meta):
-            self._db.remove_deleted_flag(filepath, commit=False)
-            continue
-
-          batch.append(filepath)
-          metas.append(meta)
-
-          if len(batch) >= self.BATCH_SIZE:
-            self._index_files(batch, metas)
-            batch = []
-            metas = []
+        if len(batch) >= self.BATCH_SIZE:
+          self._index_files(batch, metas)
+          batch = []
+          metas = []
 
       if len(batch) != 0:
         self._index_files(batch, metas)
