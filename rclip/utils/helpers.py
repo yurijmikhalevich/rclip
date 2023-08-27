@@ -131,8 +131,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
   parser.add_argument(
     '--indexing-batch-size', '-b', type=positive_int_arg_type, default=8,
     help='the size of the image batch used when updating the search index;'
-    ' larger values will increase RAM usage'
-    ' but may improve the indexing speed a bit on some hardware; default: 8',
+    ' larger values may improve the indexing speed a bit on some hardware but will increase RAM usage; default: 8',
   )
   parser.add_argument(
     '--exclude-dir',
