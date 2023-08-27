@@ -3,7 +3,7 @@ import os
 import re
 import sys
 import threading
-from typing import AnyStr, Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
+from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
 
 import numpy as np
 from tqdm import tqdm
@@ -27,7 +27,7 @@ class ImageMeta(TypedDict):
 PathMetaVector = Tuple[str, ImageMeta, model.FeatureVector]
 
 
-def get_image_meta(entry: os.DirEntry[AnyStr]) -> ImageMeta:
+def get_image_meta(entry: os.DirEntry) -> ImageMeta:
   stat = entry.stat()
   return ImageMeta(modified_at=stat.st_mtime, size=stat.st_size)
 
