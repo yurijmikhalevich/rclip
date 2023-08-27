@@ -20,7 +20,7 @@ class Image(NewImage):
 
 
 class DB:
-  VERSION = 1
+  VERSION = 2
 
   def __init__(self, filename: Union[str, pathlib.Path]):
     self._con = sqlite3.connect(filename)
@@ -41,43 +41,61 @@ class DB:
     ''')
     # Query for images
     self._con.execute('CREATE UNIQUE INDEX IF NOT EXISTS existing_images ON images(filepath) WHERE deleted IS NULL')
-
     self._con.execute('CREATE TABLE IF NOT EXISTS db_version (version INTEGER)')
-
     self._con.commit()
 
   def ensure_version(self):
-    db_version = self._con.execute('SELECT version FROM db_version').fetchone()
-    if not db_version:
-      self._con.execute('INSERT INTO db_version(version) VALUES (?)', (self.VERSION,))
-      self._con.commit()
-    elif db_version['version'] < self.VERSION:
-      raise Exception('migration to a newer index version isn\'t implemented')
-    elif db_version['version'] > self.VERSION:
+    db_version_entry = self._con.execute('SELECT version FROM db_version').fetchone()
+    if not db_version_entry:
+      db_version = 1
+      self._con.execute('INSERT INTO db_version(version) VALUES (?)', (db_version,))
+    else:
+      db_version = db_version_entry['version']
+    if db_version > self.VERSION:
       raise Exception(
         'found index version newer than this version of rclip can support;'
-        ' please, update rclip: https://github.com/yurijmikhalevich/rclip/releases'
+        ' please, update rclip: https://github.com/yurijmikhalevich/rclip/blob/main/README.md#installation',
       )
+    if db_version < 2:
+      self._con.execute('ALTER TABLE images ADD COLUMN indexing BOOLEAN')
+      self._con.execute('UPDATE db_version SET version=?', (2,))
+      db_version = 2
+    if db_version < self.VERSION:
+      raise Exception('migration to a newer index version isn\'t implemented')
+    self._con.commit()
 
   def commit(self):
     self._con.commit()
 
   def upsert_image(self, image: NewImage, commit: bool = True):
     self._con.execute('''
-      INSERT INTO images(deleted, filepath, modified_at, size, vector)
-      VALUES (:deleted, :filepath, :modified_at, :size, :vector)
+      INSERT INTO images(deleted, indexing, filepath, modified_at, size, vector)
+      VALUES (:deleted, :indexing, :filepath, :modified_at, :size, :vector)
       ON CONFLICT(filepath) DO UPDATE SET
-        deleted=:deleted, modified_at=:modified_at, size=:size, vector=:vector
-    ''', {'deleted': None, **image})
+        deleted=:deleted, indexing=:indexing, modified_at=:modified_at, size=:size, vector=:vector
+    ''', {'deleted': None, 'indexing': None, **image})
     if commit:
       self._con.commit()
 
-  def flag_images_in_a_dir_as_deleted(self, path: str):
-    self._con.execute('UPDATE images SET deleted = 1 WHERE filepath LIKE ?', (path + f'{os.path.sep}%',))
+  def remove_indexing_flag_from_all_images(self, commit: bool = True):
+    self._con.execute('UPDATE images SET indexing = NULL')
+    if commit:
+      self._con.commit()
+
+  def flag_images_in_a_dir_as_indexing(self, path: str, commit: bool = True):
+    self._con.execute('UPDATE images SET indexing = 1 WHERE filepath LIKE ?', (path + f'{os.path.sep}%',))
+    if commit:
+      self._con.commit()
+
+  def flag_indexing_images_in_a_dir_as_deleted(self, path: str):
+    self._con.execute(
+      'UPDATE images SET deleted = 1, indexing = NULL WHERE filepath LIKE ? AND indexing = 1',
+      (path + f'{os.path.sep}%',),
+    )
     self._con.commit()
 
-  def remove_deleted_flag(self, filepath: str, commit: bool = True):
-    self._con.execute('UPDATE images SET deleted = NULL WHERE filepath = ?', (filepath,))
+  def remove_indexing_flag(self, filepath: str, commit: bool = True):
+    self._con.execute('UPDATE images SET indexing = NULL WHERE filepath = ?', (filepath,))
     if commit:
       self._con.commit()
 

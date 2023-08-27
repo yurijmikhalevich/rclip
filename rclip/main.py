@@ -89,17 +89,14 @@ class RClip:
       ), commit=False)
 
   def ensure_index(self, directory: str):
-    print('checking images in the current directory for changes', file=sys.stderr)
-    # TODO(yurij): replace the message with the once below once we implemented a better handling of the index
-    # interruption mid-indexing because suggesting --no-indexing will lead to a lot of people interrupting the indexing
-    # print(
-    #   'checking images in the current directory for changes;'
-    #   ' use "--no-indexing" to skip this if no images were added, changed, or removed',
-    #   file=sys.stderr,
-    # )
+    print(
+      'checking images in the current directory for changes;'
+      ' use "--no-indexing" to skip this if no images were added, changed, or removed',
+      file=sys.stderr,
+    )
 
-    # We will mark existing images as existing later
-    self._db.flag_images_in_a_dir_as_deleted(directory)
+    self._db.remove_indexing_flag_from_all_images(commit=False)
+    self._db.flag_images_in_a_dir_as_indexing(directory, commit=True)
 
     with tqdm(total=None, unit='images') as pbar:
       def update_total_images(count: int):
@@ -129,7 +126,7 @@ class RClip:
         pbar.update()
 
         if image and is_image_meta_equal(image, meta):
-          self._db.remove_deleted_flag(filepath, commit=False)
+          self._db.remove_indexing_flag(filepath, commit=False)
           continue
 
         batch.append(filepath)
@@ -145,6 +142,7 @@ class RClip:
 
       self._db.commit()
 
+    self._db.flag_indexing_images_in_a_dir_as_deleted(directory)
     print('', file=sys.stderr)
 
   def search(
