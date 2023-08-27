@@ -141,6 +141,7 @@ class RClip:
         self._index_files(batch, metas)
 
       self._db.commit()
+      counter_thread.join()
 
     self._db.flag_indexing_images_in_a_dir_as_deleted(directory)
     print('', file=sys.stderr)
