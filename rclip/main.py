@@ -10,7 +10,7 @@ from tqdm import tqdm
 import PIL
 from PIL import Image, ImageFile
 
-from rclip import db, model, fs
+from rclip import db, fs, model
 from rclip.utils.preview import preview
 from rclip.utils.snap import check_snap_permissions, is_snap
 from rclip.utils import helpers
@@ -42,16 +42,22 @@ def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
 class RClip:
   EXCLUDE_DIRS_DEFAULT = ['@eaDir', 'node_modules', '.git']
   IMAGE_REGEX = re.compile(r'^.+\.(jpe?g|png)$', re.I)
-  BATCH_SIZE = 8
   DB_IMAGES_BEFORE_COMMIT = 50_000
 
   class SearchResult(NamedTuple):
     filepath: str
     score: float
 
-  def __init__(self, model_instance: model.Model, database: db.DB, exclude_dirs: Optional[List[str]]):
+  def __init__(
+    self,
+    model_instance: model.Model,
+    database: db.DB,
+    indexing_batch_size: int,
+    exclude_dirs: Optional[List[str]],
+  ):
     self._model = model_instance
     self._db = database
+    self._indexing_batch_size = indexing_batch_size
 
     excluded_dirs = '|'.join(re.escape(dir) for dir in exclude_dirs or self.EXCLUDE_DIRS_DEFAULT)
     self._exclude_dir_regex = re.compile(f'^.+\\{os.path.sep}({excluded_dirs})(\\{os.path.sep}.+)?$')
@@ -129,7 +135,7 @@ class RClip:
         batch.append(filepath)
         metas.append(meta)
 
-        if len(batch) >= self.BATCH_SIZE:
+        if len(batch) >= self._indexing_batch_size:
           self._index_files(batch, metas)
           batch = []
           metas = []
@@ -189,7 +195,7 @@ def main():
 
   database = db.DB(db_path)
   model_instance = model.Model(device=vars(args).get("device", "cpu"))
-  rclip = RClip(model_instance, database, args.exclude_dir)
+  rclip = RClip(model_instance, database, args.indexing_batch_size, args.exclude_dir)
 
   if not args.no_indexing:
     rclip.ensure_index(current_directory)
