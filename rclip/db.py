@@ -46,11 +46,9 @@ class DB:
 
   def ensure_version(self):
     db_version_entry = self._con.execute('SELECT version FROM db_version').fetchone()
-    if not db_version_entry:
-      db_version = 1
-      self._con.execute('INSERT INTO db_version(version) VALUES (?)', (db_version,))
-    else:
-      db_version = db_version_entry['version']
+    db_version = db_version_entry['version'] if db_version_entry else 1
+    if db_version == self.VERSION:
+        return
     if db_version > self.VERSION:
       raise Exception(
         'found index version newer than this version of rclip can support;'
@@ -61,7 +59,10 @@ class DB:
       db_version = 2
     if db_version < self.VERSION:
       raise Exception('migration to a newer index version isn\'t implemented')
-    self._con.execute('UPDATE db_version SET version=?', (self.VERSION,))
+    if db_version_entry:
+      self._con.execute('UPDATE db_version SET version=?', (self.VERSION,))
+    else:
+      self._con.execute('INSERT INTO db_version(version) VALUES (?)', (self.VERSION,))
     self._con.commit()
 
   def commit(self):
