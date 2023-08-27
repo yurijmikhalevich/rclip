@@ -58,10 +58,10 @@ class DB:
       )
     if db_version < 2:
       self._con.execute('ALTER TABLE images ADD COLUMN indexing BOOLEAN')
-      self._con.execute('UPDATE db_version SET version=?', (2,))
       db_version = 2
     if db_version < self.VERSION:
       raise Exception('migration to a newer index version isn\'t implemented')
+    self._con.execute('UPDATE db_version SET version=?', (self.VERSION,))
     self._con.commit()
 
   def commit(self):
