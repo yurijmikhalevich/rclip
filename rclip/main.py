@@ -83,6 +83,15 @@ class RClip:
       ), commit=False)
 
   def ensure_index(self, directory: str):
+    print('checking images in the current directory for changes', file=sys.stderr)
+    # TODO(yurij): replace the message with the once below once we implemented a better handling of the index
+    # interruption mid-indexing because suggesting --no-indexing will lead to a lot of people interrupting the indexing
+    # print(
+    #   'checking images in the current directory for changes;'
+    #   ' use "--no-indexing" to skip this if no images were added, changed, or removed',
+    #   file=sys.stderr,
+    # )
+
     # We will mark existing images as existing later
     self._db.flag_images_in_a_dir_as_deleted(directory)
 
@@ -99,7 +108,7 @@ class RClip:
       images_processed = 0
       batch: List[str] = []
       metas: List[ImageMeta] = []
-      for entry in fs.recursive_walk(directory, self._exclude_dir_regex, self.IMAGE_REGEX):
+      for entry in fs.walk(directory, self._exclude_dir_regex, self.IMAGE_REGEX):
         filepath = entry.path
         image = self._db.get_image(filepath=filepath)
         try:
@@ -129,6 +138,8 @@ class RClip:
         self._index_files(batch, metas)
 
       self._db.commit()
+
+    print('', file=sys.stderr)
 
   def search(
       self, query: str, directory: str, top_k: int = 10,
@@ -181,9 +192,7 @@ def main():
   rclip = RClip(model_instance, database, args.exclude_dir)
 
   if not args.no_indexing:
-    print('checking the current directory for new images, use "--no-indexing" to skip this', file=sys.stderr)
     rclip.ensure_index(current_directory)
-    print('', file=sys.stderr)
 
   result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
   if args.filepath_only:

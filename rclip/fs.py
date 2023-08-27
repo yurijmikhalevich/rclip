@@ -12,7 +12,7 @@ def count_files(
 ) -> None:
   prev_update_count = 0
   count = 0
-  for _ in recursive_walk(directory, exclude_dir_re, file_re):
+  for _ in walk(directory, exclude_dir_re, file_re):
     count += 1
     if count - prev_update_count >= COUNT_FILES_UPDATE_EVERY:
       on_change(count)
@@ -20,11 +20,12 @@ def count_files(
   on_change(count)
 
 
-def recursive_walk(
+def walk(
   directory: str,
   exclude_dir_re: Pattern[str],
   file_re: Pattern[str],
 ):
+  '''Walks through a directory recursively and yields files that match the given regex'''
   dirs_to_process = [directory]
   while dirs_to_process:
     dir = dirs_to_process.pop()
