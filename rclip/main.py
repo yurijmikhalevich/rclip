@@ -1,8 +1,8 @@
 import itertools
 import os
-from os import path
 import re
 import sys
+import threading
 from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
 
 import numpy as np
@@ -10,7 +10,7 @@ from tqdm import tqdm
 import PIL
 from PIL import Image, ImageFile
 
-from rclip import db, model
+from rclip import db, model, fs
 from rclip.utils.preview import preview
 from rclip.utils.snap import check_snap_permissions, is_snap
 from rclip.utils import helpers
@@ -27,11 +27,9 @@ class ImageMeta(TypedDict):
 PathMetaVector = Tuple[str, ImageMeta, model.FeatureVector]
 
 
-def get_image_meta(filepath: str) -> ImageMeta:
-  return ImageMeta(
-    modified_at=os.path.getmtime(filepath),
-    size=os.path.getsize(filepath)
-  )
+def get_image_meta(entry: os.DirEntry) -> ImageMeta:
+  stat = entry.stat()
+  return ImageMeta(modified_at=stat.st_mtime, size=stat.st_size)
 
 
 def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
@@ -69,12 +67,12 @@ class RClip:
       except PIL.UnidentifiedImageError as ex:
         pass
       except Exception as ex:
-        print(f'error loading image {path}:', ex)
+        print(f'error loading image {path}:', ex, file=sys.stderr)
 
     try:
       features = self._model.compute_image_features(images)
     except Exception as ex:
-      print('error computing features:', ex)
+      print('error computing features:', ex, file=sys.stderr)
       return
     for path, meta, vector in cast(Iterable[PathMetaVector], zip(filtered_paths, metas, features)):
       self._db.upsert_image(db.NewImage(
@@ -85,31 +83,44 @@ class RClip:
       ), commit=False)
 
   def ensure_index(self, directory: str):
+    print('checking images in the current directory for changes', file=sys.stderr)
+    # TODO(yurij): replace the message with the once below once we implemented a better handling of the index
+    # interruption mid-indexing because suggesting --no-indexing will lead to a lot of people interrupting the indexing
+    # print(
+    #   'checking images in the current directory for changes;'
+    #   ' use "--no-indexing" to skip this if no images were added, changed, or removed',
+    #   file=sys.stderr,
+    # )
+
     # We will mark existing images as existing later
     self._db.flag_images_in_a_dir_as_deleted(directory)
 
-    images_processed = 0
-    batch: List[str] = []
-    metas: List[ImageMeta] = []
-    for root, _, files in os.walk(directory):
-      if self._exclude_dir_regex.match(root):
-        continue
-      filtered_files = list(f for f in files if self.IMAGE_REGEX.match(f))
-      if not filtered_files:
-        continue
-      for file in cast(Iterable[str], tqdm(filtered_files, desc=root)):
-        filepath = path.join(root, file)
+    with tqdm(total=None, unit='images') as pbar:
+      def update_total_images(count: int):
+        pbar.total = count
+        pbar.refresh()
+      counter_thread = threading.Thread(
+        target=fs.count_files,
+        args=(directory, self._exclude_dir_regex, self.IMAGE_REGEX, update_total_images),
+      )
+      counter_thread.start()
 
+      images_processed = 0
+      batch: List[str] = []
+      metas: List[ImageMeta] = []
+      for entry in fs.walk(directory, self._exclude_dir_regex, self.IMAGE_REGEX):
+        filepath = entry.path
         image = self._db.get_image(filepath=filepath)
         try:
-          meta = get_image_meta(filepath)
+          meta = get_image_meta(entry)
         except Exception as ex:
-          print(f'error getting fs metadata for {filepath}:', ex)
+          print(f'error getting fs metadata for {filepath}:', ex, file=sys.stderr)
           continue
 
         if not images_processed % self.DB_IMAGES_BEFORE_COMMIT:
           self._db.commit()
         images_processed += 1
+        pbar.update()
 
         if image and is_image_meta_equal(image, meta):
           self._db.remove_deleted_flag(filepath, commit=False)
@@ -123,10 +134,12 @@ class RClip:
           batch = []
           metas = []
 
-    if len(batch) != 0:
-      self._index_files(batch, metas)
+      if len(batch) != 0:
+        self._index_files(batch, metas)
 
-    self._db.commit()
+      self._db.commit()
+
+    print('', file=sys.stderr)
 
   def search(
       self, query: str, directory: str, top_k: int = 10,
@@ -179,9 +192,7 @@ def main():
   rclip = RClip(model_instance, database, args.exclude_dir)
 
   if not args.no_indexing:
-    print('checking the current directory for new images, use "--no-indexing" to skip this', file=sys.stderr)
     rclip.ensure_index(current_directory)
-    print('', file=sys.stderr)
 
   result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
   if args.filepath_only:

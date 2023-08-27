@@ -123,10 +123,10 @@ def init_arg_parser() -> argparse.ArgumentParser:
     help='preview height in pixels, default: 400',
   )
   parser.add_argument(
-    '--no-indexing', '--skip-index', '-n',
+    '--no-indexing', '--skip-index', '--skip-indexing', '-n',
     action='store_true',
     default=False,
-    help='allows to skip re-indexing entirely on repeated runs if you know no new images were added'
+    help='allows to skip updating the index if no images were added, changed, or removed'
   )
   parser.add_argument(
     '--exclude-dir',
