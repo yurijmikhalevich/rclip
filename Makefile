@@ -26,6 +26,10 @@ build-docker:
 	DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build . -t rclip
 
 # CI runs release-brew as part of the `release` action
+build-windows:
+	poetry run pyinstaller -y ./release-utils/windows/pyinstaller.spec
+
+# CI runs release-brew as part of the `release` action
 release-brew:
 	poetry run ./release-utils/homebrew/release.sh
 
