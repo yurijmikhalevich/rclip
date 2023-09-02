@@ -149,7 +149,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade poetry
           poetry install
-      - name: make build-windows
+      - run: make build-windows
       - uses: actions/upload-artifact@v3
         with:
           name: windows-build
