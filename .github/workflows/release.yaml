@@ -153,9 +153,10 @@ jobs:
       - name: Install InnoSetup
         run: |
           Invoke-WebRequest -URI https://files.jrsoftware.org/is/6/innosetup-6.2.2.exe -OutFile is.exe
-          is.exe /VERYSILENT
+          ls
+          ./is.exe /VERYSILENT
       - run: |
-          & "C:/Program Files (x86)/Inno Setup 6/ISCC.exe ./release-utils/windows/build-installer.iss"
+          & "C:/Program Files (x86)/Inno Setup 6/ISCC.exe" ./release-utils/windows/build-installer.iss
       - uses: actions/upload-artifact@v3
         with:
           name: rclip-setup.exe
