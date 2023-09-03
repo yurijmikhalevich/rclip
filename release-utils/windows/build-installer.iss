@@ -39,7 +39,7 @@ Source: "..\..\dist\rclip\*"; DestDir: "{app}"; Flags: ignoreversion recursesubd
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Tasks]
-Name: modifypath; Description: Add rclip to your terminal;
+Name: modifypath; Description: Add rclip to the terminal;
 
 [Code]
 const 
