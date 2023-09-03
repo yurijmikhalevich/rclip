@@ -38,9 +38,6 @@ Source: "..\..\dist\rclip\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversi
 Source: "..\..\dist\rclip\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
-[Icons]
-Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-
 [Tasks]
 Name: modifypath; Description: Add "rclip" command to your terminal;
 
