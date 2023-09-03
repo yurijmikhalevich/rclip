@@ -103,38 +103,23 @@ jobs:
   #       env:
   #         SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
 
-  # appimage:
-  #   needs: [validate, parse_tag]
-  #   runs-on: ubuntu-20.04
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - name: Set up APPDIR for after_bundle
-  #       run: echo "APPDIR=$PWD/AppDir" >> $GITHUB_ENV
-  #     - name: Build AppImage
-  #       uses: AppImageCrafters/build-appimage@v1.3
-  #       with:
-  #         recipe: './release-utils/appimage/appimage-builder.yml'
-  #       env:
-  #         APP_VERSION: ${{ github.ref_name }}
-  #     - name: Generate Changelog
-  #       id: changelog
-  #       run: |
-  #         git fetch --unshallow
-  #         PREVIOUS_TAG="$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1))"
-  #         CHANGELOG="$(git --no-pager log --pretty="format:- %s" $PREVIOUS_TAG..$GITHUB_REF_NAME)"
-  #         {
-  #           echo 'CHANGELOG<<EOF'
-  #           echo $CHANGELOG
-  #           echo EOF
-  #         } >> "$GITHUB_OUTPUT"
-  #     - name: Create Release
-  #       uses: ncipollo/release-action@v1
-  #       with:
-  #         name: ${{ github.ref_name }}
-  #         artifacts: 'rclip-*.AppImage'
-  #         body: ${{ steps.changelog.outputs.CHANGELOG || 'internal release' }}
-  #         prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
-  #         token: ${{ secrets.GITHUB_TOKEN }}
+  appimage:
+    needs: [validate, parse_tag]
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up APPDIR for after_bundle
+        run: echo "APPDIR=$PWD/AppDir" >> $GITHUB_ENV
+      - name: Build AppImage
+        uses: AppImageCrafters/build-appimage@v1.3
+        with:
+          recipe: './release-utils/appimage/appimage-builder.yml'
+        env:
+          APP_VERSION: ${{ github.ref_name }}
+      - uses: actions/upload-artifact@v3
+        with:
+          path: rclip-*.AppImage
+          if-no-files-found: error
 
   windows:
     needs: [validate, parse_tag]
@@ -158,5 +143,30 @@ jobs:
           & "C:/Program Files (x86)/Inno Setup 6/ISCC.exe" ./release-utils/windows/build-installer.iss
       - uses: actions/upload-artifact@v3
         with:
-          name: rclip-setup.exe
+          name: ${{ format('rclip-{0}-x86_64-setup.exe', github.ref_name) }}
           path: release-utils/windows/Output/rclip.exe
+          if-no-files-found: error
+
+  # create_relesae:
+  #   needs: [appimage, windows, parse_tag]
+  #   runs-on: ubuntu-22.04
+  #   steps:
+  #     - name: Generate Changelog
+  #       id: changelog
+  #       run: |
+  #         git fetch --unshallow
+  #         PREVIOUS_TAG="$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1))"
+  #         CHANGELOG="$(git --no-pager log --pretty="format:- %s" $PREVIOUS_TAG..$GITHUB_REF_NAME)"
+  #         {
+  #           echo 'CHANGELOG<<EOF'
+  #           echo $CHANGELOG
+  #           echo EOF
+  #         } >> "$GITHUB_OUTPUT"
+  #     - name: Create Release
+  #       uses: ncipollo/release-action@v1
+  #       with:
+  #         name: ${{ github.ref_name }}
+  #         artifacts: 'rclip-*.AppImage'
+  #         body: ${{ steps.changelog.outputs.CHANGELOG || 'internal release' }}
+  #         prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
+  #         token: ${{ secrets.GITHUB_TOKEN }}

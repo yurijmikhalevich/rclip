@@ -42,7 +42,7 @@ Source: "..\..\dist\rclip\*"; DestDir: "{app}"; Flags: ignoreversion recursesubd
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 
 [Tasks]
-Name: modifypath; Description: Adds rclip to environment path;
+Name: modifypath; Description: Add "rclip" command to your terminal;
 
 [Code]
 const 
