@@ -60,9 +60,16 @@ brew install yurijmikhalevich/tap/rclip
 
 ### Windows
 
-```bash
-pip install rclip
-```
+1. Download the "-installer.exe" from the latest [release](https://github.com/yurijmikhalevich/rclip/releases).
+2. Install **rclip** by running the installer.
+
+<details>
+  <summary>Alternative option (using <code>pip</code>)</summary>
+
+  ```bash
+  pip install rclip
+  ```
+</details>
 
 ## Usage
 
