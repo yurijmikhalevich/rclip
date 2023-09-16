@@ -39,6 +39,8 @@ Source: "..\..\dist\rclip\*"; DestDir: "{app}"; Flags: ignoreversion recursesubd
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Code]
+#include "environment.iss"
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
     if CurStep = ssPostInstall
@@ -50,5 +52,3 @@ begin
     if CurUninstallStep = usPostUninstall
     then EnvRemovePath(ExpandConstant('{app}'));
 end;
-
-#include "environment.iss"
