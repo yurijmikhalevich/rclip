@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "rclip"
-#define MyAppVersion "1.7.2"
+#define MyAppVersion "1.7.3a0"
 #define MyAppPublisher "Yurij Mikhalevich"
 #define MyAppURL "https://github.com/yurijmikhalevich/rclip"
 #define MyAppExeName "rclip.exe"
