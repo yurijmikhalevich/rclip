@@ -145,7 +145,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade poetry
           poetry install
-          poetry run pip install pyinstaller=5.13.2
+          poetry run pip install pyinstaller==5.13.2
       - run: make build-windows
       - name: Install InnoSetup
         run: |
