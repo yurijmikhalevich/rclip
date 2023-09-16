@@ -38,17 +38,17 @@ Source: "..\..\dist\rclip\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversi
 Source: "..\..\dist\rclip\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
-[Tasks]
-Name: modifypath; Description: Add rclip to the terminal;
-
 [Code]
-const 
-    ModPathName = 'modifypath'; 
-    ModPathType = 'system'; 
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+    if CurStep = ssPostInstall
+     then EnvAddPath(ExpandConstant('{app}'));
+end;
 
-function ModPathDir(): TArrayOfString; 
-begin 
-    setArrayLength(Result, 1) 
-    Result[0] := ExpandConstant('{app}'); 
-end; 
-#include "modpath.iss"
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+    if CurUninstallStep = usPostUninstall
+    then EnvRemovePath(ExpandConstant('{app}'));
+end;
+
+#include "environment.iss"
