@@ -4,7 +4,7 @@ import numpy as np
 from tqdm import tqdm
 from benchmarks.config import BATCH_SIZE, DATASET_DIR
 
-from benchmarks.datasets.imagenet_1k.classes import IMAGENET2012_CLASSES
+from benchmarks.datasets.imagenet_1k.classes import IMAGENET2012_CLASSES  # type: ignore
 
 from rclip import model, db
 from rclip.main import RClip
@@ -27,9 +27,11 @@ def main(tmp_datadir: str):
     rclip.ensure_index(TEST_IMAGE_PREFIX)
 
     def get_images_for_class(class_id: str, limit: int = 750):
-        return database._con.execute('''
-          SELECT filepath, vector FROM images WHERE filepath LIKE ? AND deleted IS NULL ORDER BY RANDOM() LIMIT ?
-        ''', (TEST_IMAGE_PREFIX + f'{os.path.sep}%{os.path.sep}{class_id}_%', limit))
+        return database._con.execute(  # type: ignore
+            '''
+                SELECT filepath, vector FROM images WHERE filepath LIKE ? AND deleted IS NULL ORDER BY RANDOM() LIMIT ?
+            ''', (TEST_IMAGE_PREFIX + f'{os.path.sep}%{os.path.sep}{class_id}_%', limit)
+        )
 
     def get_image_class(filepath: str):
         return filepath.split('/')[-1].split('_')[0]
@@ -42,7 +44,7 @@ def main(tmp_datadir: str):
             top100_classes = [get_image_class(result.filepath) for result in results]
             accuracies.append(np.mean(np.array(top100_classes) == class_id))
 
-    print(f'Accuracy: {np.mean(accuracies)}')
+    print(f'Accuracy: {np.mean(accuracies)}')  # type: ignore
 
 
 if __name__ == '__main__':
