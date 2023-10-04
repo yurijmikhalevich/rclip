@@ -148,3 +148,6 @@ requirements.txt
 *.snap
 /snap/local/
 /rclip_*.txt
+
+benchmarks/datasets/
+benchmarks/datasets
