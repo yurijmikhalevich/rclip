@@ -13,11 +13,12 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       is_stable_version: ${{ steps.parse.outputs.is_stable_version }}
+      version: ${{ steps.parse.outputs.version }}
     steps:
       - id: parse
         run: |
           echo "is_stable_version=$([[ $GITHUB_REF =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo true || echo false)" >> $GITHUB_OUTPUT
-          echo "version=$(echo $GITHUB_REF | cut -c2-)" >> $GITHUB_OUTPUT
+          echo "version=${GITHUB_REF:1}" >> $GITHUB_OUTPUT
 
   pypi:
     needs: validate
