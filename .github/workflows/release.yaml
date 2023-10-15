@@ -153,7 +153,7 @@ jobs:
           advinst-version: '21.1'
           advinst-enable-automation: 'true'
       - run: |
-          & ./release-utils/windows/build-msi.ps1 "v1.2.3"
+          & ./release-utils/windows/build-msi.ps1 "1.6.7"
           mv build-msi/rclip-SetupFiles/rclip.msi build-msi/rclip-SetupFiles/rclip-${{ github.ref_name }}.msi
       - uses: actions/upload-artifact@v3
         with:
