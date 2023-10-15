@@ -38,7 +38,6 @@ release:
 	poetry version $(VERSION)
 	$(SED) -i "s/version: .*/version: $$(poetry version -s)/" snap/snapcraft.yaml
 	$(SED) -i "s/source: .*/source: .\/snap\/local\/rclip-$$(poetry version -s).tar.gz/" snap/snapcraft.yaml
-	$(SED) -i "s/#define MyAppVersion .*/#define MyAppVersion \"$$(poetry version -s)\"/" release-utils/windows/build-installer.iss
 	git commit -am "release: v$$(poetry version -s)"
 	git push origin $$(git branch --show-current)
 	git tag v$$(poetry version -s)
