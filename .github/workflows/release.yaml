@@ -147,17 +147,18 @@ jobs:
           poetry install
           poetry run pip install pyinstaller==5.13.2
       - run: make build-windows
-      - name: Install InnoSetup
-        run: |
-          Invoke-WebRequest -URI https://files.jrsoftware.org/is/6/innosetup-6.2.2.exe -OutFile is.exe
-          ./is.exe /VERYSILENT
+      - name: Install Advinst
+        uses: caphyon/advinst-github-action@main
+        with:
+          advinst-version: '21.1'
+          advinst-enable-automation: 'true'
       - run: |
-          & "C:/Program Files (x86)/Inno Setup 6/ISCC.exe" ./release-utils/windows/build-installer.iss
-          mv release-utils/windows/Output/rclip.exe release-utils/windows/Output/rclip-${{ github.ref_name }}-installer.exe
+          & ./release-utils/windows/build-msi.ps1 "v1.2.3"
+          mv build-msi/rclip-SetupFiles/rclip.msi build-msi/rclip-SetupFiles/rclip-${{ github.ref_name }}.msi
       - uses: actions/upload-artifact@v3
         with:
           name: windows
-          path: release-utils/windows/Output/rclip-*.exe
+          path: build-msi/rclip-SetupFiles/rclip-*.msi
           if-no-files-found: error
 
   create_release:
@@ -178,7 +179,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           name: ${{ github.ref_name }}
-          artifacts: artifacts/pypi/rclip-*,artifacts/snap/rclip_*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows/rclip-*.exe
+          artifacts: artifacts/pypi/rclip-*,artifacts/snap/rclip_*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows/rclip-*.msi
           bodyFile: release_changelog.txt
           prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
           token: ${{ secrets.GITHUB_TOKEN }}
