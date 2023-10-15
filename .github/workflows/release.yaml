@@ -137,7 +137,7 @@ jobs:
 
   windows:
     needs: [parse_tag, validate]
-    # if: needs.parse_tag.outputs.is_stable_version == 'true'
+    if: needs.parse_tag.outputs.is_stable_version == 'true'
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v3
@@ -157,8 +157,7 @@ jobs:
           advinst-version: '21.1'
           advinst-enable-automation: 'true'
       - run: |
-          # & ./release-utils/windows/build-msi.ps1 "${{ needs.parse_tag.outputs.version }}"
-          & ./release-utils/windows/build-msi.ps1 "1.6.8"
+          & ./release-utils/windows/build-msi.ps1 "${{ needs.parse_tag.outputs.version }}"
           mv build-msi/rclip-SetupFiles/rclip.msi build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi
       - uses: actions/upload-artifact@v3
         with:
