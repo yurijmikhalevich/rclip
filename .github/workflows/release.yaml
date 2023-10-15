@@ -17,7 +17,7 @@ jobs:
       - id: parse
         run: |
           echo "is_stable_version=$([[ $GITHUB_REF =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo true || echo false)" >> $GITHUB_OUTPUT
-          echo "version=${GITHUB_REF:1}" >> $GITHUB_OUTPUT
+          echo "version=$(echo $GITHUB_REF | cut -c2-)" >> $GITHUB_OUTPUT
 
   pypi:
     needs: validate
@@ -167,8 +167,13 @@ jobs:
 
   create_release:
     needs: [pypi, snap, appimage, windows, parse_tag]
+    # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
     steps:
+      # if any of the needs jobs fail, we don't want to create a release
+      # this is needed because of `if: ${{ !cancelled() }}` above
+      - if: ${{ contains(needs.*.result, 'failure') }}
       - uses: actions/checkout@v3
       - uses: actions/download-artifact@v3
         with:
