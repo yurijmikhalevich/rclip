@@ -15,7 +15,9 @@ jobs:
       is_stable_version: ${{ steps.parse.outputs.is_stable_version }}
     steps:
       - id: parse
-        run: echo "is_stable_version=$([[ $GITHUB_REF =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo true || echo false)" >> $GITHUB_OUTPUT
+        run: |
+          echo "is_stable_version=$([[ $GITHUB_REF =~ ^refs\/tags\/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo true || echo false)" >> $GITHUB_OUTPUT
+          echo "version=${GITHUB_REF:1}" >> $GITHUB_OUTPUT
 
   pypi:
     needs: validate
@@ -133,7 +135,8 @@ jobs:
           if-no-files-found: error
 
   windows:
-    needs: validate
+    needs: [parse_tag, validate]
+    # if: needs.parse_tag.outputs.is_stable_version == 'true'
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v3
@@ -153,8 +156,9 @@ jobs:
           advinst-version: '21.1'
           advinst-enable-automation: 'true'
       - run: |
-          & ./release-utils/windows/build-msi.ps1 "1.6.7"
-          mv build-msi/rclip-SetupFiles/rclip.msi build-msi/rclip-SetupFiles/rclip-${{ github.ref_name }}.msi
+          # & ./release-utils/windows/build-msi.ps1 "${{ needs.parse_tag.outputs.version }}"
+          & ./release-utils/windows/build-msi.ps1 "1.6.8"
+          mv build-msi/rclip-SetupFiles/rclip.msi build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi
       - uses: actions/upload-artifact@v3
         with:
           name: windows
