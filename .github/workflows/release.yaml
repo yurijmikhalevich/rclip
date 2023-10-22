@@ -98,11 +98,6 @@ jobs:
         run: |
           sudo snap install rclip_*_amd64.snap --dangerous
           rclip cat
-      - uses: actions/upload-artifact@v3
-        with:
-          name: snap
-          path: rclip_*.snap
-          if-no-files-found: error
       - name: Upload snaps to the beta channel
         run: |
           for snap in *.snap; do
@@ -115,9 +110,19 @@ jobs:
         run: snapcraft promote --from-channel=beta --to-channel=stable --yes rclip
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
+      - name: Rename snaps for GitHub releases page
+        run: |
+          for snap in *.snap; do
+            mv "$snap" "${snap//_/-}"
+          done
+      - uses: actions/upload-artifact@v3
+        with:
+          name: snap
+          path: rclip_*.snap
+          if-no-files-found: error
 
   appimage:
-    needs: validate
+    needs: [parse_tag, validate]
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
@@ -128,7 +133,9 @@ jobs:
         with:
           recipe: './release-utils/appimage/appimage-builder.yml'
         env:
-          APP_VERSION: ${{ github.ref_name }}
+          APP_VERSION: ${{ needs.parse_tag.outputs.version }}
+      - name: Rename AppImage for GitHub releases page
+        run: mv rclip-${{ needs.parse_tag.outputs.version }}-x86_64.AppImage rclip-${{ needs.parse_tag.outputs.version }}-amd64.AppImage
       - uses: actions/upload-artifact@v3
         with:
           name: appimage
