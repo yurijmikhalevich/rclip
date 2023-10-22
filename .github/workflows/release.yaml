@@ -191,7 +191,7 @@ jobs:
           git fetch --unshallow
           PREVIOUS_TAG="$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1))"
           CHANGELOG="$(git --no-pager log --pretty="format:- %s" $PREVIOUS_TAG..$GITHUB_REF_NAME)"
-          echo $CHANGELOG > release_changelog.txt
+          echo ${CHANGELOG//\\n//\\r\\n} > release_changelog.txt
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
