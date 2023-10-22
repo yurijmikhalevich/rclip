@@ -118,7 +118,7 @@ jobs:
       - uses: actions/upload-artifact@v3
         with:
           name: snap
-          path: rclip_*.snap
+          path: rclip-*.snap
           if-no-files-found: error
 
   appimage:
@@ -173,7 +173,7 @@ jobs:
           if-no-files-found: error
 
   create_release:
-    needs: [pypi, snap, appimage, windows, parse_tag]
+    needs: [parse_tag, pypi, snap, appimage, windows]
     # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
     if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
