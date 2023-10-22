@@ -191,12 +191,15 @@ jobs:
           git fetch --unshallow
           PREVIOUS_TAG="$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1))"
           CHANGELOG="$(git --no-pager log --pretty="format:- %s" $PREVIOUS_TAG..$GITHUB_REF_NAME)"
-          echo ${CHANGELOG//\\n//\\r\\n} > release_changelog.txt
+          CHANGELOG="${CHANGELOG//'%'/'%25'}"
+          CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
+          CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
+          echo $CHANGELOG > release_changelog.txt
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
           name: ${{ github.ref_name }}
-          artifacts: artifacts/pypi/rclip-*,artifacts/snap/rclip_*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows/rclip-*.msi
+          artifacts: artifacts/pypi/rclip-*,artifacts/snap/rclip-*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows/rclip-*.msi
           bodyFile: release_changelog.txt
           prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
           token: ${{ secrets.GITHUB_TOKEN }}
