@@ -154,6 +154,8 @@ def is_mps_available() -> bool:
   if not torch.backends.mps.is_available():
     return False
   try:
+    # on some systems, specifically in GHA
+    # torch.backends.mps.is_available() returns True, but using the mps backend fails
     torch.ones(1, device='mps')
     return True
   except RuntimeError:
