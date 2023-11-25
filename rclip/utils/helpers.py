@@ -141,11 +141,26 @@ def init_arg_parser() -> argparse.ArgumentParser:
     ' WARNING: the default will be removed in v2'
   )
   if IS_MACOS:
-    import torch.backends.mps
-    if torch.backends.mps.is_available():
+    if is_mps_available():
       parser.add_argument('--device', '-d', default='mps', choices=['cpu', 'mps'],
                           help='device to run on; default: mps')
   return parser
+
+
+def is_mps_available() -> bool:
+  if not IS_MACOS:
+    return False
+  import torch.backends.mps
+  if not torch.backends.mps.is_available():
+    return False
+  try:
+    import torch
+    # on some systems, specifically in GHA
+    # torch.backends.mps.is_available() returns True, but using the mps backend fails
+    torch.ones(1, device='mps')
+    return True
+  except RuntimeError:
+    return False
 
 
 def remove_prefix(string: str, prefix: str) -> str:
