@@ -180,7 +180,10 @@ jobs:
         with:
           name: windows
           path: artifacts/
-      - run: ls artifacts/windows/
+      - run: ls artifacts
+      - run: |
+        sudo apt install tree
+        tree artifacts
       - run: mkdir signed
       - uses: sslcom/actions-codesigner@495997c70cca0b41b54f6756cd9d5ee594c708ac
         with:
@@ -190,7 +193,7 @@ jobs:
           credential_id: ${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }}
           totp_secret: ${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}
           file_path: ${GITHUB_WORKSPACE}/artifacts/windows/rclip-${{ needs.parse_tag.outputs.version }}.msi
-          output_path: ${GITHUB_WORKSPACE}/signed
+          output_path: signed
       - uses: actions/upload-artifact@v3
         with:
           name: windows-signed
