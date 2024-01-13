@@ -180,6 +180,7 @@ jobs:
         with:
           name: windows
           path: artifacts/
+      - run: mkdir signed
       - uses: sslcom/actions-codesigner@495997c70cca0b41b54f6756cd9d5ee594c708ac
         with:
           command: sign
@@ -188,10 +189,11 @@ jobs:
           credential_id: ${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }}
           totp_secret: ${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}
           file_path: artifacts/windows/rclip-${{ needs.parse_tag.outputs.version }}.msi
+          output_path: signed/
       - uses: actions/upload-artifact@v3
         with:
           name: windows
-          path: artifacts/windows/rclip-*.msi
+          path: signed/rclip-*.msi
           if-no-files-found: error
 
   create_release:
