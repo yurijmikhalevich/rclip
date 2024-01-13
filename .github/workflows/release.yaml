@@ -182,8 +182,8 @@ jobs:
           path: artifacts/
       - run: ls artifacts
       - run: |
-        sudo apt install tree
-        tree artifacts
+          sudo apt install tree
+          tree artifacts
       - run: mkdir signed
       - uses: sslcom/actions-codesigner@495997c70cca0b41b54f6756cd9d5ee594c708ac
         with:
