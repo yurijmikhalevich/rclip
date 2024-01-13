@@ -166,6 +166,20 @@ jobs:
       - run: |
           & ./release-utils/windows/build-msi.ps1 "${{ needs.parse_tag.outputs.version }}"
           mv build-msi/rclip-SetupFiles/rclip.msi build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi
+      - uses: actions/upload-artifact@v3
+        with:
+          name: windows
+          path: build-msi/rclip-SetupFiles/rclip-*.msi
+          if-no-files-found: error
+
+  windows_sign_msi:
+    needs: [parse_tag, windows]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: windows
+          path: artifacts/
       - uses: sslcom/actions-codesigner@495997c70cca0b41b54f6756cd9d5ee594c708ac
         with:
           command: sign
@@ -173,11 +187,11 @@ jobs:
           password: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
           credential_id: ${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }}
           totp_secret: ${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}
-          file_path: build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi
+          file_path: artifacts/windows/rclip-${{ needs.parse_tag.outputs.version }}.msi
       - uses: actions/upload-artifact@v3
         with:
           name: windows
-          path: build-msi/rclip-SetupFiles/rclip-*.msi
+          path: artifacts/windows/rclip-*.msi
           if-no-files-found: error
 
   create_release:
