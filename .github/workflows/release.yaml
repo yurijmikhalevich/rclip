@@ -43,7 +43,6 @@ jobs:
           if-no-files-found: error
       - uses: pypa/gh-action-pypi-publish@release/v1
 
-  # TODO(yurij): fix brew release
   # brew:
   #   # the Formula references the rclip package published to PyPI
   #   needs: [validate, parse_tag, pypi]
@@ -67,60 +66,60 @@ jobs:
   #       env:
   #         GITHUB_TOKEN: ${{ secrets.ZHIBOT_GITHUB_TOKEN }}
 
-  snap:
-    needs: [validate, parse_tag]
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v3
-      - name: Configure git for "snapcraft remote-build"
-        run: |
-          git config --global user.email "yurij@mikhalevi.ch"
-          git config --global user.name "Yurij Mikhalevich"
-      - name: Setup launchpad creds
-        run: |
-          mkdir -p ~/.local/share/snapcraft/provider/launchpad
-          echo "${{ secrets.LAUNCHPAD_CREDENTIALS }}" > ~/.local/share/snapcraft/provider/launchpad/credentials
-      - uses: actions/setup-python@v4
-        with:
-          python-version: 3.8
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install --upgrade poetry
-          poetry install
-      - name: Build wheel
-        run: |
-          poetry build
-          mkdir snap/local
-          cp -v dist/rclip-*.tar.gz snap/local
-      - run: sudo snap install snapcraft --classic
-      - run: snapcraft remote-build --launchpad-accept-public-upload
-      - name: Validate built snap
-        run: |
-          sudo snap install rclip_*_amd64.snap --dangerous
-          rclip cat
-      - name: Upload snaps to the beta channel
-        run: |
-          for snap in *.snap; do
-            snapcraft upload --release=beta "$snap"
-          done
-        env:
-          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
-      - name: Promote snaps to the stable channel
-        if: needs.parse_tag.outputs.is_stable_version == 'true'
-        run: snapcraft promote --from-channel=beta --to-channel=stable --yes rclip
-        env:
-          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
-      - name: Rename snaps for GitHub releases page
-        run: |
-          for snap in *.snap; do
-            mv "$snap" "${snap//_/-}"
-          done
-      - uses: actions/upload-artifact@v3
-        with:
-          name: snap
-          path: rclip-*.snap
-          if-no-files-found: error
+  # snap:
+  #   needs: [validate, parse_tag]
+  #   runs-on: ubuntu-20.04
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - name: Configure git for "snapcraft remote-build"
+  #       run: |
+  #         git config --global user.email "yurij@mikhalevi.ch"
+  #         git config --global user.name "Yurij Mikhalevich"
+  #     - name: Setup launchpad creds
+  #       run: |
+  #         mkdir -p ~/.local/share/snapcraft/provider/launchpad
+  #         echo "${{ secrets.LAUNCHPAD_CREDENTIALS }}" > ~/.local/share/snapcraft/provider/launchpad/credentials
+  #     - uses: actions/setup-python@v4
+  #       with:
+  #         python-version: 3.8
+  #     - name: Install dependencies
+  #       run: |
+  #         python -m pip install --upgrade pip
+  #         pip install --upgrade poetry
+  #         poetry install
+  #     - name: Build wheel
+  #       run: |
+  #         poetry build
+  #         mkdir snap/local
+  #         cp -v dist/rclip-*.tar.gz snap/local
+  #     - run: sudo snap install snapcraft --classic
+  #     - run: snapcraft remote-build --launchpad-accept-public-upload
+  #     - name: Validate built snap
+  #       run: |
+  #         sudo snap install rclip_*_amd64.snap --dangerous
+  #         rclip cat
+  #     - name: Upload snaps to the beta channel
+  #       run: |
+  #         for snap in *.snap; do
+  #           snapcraft upload --release=beta "$snap"
+  #         done
+  #       env:
+  #         SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
+  #     - name: Promote snaps to the stable channel
+  #       if: needs.parse_tag.outputs.is_stable_version == 'true'
+  #       run: snapcraft promote --from-channel=beta --to-channel=stable --yes rclip
+  #       env:
+  #         SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
+  #     - name: Rename snaps for GitHub releases page
+  #       run: |
+  #         for snap in *.snap; do
+  #           mv "$snap" "${snap//_/-}"
+  #         done
+  #     - uses: actions/upload-artifact@v3
+  #       with:
+  #         name: snap
+  #         path: rclip-*.snap
+  #         if-no-files-found: error
 
   appimage:
     needs: [parse_tag, validate]
@@ -181,6 +180,7 @@ jobs:
         with:
           name: windows
           path: artifacts/
+      - run: ls artifacts/windows/
       - run: mkdir signed
       - uses: sslcom/actions-codesigner@495997c70cca0b41b54f6756cd9d5ee594c708ac
         with:
@@ -189,39 +189,39 @@ jobs:
           password: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
           credential_id: ${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }}
           totp_secret: ${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}
-          file_path: artifacts/windows/rclip-${{ needs.parse_tag.outputs.version }}.msi
-          output_path: signed/
+          file_path: ${GITHUB_WORKSPACE}/artifacts/windows/rclip-${{ needs.parse_tag.outputs.version }}.msi
+          output_path: ${GITHUB_WORKSPACE}/signed
       - uses: actions/upload-artifact@v3
         with:
           name: windows-signed
           path: signed/rclip-*.msi
           if-no-files-found: error
 
-  create_release:
-    needs: [parse_tag, pypi, snap, appimage, windows_sign_msi]
-    # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-22.04
-    steps:
-      # if any of the needs jobs fail, we don't want to create a release
-      # this is needed because of `if: ${{ !cancelled() }}` above
-      - if: ${{ contains(needs.*.result, 'failure') }}
-        run: exit 1
-      - uses: actions/checkout@v3
-      - uses: actions/download-artifact@v3
-        with:
-          path: artifacts/
-      - name: Generate Changelog
-        run: |
-          git fetch --unshallow
-          PREVIOUS_TAG="$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1))"
-          CHANGELOG="$(git --no-pager log --pretty="format:- %s" $PREVIOUS_TAG..$GITHUB_REF_NAME)"
-          echo $CHANGELOG > release_changelog.txt
-      - name: Create Release
-        uses: ncipollo/release-action@v1
-        with:
-          name: ${{ github.ref_name }}
-          artifacts: artifacts/pypi/rclip-*,artifacts/snap/rclip-*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows-signed/rclip-*.msi
-          bodyFile: release_changelog.txt
-          prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+  # create_release:
+  #   needs: [parse_tag, pypi, snap, appimage, windows_sign_msi]
+  #   # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
+  #   if: ${{ !cancelled() }}
+  #   runs-on: ubuntu-22.04
+  #   steps:
+  #     # if any of the needs jobs fail, we don't want to create a release
+  #     # this is needed because of `if: ${{ !cancelled() }}` above
+  #     - if: ${{ contains(needs.*.result, 'failure') }}
+  #       run: exit 1
+  #     - uses: actions/checkout@v3
+  #     - uses: actions/download-artifact@v3
+  #       with:
+  #         path: artifacts/
+  #     - name: Generate Changelog
+  #       run: |
+  #         git fetch --unshallow
+  #         PREVIOUS_TAG="$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1))"
+  #         CHANGELOG="$(git --no-pager log --pretty="format:- %s" $PREVIOUS_TAG..$GITHUB_REF_NAME)"
+  #         echo $CHANGELOG > release_changelog.txt
+  #     - name: Create Release
+  #       uses: ncipollo/release-action@v1
+  #       with:
+  #         name: ${{ github.ref_name }}
+  #         artifacts: artifacts/pypi/rclip-*,artifacts/snap/rclip-*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows-signed/rclip-*.msi
+  #         bodyFile: release_changelog.txt
+  #         prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
+  #         token: ${{ secrets.GITHUB_TOKEN }}
