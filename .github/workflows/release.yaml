@@ -188,8 +188,9 @@ jobs:
           password: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
           credential_id: ${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }}
           totp_secret: ${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}
-          file_path: artifacts/rclip-${{ needs.parse_tag.outputs.version }}.msi
-          output_path: signed
+          file_path: ${GITHUB_WORKSPACE}/artifacts/rclip-${{ needs.parse_tag.outputs.version }}.msi
+          output_path: ${GITHUB_WORKSPACE}/signed
+      - run: ls signed
       - uses: actions/upload-artifact@v3
         with:
           name: windows-signed
