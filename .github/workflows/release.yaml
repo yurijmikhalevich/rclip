@@ -43,28 +43,29 @@ jobs:
           if-no-files-found: error
       - uses: pypa/gh-action-pypi-publish@release/v1
 
-  brew:
-    # the Formula references the rclip package published to PyPI
-    needs: [validate, parse_tag, pypi]
-    if: needs.parse_tag.outputs.is_stable_version == 'true'
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: 3.8
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install --upgrade poetry
-          poetry install
-      - name: Setup git
-        run: |
-          git config --global user.email "zhibot.gh@gmail.com"
-          git config --global user.name "Zhi Bot"
-      - run: make release-brew
-        env:
-          GITHUB_TOKEN: ${{ secrets.ZHIBOT_GITHUB_TOKEN }}
+  # TODO(yurij): fix brew release
+  # brew:
+  #   # the Formula references the rclip package published to PyPI
+  #   needs: [validate, parse_tag, pypi]
+  #   if: needs.parse_tag.outputs.is_stable_version == 'true'
+  #   runs-on: ubuntu-22.04
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - uses: actions/setup-python@v4
+  #       with:
+  #         python-version: 3.8
+  #     - name: Install dependencies
+  #       run: |
+  #         python -m pip install --upgrade pip
+  #         pip install --upgrade poetry
+  #         poetry install
+  #     - name: Setup git
+  #       run: |
+  #         git config --global user.email "zhibot.gh@gmail.com"
+  #         git config --global user.name "Zhi Bot"
+  #     - run: make release-brew
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.ZHIBOT_GITHUB_TOKEN }}
 
   snap:
     needs: [validate, parse_tag]
@@ -192,7 +193,7 @@ jobs:
           output_path: signed/
       - uses: actions/upload-artifact@v3
         with:
-          name: windows
+          name: windows-signed
           path: signed/rclip-*.msi
           if-no-files-found: error
 
@@ -220,7 +221,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           name: ${{ github.ref_name }}
-          artifacts: artifacts/pypi/rclip-*,artifacts/snap/rclip-*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows/rclip-*.msi
+          artifacts: artifacts/pypi/rclip-*,artifacts/snap/rclip-*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows-signed/rclip-*.msi
           bodyFile: release_changelog.txt
           prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
           token: ${{ secrets.GITHUB_TOKEN }}
