@@ -195,7 +195,7 @@ jobs:
           if-no-files-found: error
 
   create_release:
-    needs: [parse_tag, pypi, snap, appimage, windows]
+    needs: [parse_tag, pypi, snap, appimage, windows_sign_msi]
     # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
     if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
