@@ -166,18 +166,18 @@ jobs:
       - run: |
           & ./release-utils/windows/build-msi.ps1 "${{ needs.parse_tag.outputs.version }}"
           mv build-msi/rclip-SetupFiles/rclip.msi build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi
-      - uses: sslcom/actions-codesigner@495997c70cca0b41b54f6756cd9d5ee594c708ac
-        with:
-          command: sign
-          username: ${{ secrets.WINDOWS_SIGNING_USERNAME }}
-          password: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
-          credential_id: ${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }}
-          totp_secret: ${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}
-          file_path: build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi
+      - name: Sign MSI
+        run: |
+          mkdir signed
+          Invoke-WebRequest -URI https://ee2cc1f8.rocketcdn.me/wp-content/uploads/2023/11/CodeSignTool-v1.2.7-windows.zip -OutFile CodeSignTool.zip
+          if ( ( Get-FileHash -Algorithm SHA256 CodeSignTool.zip ).Hash -ne 'AC9CDBFF6D482DBC1107ABC8789570F57ECF85773332BBA466CB3E00CE0BB841' ) { throw 'hash does not match' }
+          Expand-Archive -Path CodeSignTool.zip -DestinationPath .
+          cd CodeSignTool-v1.2.7-windows
+          & ./CodeSignTool.bat sign -input_file_path="${env:GITHUB_WORKSPACE}/build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi" -username=${{ secrets.WINDOWS_SIGNING_USERNAME }} -credential_id='${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }}' -password='${{ secrets.WINDOWS_SIGNING_PASSWORD }}' -totp_secret='${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}' -output_dir_path="${env:GITHUB_WORKSPACE}/signed"
       - uses: actions/upload-artifact@v3
         with:
           name: windows
-          path: build-msi/rclip-SetupFiles/rclip-*.msi
+          path: signed/rclip-*.msi
           if-no-files-found: error
 
   create_release:
