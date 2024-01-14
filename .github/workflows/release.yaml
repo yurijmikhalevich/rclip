@@ -43,104 +43,104 @@ jobs:
           if-no-files-found: error
       - uses: pypa/gh-action-pypi-publish@release/v1
 
-  # brew:
-  #   # the Formula references the rclip package published to PyPI
-  #   needs: [validate, parse_tag, pypi]
-  #   if: needs.parse_tag.outputs.is_stable_version == 'true'
-  #   runs-on: ubuntu-22.04
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - uses: actions/setup-python@v4
-  #       with:
-  #         python-version: 3.8
-  #     - name: Install dependencies
-  #       run: |
-  #         python -m pip install --upgrade pip
-  #         pip install --upgrade poetry
-  #         poetry install
-  #     - name: Setup git
-  #       run: |
-  #         git config --global user.email "zhibot.gh@gmail.com"
-  #         git config --global user.name "Zhi Bot"
-  #     - run: make release-brew
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.ZHIBOT_GITHUB_TOKEN }}
+  brew:
+    # the Formula references the rclip package published to PyPI
+    needs: [validate, parse_tag, pypi]
+    if: needs.parse_tag.outputs.is_stable_version == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.8
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade poetry
+          poetry install
+      - name: Setup git
+        run: |
+          git config --global user.email "zhibot.gh@gmail.com"
+          git config --global user.name "Zhi Bot"
+      - run: make release-brew
+        env:
+          GITHUB_TOKEN: ${{ secrets.ZHIBOT_GITHUB_TOKEN }}
 
-  # snap:
-  #   needs: [validate, parse_tag]
-  #   runs-on: ubuntu-20.04
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - name: Configure git for "snapcraft remote-build"
-  #       run: |
-  #         git config --global user.email "yurij@mikhalevi.ch"
-  #         git config --global user.name "Yurij Mikhalevich"
-  #     - name: Setup launchpad creds
-  #       run: |
-  #         mkdir -p ~/.local/share/snapcraft/provider/launchpad
-  #         echo "${{ secrets.LAUNCHPAD_CREDENTIALS }}" > ~/.local/share/snapcraft/provider/launchpad/credentials
-  #     - uses: actions/setup-python@v4
-  #       with:
-  #         python-version: 3.8
-  #     - name: Install dependencies
-  #       run: |
-  #         python -m pip install --upgrade pip
-  #         pip install --upgrade poetry
-  #         poetry install
-  #     - name: Build wheel
-  #       run: |
-  #         poetry build
-  #         mkdir snap/local
-  #         cp -v dist/rclip-*.tar.gz snap/local
-  #     - run: sudo snap install snapcraft --classic
-  #     - run: snapcraft remote-build --launchpad-accept-public-upload
-  #     - name: Validate built snap
-  #       run: |
-  #         sudo snap install rclip_*_amd64.snap --dangerous
-  #         rclip cat
-  #     - name: Upload snaps to the beta channel
-  #       run: |
-  #         for snap in *.snap; do
-  #           snapcraft upload --release=beta "$snap"
-  #         done
-  #       env:
-  #         SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
-  #     - name: Promote snaps to the stable channel
-  #       if: needs.parse_tag.outputs.is_stable_version == 'true'
-  #       run: snapcraft promote --from-channel=beta --to-channel=stable --yes rclip
-  #       env:
-  #         SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
-  #     - name: Rename snaps for GitHub releases page
-  #       run: |
-  #         for snap in *.snap; do
-  #           mv "$snap" "${snap//_/-}"
-  #         done
-  #     - uses: actions/upload-artifact@v3
-  #       with:
-  #         name: snap
-  #         path: rclip-*.snap
-  #         if-no-files-found: error
+  snap:
+    needs: [validate, parse_tag]
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+      - name: Configure git for "snapcraft remote-build"
+        run: |
+          git config --global user.email "yurij@mikhalevi.ch"
+          git config --global user.name "Yurij Mikhalevich"
+      - name: Setup launchpad creds
+        run: |
+          mkdir -p ~/.local/share/snapcraft/provider/launchpad
+          echo "${{ secrets.LAUNCHPAD_CREDENTIALS }}" > ~/.local/share/snapcraft/provider/launchpad/credentials
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.8
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade poetry
+          poetry install
+      - name: Build wheel
+        run: |
+          poetry build
+          mkdir snap/local
+          cp -v dist/rclip-*.tar.gz snap/local
+      - run: sudo snap install snapcraft --classic
+      - run: snapcraft remote-build --launchpad-accept-public-upload
+      - name: Validate built snap
+        run: |
+          sudo snap install rclip_*_amd64.snap --dangerous
+          rclip cat
+      - name: Upload snaps to the beta channel
+        run: |
+          for snap in *.snap; do
+            snapcraft upload --release=beta "$snap"
+          done
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
+      - name: Promote snaps to the stable channel
+        if: needs.parse_tag.outputs.is_stable_version == 'true'
+        run: snapcraft promote --from-channel=beta --to-channel=stable --yes rclip
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
+      - name: Rename snaps for GitHub releases page
+        run: |
+          for snap in *.snap; do
+            mv "$snap" "${snap//_/-}"
+          done
+      - uses: actions/upload-artifact@v3
+        with:
+          name: snap
+          path: rclip-*.snap
+          if-no-files-found: error
 
-  # appimage:
-  #   needs: [parse_tag, validate]
-  #   runs-on: ubuntu-20.04
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - name: Set up APPDIR for after_bundle
-  #       run: echo "APPDIR=$PWD/AppDir" >> $GITHUB_ENV
-  #     - name: Build AppImage
-  #       uses: AppImageCrafters/build-appimage@v1.3
-  #       with:
-  #         recipe: './release-utils/appimage/appimage-builder.yml'
-  #       env:
-  #         APP_VERSION: ${{ needs.parse_tag.outputs.version }}
-  #     - name: Rename AppImage for GitHub releases page
-  #       run: mv rclip-${{ needs.parse_tag.outputs.version }}-x86_64.AppImage rclip-${{ needs.parse_tag.outputs.version }}-amd64.AppImage
-  #     - uses: actions/upload-artifact@v3
-  #       with:
-  #         name: appimage
-  #         path: rclip-*.AppImage
-  #         if-no-files-found: error
+  appimage:
+    needs: [parse_tag, validate]
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up APPDIR for after_bundle
+        run: echo "APPDIR=$PWD/AppDir" >> $GITHUB_ENV
+      - name: Build AppImage
+        uses: AppImageCrafters/build-appimage@v1.3
+        with:
+          recipe: './release-utils/appimage/appimage-builder.yml'
+        env:
+          APP_VERSION: ${{ needs.parse_tag.outputs.version }}
+      - name: Rename AppImage for GitHub releases page
+        run: mv rclip-${{ needs.parse_tag.outputs.version }}-x86_64.AppImage rclip-${{ needs.parse_tag.outputs.version }}-amd64.AppImage
+      - uses: actions/upload-artifact@v3
+        with:
+          name: appimage
+          path: rclip-*.AppImage
+          if-no-files-found: error
 
   windows:
     needs: [parse_tag, validate]
@@ -173,38 +173,38 @@ jobs:
           if ( ( Get-FileHash -Algorithm SHA256 CodeSignTool.zip ).Hash -ne 'AC9CDBFF6D482DBC1107ABC8789570F57ECF85773332BBA466CB3E00CE0BB841' ) { throw 'hash does not match' }
           Expand-Archive -Path CodeSignTool.zip -DestinationPath .
           cd CodeSignTool-v1.2.7-windows
-          & ./CodeSignTool.bat sign sign -credential_id='${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }}' -username=${{ secrets.WINDOWS_SIGNING_USERNAME }} -password='${{ secrets.WINDOWS_SIGNING_PASSWORD }}' -totp_secret='${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}' -input_file_path="${env:GITHUB_WORKSPACE}/build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi" -output_dir_path="${env:GITHUB_WORKSPACE}/signed"
+          & ./CodeSignTool.bat sign -input_file_path="${env:GITHUB_WORKSPACE}/build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi" -username=${{ secrets.WINDOWS_SIGNING_USERNAME }} -credential_id='${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }}' -password='${{ secrets.WINDOWS_SIGNING_PASSWORD }}' -totp_secret='${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}' -output_dir_path="${env:GITHUB_WORKSPACE}/signed"
       - uses: actions/upload-artifact@v3
         with:
           name: windows
           path: signed/rclip-*.msi
           if-no-files-found: error
 
-  # create_release:
-  #   needs: [parse_tag, pypi, snap, appimage, windows]
-  #   # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
-  #   if: ${{ !cancelled() }}
-  #   runs-on: ubuntu-22.04
-  #   steps:
-  #     # if any of the needs jobs fail, we don't want to create a release
-  #     # this is needed because of `if: ${{ !cancelled() }}` above
-  #     - if: ${{ contains(needs.*.result, 'failure') }}
-  #       run: exit 1
-  #     - uses: actions/checkout@v3
-  #     - uses: actions/download-artifact@v3
-  #       with:
-  #         path: artifacts/
-  #     - name: Generate Changelog
-  #       run: |
-  #         git fetch --unshallow
-  #         PREVIOUS_TAG="$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1))"
-  #         CHANGELOG="$(git --no-pager log --pretty="format:- %s" $PREVIOUS_TAG..$GITHUB_REF_NAME)"
-  #         echo $CHANGELOG > release_changelog.txt
-  #     - name: Create Release
-  #       uses: ncipollo/release-action@v1
-  #       with:
-  #         name: ${{ github.ref_name }}
-  #         artifacts: artifacts/pypi/rclip-*,artifacts/snap/rclip-*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows-signed/rclip-*.msi
-  #         bodyFile: release_changelog.txt
-  #         prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
-  #         token: ${{ secrets.GITHUB_TOKEN }}
+  create_release:
+    needs: [parse_tag, pypi, snap, appimage, windows]
+    # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-22.04
+    steps:
+      # if any of the needs jobs fail, we don't want to create a release
+      # this is needed because of `if: ${{ !cancelled() }}` above
+      - if: ${{ contains(needs.*.result, 'failure') }}
+        run: exit 1
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
+        with:
+          path: artifacts/
+      - name: Generate Changelog
+        run: |
+          git fetch --unshallow
+          PREVIOUS_TAG="$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1))"
+          CHANGELOG="$(git --no-pager log --pretty="format:- %s" $PREVIOUS_TAG..$GITHUB_REF_NAME)"
+          echo $CHANGELOG > release_changelog.txt
+      - name: Create Release
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ github.ref_name }}
+          artifacts: artifacts/pypi/rclip-*,artifacts/snap/rclip-*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows-signed/rclip-*.msi
+          bodyFile: release_changelog.txt
+          prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
+          token: ${{ secrets.GITHUB_TOKEN }}
