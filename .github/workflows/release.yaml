@@ -204,7 +204,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           name: ${{ github.ref_name }}
-          artifacts: artifacts/pypi/rclip-*,artifacts/snap/rclip-*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows-signed/rclip-*.msi
+          artifacts: artifacts/pypi/rclip-*,artifacts/snap/rclip-*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows/rclip-*.msi
           bodyFile: release_changelog.txt
           prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
           token: ${{ secrets.GITHUB_TOKEN }}
