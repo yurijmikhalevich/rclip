@@ -121,26 +121,26 @@ jobs:
   #         path: rclip-*.snap
   #         if-no-files-found: error
 
-  appimage:
-    needs: [parse_tag, validate]
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up APPDIR for after_bundle
-        run: echo "APPDIR=$PWD/AppDir" >> $GITHUB_ENV
-      - name: Build AppImage
-        uses: AppImageCrafters/build-appimage@v1.3
-        with:
-          recipe: './release-utils/appimage/appimage-builder.yml'
-        env:
-          APP_VERSION: ${{ needs.parse_tag.outputs.version }}
-      - name: Rename AppImage for GitHub releases page
-        run: mv rclip-${{ needs.parse_tag.outputs.version }}-x86_64.AppImage rclip-${{ needs.parse_tag.outputs.version }}-amd64.AppImage
-      - uses: actions/upload-artifact@v3
-        with:
-          name: appimage
-          path: rclip-*.AppImage
-          if-no-files-found: error
+  # appimage:
+  #   needs: [parse_tag, validate]
+  #   runs-on: ubuntu-20.04
+  #   steps:
+  #     - uses: actions/checkout@v3
+  #     - name: Set up APPDIR for after_bundle
+  #       run: echo "APPDIR=$PWD/AppDir" >> $GITHUB_ENV
+  #     - name: Build AppImage
+  #       uses: AppImageCrafters/build-appimage@v1.3
+  #       with:
+  #         recipe: './release-utils/appimage/appimage-builder.yml'
+  #       env:
+  #         APP_VERSION: ${{ needs.parse_tag.outputs.version }}
+  #     - name: Rename AppImage for GitHub releases page
+  #       run: mv rclip-${{ needs.parse_tag.outputs.version }}-x86_64.AppImage rclip-${{ needs.parse_tag.outputs.version }}-amd64.AppImage
+  #     - uses: actions/upload-artifact@v3
+  #       with:
+  #         name: appimage
+  #         path: rclip-*.AppImage
+  #         if-no-files-found: error
 
   windows:
     needs: [parse_tag, validate]
@@ -166,39 +166,22 @@ jobs:
       - run: |
           & ./release-utils/windows/build-msi.ps1 "${{ needs.parse_tag.outputs.version }}"
           mv build-msi/rclip-SetupFiles/rclip.msi build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi
+      - name: Sign MSI
+        run: |
+          mkdir signed
+          Invoke-WebRequest -URI https://ee2cc1f8.rocketcdn.me/wp-content/uploads/2023/11/CodeSignTool-v1.2.7-windows.zip -OutFile CodeSignTool.zip
+          if ( ( Get-FileHash -Algorithm SHA256 CodeSignTool.zip ).Hash -ne 'AC9CDBFF6D482DBC1107ABC8789570F57ECF85773332BBA466CB3E00CE0BB841-broken' ) { throw 'hash does not match' }
+          Expand-Archive -Path CodeSignTool.zip -DestinationPath .
+          cd CodeSignTool-v1.2.7-windows
+          & ./CodeSignTool.bat sign -username=${{ secrets.WINDOWS_SIGNING_USERNAME }} -password=${{ secrets.WINDOWS_SIGNING_PASSWORD }} -credential-id=${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }} -totp-secret=${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }} -file-path=${GITHUB_WORKSPACE}/build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi -output-path=${GITHUB_WORKSPACE}/signed
       - uses: actions/upload-artifact@v3
         with:
           name: windows
-          path: build-msi/rclip-SetupFiles/rclip-*.msi
-          if-no-files-found: error
-
-  windows_sign_msi:
-    needs: [parse_tag, windows]
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/download-artifact@v3
-        with:
-          name: windows
-          path: artifacts/
-      - run: mkdir signed
-      - uses: sslcom/actions-codesigner@495997c70cca0b41b54f6756cd9d5ee594c708ac
-        with:
-          command: sign
-          username: ${{ secrets.WINDOWS_SIGNING_USERNAME }}
-          password: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
-          credential_id: ${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }}
-          totp_secret: ${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}
-          file_path: ${GITHUB_WORKSPACE}/artifacts/rclip-${{ needs.parse_tag.outputs.version }}.msi
-          output_path: ${GITHUB_WORKSPACE}/signed
-      - run: ls signed
-      - uses: actions/upload-artifact@v3
-        with:
-          name: windows-signed
           path: signed/rclip-*.msi
           if-no-files-found: error
 
   # create_release:
-  #   needs: [parse_tag, pypi, snap, appimage, windows_sign_msi]
+  #   needs: [parse_tag, pypi, snap, appimage, windows]
   #   # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
   #   if: ${{ !cancelled() }}
   #   runs-on: ubuntu-22.04
