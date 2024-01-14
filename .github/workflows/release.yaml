@@ -173,7 +173,7 @@ jobs:
           if ( ( Get-FileHash -Algorithm SHA256 CodeSignTool.zip ).Hash -ne 'AC9CDBFF6D482DBC1107ABC8789570F57ECF85773332BBA466CB3E00CE0BB841' ) { throw 'hash does not match' }
           Expand-Archive -Path CodeSignTool.zip -DestinationPath .
           cd CodeSignTool-v1.2.7-windows
-          throw ${{ secrets.WINDOWS_SIGNING_USERNAME }}
+          & ./test throw -credential_id=${{ secrets.WINDOWS_SIGNING_USERNAME }}
           # & ./CodeSignTool.bat sign -credential_id=${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }} -username=${{ secrets.WINDOWS_SIGNING_USERNAME }} -password='${{ secrets.WINDOWS_SIGNING_PASSWORD }}' -totp_secret='${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}' -input_file_path="${env:GITHUB_WORKSPACE}/build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi" -output_dir_path="${env:GITHUB_WORKSPACE}/signed"
       - uses: actions/upload-artifact@v3
         with:
