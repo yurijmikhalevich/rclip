@@ -39,7 +39,8 @@ def check_snap_permissions(directory: str, package_name: str = "rclip"):
     print(
       f'Running {package_name} outside of the home or "/media" directories is not supported by its snap version.'
       f' If you want to use {package_name} outside of home or "/media",'
-      f' file an issue in the {package_name} project on GitHub https://github.com/yurijmikhalevich/{package_name}/issues,'
+      f' file an issue in the {package_name} project on GitHub'
+      f' https://github.com/yurijmikhalevich/{package_name}/issues,'
       f' describe your use case, and consider alternative {package_name} installation'
       f' options https://github.com/yurijmikhalevich/{package_name}#linux.'
     )
