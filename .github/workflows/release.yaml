@@ -22,6 +22,7 @@ jobs:
 
   pypi:
     needs: validate
+    if: false
     runs-on: ubuntu-22.04
     permissions:
       id-token: write
@@ -46,7 +47,8 @@ jobs:
   brew:
     # the Formula references the rclip package published to PyPI
     needs: [validate, parse_tag, pypi]
-    if: needs.parse_tag.outputs.is_stable_version == 'true'
+    # if: needs.parse_tag.outputs.is_stable_version == 'true'
+    if: false
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
@@ -68,6 +70,7 @@ jobs:
 
   snap:
     needs: [validate, parse_tag]
+    if: false
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
@@ -144,7 +147,8 @@ jobs:
 
   windows:
     needs: [parse_tag, validate]
-    if: needs.parse_tag.outputs.is_stable_version == 'true'
+    # if: needs.parse_tag.outputs.is_stable_version == 'true'
+    if: false
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v3
@@ -183,7 +187,8 @@ jobs:
   create_release:
     needs: [parse_tag, pypi, snap, appimage, windows]
     # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
-    if: ${{ !cancelled() }}
+    # if: ${{ !cancelled() }}
+    if: false
     runs-on: ubuntu-22.04
     steps:
       # if any of the needs jobs fail, we don't want to create a release
