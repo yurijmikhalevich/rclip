@@ -181,6 +181,26 @@ class RClip:
     return filepaths, np.stack(features)
 
 
+def init_rclip(
+  working_directory: str,
+  indexing_batch_size: int,
+  device: str = "cpu",
+  exclude_dir: Optional[List[str]] = None,
+  no_indexing: bool = False,
+):
+  datadir = helpers.get_app_datadir()
+  db_path = datadir / 'db.sqlite3'
+
+  database = db.DB(db_path)
+  model_instance = model.Model(device=device or "cpu")
+  rclip = RClip(model_instance, database, indexing_batch_size, exclude_dir)
+
+  if not no_indexing:
+    rclip.ensure_index(working_directory)
+
+  return rclip, model_instance, database
+
+
 def main():
   arg_parser = helpers.init_arg_parser()
   args = arg_parser.parse_args()
@@ -189,15 +209,13 @@ def main():
   if is_snap():
     check_snap_permissions(current_directory)
 
-  datadir = helpers.get_app_datadir()
-  db_path = datadir / 'db.sqlite3'
-
-  database = db.DB(db_path)
-  model_instance = model.Model(device=vars(args).get("device", "cpu"))
-  rclip = RClip(model_instance, database, args.indexing_batch_size, args.exclude_dir)
-
-  if not args.no_indexing:
-    rclip.ensure_index(current_directory)
+  rclip, _, _ = init_rclip(
+    current_directory,
+    args.indexing_batch_size,
+    vars(args).get("device", "cpu"),
+    args.exclude_dir,
+    args.no_indexing,
+  )
 
   result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
   if args.filepath_only:
