@@ -10,7 +10,7 @@ description: |
   For a detailed demonstration, watch the video: https://www.youtube.com/watch?v=tAJHXOkHidw.
 
   You can use another image as a query by passing a file path or even an URL to the image file to **rclip** and combine multiple queries. Check out the project's README on GitHub for more usage examples: https://github.com/yurijmikhalevich/rclip#readme.
-version: 1.7.25
+version: 1.7.26a0
 website: https://github.com/yurijmikhalevich/rclip
 contact: yurij@mikhalevi.ch
 passthrough:
@@ -33,7 +33,7 @@ apps:
 parts:
   rclip:
     plugin: python
-    source: ./snap/local/rclip-1.7.25.tar.gz
+    source: ./snap/local/rclip-1.7.26a0.tar.gz
     build-packages:
       - python3-pip
     build-environment:
