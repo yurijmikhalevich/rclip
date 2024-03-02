@@ -63,8 +63,6 @@ brew install yurijmikhalevich/tap/rclip
 1. Download the "*.msi" from the latest [release](https://github.com/yurijmikhalevich/rclip/releases).
 2. Install **rclip** by running the installer.
 
-Note: if you previously installed **rclip** using the "-installer.exe" installer, you must manually uninstall the previous version.
-
 <details>
   <summary>Alternative option (<code>pip</code>)</summary>
 
