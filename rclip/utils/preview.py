@@ -24,7 +24,7 @@ def preview(filepath: str, img_height_px: int):
       width_px, height_px = img.width, img.height
     else:
       width_px, height_px = int(img_height_px * img.width / img.height), img_height_px
-    img = img.resize((width_px, height_px), Image.LANCZOS)
+    img = img.resize((width_px, height_px), Image.LANCZOS)  # type: ignore
     buffer = BytesIO()
     img.convert('RGB').save(buffer, format='JPEG')
   img_bytes = buffer.getvalue()
