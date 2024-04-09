@@ -17,9 +17,9 @@ TEMPLATE = env.from_string('''class Rclip < Formula
   sha256 "{{ package.checksum }}"
   license "MIT"
 
+  depends_on "certifi"
   depends_on "rust" => :build # for safetensors
   depends_on "libyaml"
-  depends_on "certifi"
   depends_on "numpy"
   depends_on "pillow"
   depends_on "python@3.12"
