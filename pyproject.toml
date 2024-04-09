@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "rclip"
-version = "1.7.26"
+version = "1.7.27a0"
 description = "AI-Powered Command-Line Photo Search Tool"
 authors = ["Yurij Mikhalevich <yurij@mikhalevi.ch>"]
 license = "MIT"
