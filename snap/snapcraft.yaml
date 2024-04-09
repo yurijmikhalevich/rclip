@@ -19,11 +19,7 @@ passthrough:
 grade: stable
 confinement: strict
 base: core22
-architectures:
-  - build-on: amd64
-    run-on: amd64
-  - build-on: arm64
-    run-on: arm64
+architectures: [amd64, arm64]
 
 apps:
   rclip:
