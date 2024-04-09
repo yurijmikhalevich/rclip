@@ -20,7 +20,7 @@ AppDir:
     icon: rclip
     version: !ENV ${APP_VERSION}
     # Set the python executable as entry point
-    exec: usr/bin/python3.8
+    exec: usr/bin/python3.9
     # Set the application main script path as argument. Use '$@' to forward CLI parameters
     exec_args: "${APPDIR}/usr/bin/rclip $@"
 
@@ -36,11 +36,11 @@ AppDir:
 
     include:
       - libffi7
-      - libpython3.8-minimal
-      - libpython3.8-stdlib
-      - python3.8
-      - python3.8-distutils
-      - python3.8-minimal
+      - libpython3.9-minimal
+      - libpython3.9-stdlib
+      - python3.9
+      - python3.9-distutils
+      - python3.9-minimal
       - python3-pip
     exclude: []
 
@@ -54,9 +54,9 @@ AppDir:
       PYTHONHOME: '${APPDIR}/usr'
       # Path to the site-packages dir or other modules dirs
       # See https://docs.python.org/3/using/cmdline.html#envvar-PYTHONPATH
-      PYTHONPATH: '${APPDIR}/usr/src:${APPDIR}/usr/lib/python3.8/site-packages'
+      PYTHONPATH: '${APPDIR}/usr/src:${APPDIR}/usr/lib/python3.9/site-packages'
       # SSL Certificates are placed in a different location for every system therefore we ship our own copy
-      SSL_CERT_FILE: '${APPDIR}/usr/lib/python3.8/site-packages/certifi/cacert.pem'
+      SSL_CERT_FILE: '${APPDIR}/usr/lib/python3.9/site-packages/certifi/cacert.pem'
 
   test:
     fedora:

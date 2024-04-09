@@ -18,17 +18,17 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.8 <3.12"
-open_clip_torch = "^2.20.0"
-pillow = "^10.0.0"
+python = ">=3.9 <3.13"
+open_clip_torch = "^2.24.0"
+pillow = "^10.3.0"
 requests = "~=2.26"
 torch = [
-  { version = "==2.0.1", source = "pypi", markers = "sys_platform != 'linux' or platform_machine == 'aarch64'" },
-  { version = "==2.0.1+cpu", source = "pytorch-cpu", markers = "sys_platform == 'linux' and platform_machine != 'aarch64'" }
+  { version = "==2.2.2", source = "pypi", markers = "sys_platform != 'linux' or platform_machine == 'aarch64'" },
+  { version = "==2.2.2+cpu", source = "pytorch-cpu", markers = "sys_platform == 'linux' and platform_machine != 'aarch64'" }
 ]
 torchvision = [
-  { version = "==0.15.2", source = "pypi", markers = "sys_platform != 'linux' or platform_machine == 'aarch64'" },
-  { version = "==0.15.2+cpu", source = "pytorch-cpu", markers = "sys_platform == 'linux' and platform_machine != 'aarch64'" }
+  { version = "==0.17.2", source = "pypi", markers = "sys_platform != 'linux' or platform_machine == 'aarch64'" },
+  { version = "==0.17.2+cpu", source = "pytorch-cpu", markers = "sys_platform == 'linux' and platform_machine != 'aarch64'" }
 ]
 tqdm = "^4.65.0"
 
@@ -47,7 +47,7 @@ build-backend = "poetry.core.masonry.api"
 
 [[tool.poetry.source]]
 name = "pypi"
-priority = "default"
+priority = "primary"
 
 [[tool.poetry.source]]
 name = "pytorch-cpu"
