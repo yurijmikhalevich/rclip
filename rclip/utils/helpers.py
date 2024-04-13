@@ -14,6 +14,7 @@ from rclip.const import IS_LINUX, IS_MACOS, IS_WINDOWS
 MAX_DOWNLOAD_SIZE_BYTES = 50_000_000
 DOWNLOAD_TIMEOUT_SECONDS = 60
 WIN_ABSOLUTE_FILE_PATH_REGEX = re.compile(r'^[a-z]:\\', re.I)
+DEFAULT_TERMINAL_TEXT_WIDTH = 100
 
 
 def __get_system_datadir() -> pathlib.Path:
@@ -57,9 +58,12 @@ def positive_int_arg_type(arg: str) -> int:
 
 def get_terminal_text_width() -> int:
   try:
-    return min(100, os.get_terminal_size().columns - 2)
+    computed_width = min(DEFAULT_TERMINAL_TEXT_WIDTH, os.get_terminal_size().columns - 2)
+    if computed_width < 20:
+      return DEFAULT_TERMINAL_TEXT_WIDTH
+    return computed_width
   except OSError:
-    return 100
+    return DEFAULT_TERMINAL_TEXT_WIDTH
 
 
 class HelpFormatter(argparse.RawDescriptionHelpFormatter):
