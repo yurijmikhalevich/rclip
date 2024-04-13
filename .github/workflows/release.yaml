@@ -202,9 +202,7 @@ jobs:
         run: |
           git fetch --unshallow
           PREVIOUS_TAG="$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1))"
-          git --no-pager log --pretty="format:- %s" $PREVIOUS_TAG..$GITHUB_REF_NAME
-          CHANGELOG="$(git --no-pager log --pretty="format:- %s%n" $PREVIOUS_TAG..$GITHUB_REF_NAME)"
-          echo $CHANGELOG > release_changelog.md
+          git --no-pager log --pretty="format:- %s" $PREVIOUS_TAG..$GITHUB_REF_NAME > release_changelog.md
           # sudo apt-get install -y dos2unix
           # unix2dos release_changelog.md
           cat release_changelog.md
