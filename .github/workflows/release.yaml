@@ -47,7 +47,6 @@ jobs:
   brew:
     # the Formula references the rclip package published to PyPI
     needs: [validate, parse_tag, pypi]
-    if: ${{ false }}
     if: needs.parse_tag.outputs.is_stable_version == 'true'
     runs-on: ubuntu-22.04
     steps:
@@ -126,6 +125,7 @@ jobs:
 
   appimage:
     needs: [parse_tag, validate]
+    if: ${{ false }}
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
