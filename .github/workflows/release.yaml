@@ -22,7 +22,6 @@ jobs:
 
   pypi:
     needs: validate
-    if: ${{ false }}
     runs-on: ubuntu-22.04
     permissions:
       id-token: write
@@ -69,7 +68,6 @@ jobs:
 
   snap:
     needs: [validate, parse_tag]
-    if: ${{ false }}
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
@@ -125,7 +123,6 @@ jobs:
 
   appimage:
     needs: [parse_tag, validate]
-    if: ${{ false }}
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v3
@@ -184,8 +181,7 @@ jobs:
           if-no-files-found: error
 
   create_release:
-    # needs: [parse_tag, pypi, snap, appimage, windows]
-    needs: [parse_tag]
+    needs: [parse_tag, pypi, snap, appimage, windows]
     # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
     if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
@@ -203,8 +199,6 @@ jobs:
           git fetch --unshallow
           PREVIOUS_TAG="$(git describe --abbrev=0 --tags $(git rev-list --tags --skip=1 --max-count=1))"
           git --no-pager log --pretty="format:- %s" $PREVIOUS_TAG..$GITHUB_REF_NAME > release_changelog.md
-          # sudo apt-get install -y dos2unix
-          # unix2dos release_changelog.md
           cat release_changelog.md
       - name: Create Release
         uses: ncipollo/release-action@v1
