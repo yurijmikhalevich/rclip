@@ -32,7 +32,12 @@ jobs:
     strategy:
       matrix:
         python: ['3.9', '3.10', '3.11', '3.12']
-        os: [ubuntu-22.04, macos-13, windows-2022]
+        # macos-13 is amd64, macos-14 is arm64
+        os: [ubuntu-22.04, macos-13, macos-14, windows-2022]
+        exclude:
+          # github's setup-python action can't install Python 3.9 on macos-14
+          - python: '3.9'
+            os: macos-14
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
