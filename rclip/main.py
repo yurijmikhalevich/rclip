@@ -209,7 +209,7 @@ def main():
   if is_snap():
     check_snap_permissions(current_directory)
 
-  rclip, _, _ = init_rclip(
+  rclip, _, db = init_rclip(
     current_directory,
     args.indexing_batch_size,
     vars(args).get("device", "cpu"),
@@ -217,16 +217,21 @@ def main():
     args.no_indexing,
   )
 
-  result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
-  if args.filepath_only:
-    for r in result:
-      print(r.filepath)
-  else:
-    print('score\tfilepath')
-    for r in result:
-      print(f'{r.score:.3f}\t"{r.filepath}"')
-      if args.preview:
-        preview(r.filepath, args.preview_height)
+  try:
+    result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
+    if args.filepath_only:
+      for r in result:
+        print(r.filepath)
+    else:
+      print('score\tfilepath')
+      for r in result:
+        print(f'{r.score:.3f}\t"{r.filepath}"')
+        if args.preview:
+          preview(r.filepath, args.preview_height)
+  except Exception as e:
+    raise e
+  finally:
+    db.close()
 
 
 if __name__ == '__main__':
