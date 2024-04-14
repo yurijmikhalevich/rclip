@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import sys
 import tempfile
 
@@ -24,7 +25,7 @@ def assert_output_snapshot(test_images_dir: Path, request: pytest.FixtureRequest
   yield
   out, _ = capsys.readouterr()
   snapshot_path = Path(__file__).parent / 'output_snapshots' / f'{request.node.name}.txt'
-  snapshot = out.replace(str(test_images_dir), '<test_images_dir>')
+  snapshot = out.replace(str(test_images_dir) + os.path.sep, '<test_images_dir>')
   if not snapshot_path.exists():
     snapshot_path.write_text(snapshot)
   assert snapshot == snapshot_path.read_text()

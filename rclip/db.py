@@ -28,6 +28,10 @@ class DB:
     self.ensure_tables()
     self.ensure_version()
 
+  def close(self):
+    self._con.commit()
+    self._con.close()
+
   def ensure_tables(self):
     self._con.execute('''
       CREATE TABLE IF NOT EXISTS images (
