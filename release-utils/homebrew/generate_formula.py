@@ -89,20 +89,24 @@ def compute_checksum(url: str):
 def get_deps_for_requested_rclip_version_or_die(target_version: str):
   deps = poet.make_graph('rclip')
   rclip_metadata = deps['rclip']
+  target_tarball = f'rclip-{target_version}.tar.gz'
+
+  # it takes a few seconds for a published wheel appear in PyPI
   retries_left = 5
-  while rclip_metadata['version'] != target_version:
+  while not rclip_metadata['url'].endswith(target_tarball):
     if retries_left == 0:
       print(f'Version mismatch: {rclip_metadata["version"]} != {target_version}. Exiting.', file=sys.stderr)
       sys.exit(1)
     retries_left -= 1
     print(
-      f'Version mismatch: {rclip_metadata["version"]} != {target_version}. Retrying in 10 seconds.',
+      f'Version mismatch: {rclip_metadata["url"].split('/')[-1]} != {target_tarball}. Retrying in 10 seconds.',
       file=sys.stderr,
     )
     # it takes a few seconds for a published wheel appear in PyPI
     sleep(10)
     deps = poet.make_graph('rclip')
     rclip_metadata = deps['rclip']
+
   return deps
 
 
