@@ -99,7 +99,7 @@ def get_deps_for_requested_rclip_version_or_die(target_version: str):
       sys.exit(1)
     retries_left -= 1
     print(
-      f'Version mismatch: {rclip_metadata["url"].split('/')[-1]} != {target_tarball}. Retrying in 10 seconds.',
+      f'Version mismatch: {rclip_metadata["url"].split("/")[-1]} != {target_tarball}. Retrying in 10 seconds.',
       file=sys.stderr,
     )
     # it takes a few seconds for a published wheel appear in PyPI
