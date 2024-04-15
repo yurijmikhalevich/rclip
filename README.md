@@ -11,6 +11,66 @@
 
 **rclip** is a command-line photo search tool powered by the awesome OpenAI's [CLIP](https://github.com/openai/CLIP) neural network.
 
+## Installation
+
+### Linux
+
+```bash
+sudo snap install rclip
+```
+
+<details>
+  <summary>Alternative options (AppImage and <code>pip</code>)</summary>
+
+  If your Linux distribution doesn't support [snap](https://snapcraft.io/rclip), you can use one of the alternative installation options:
+
+  #### AppImage (self-contained x86_64 executable)
+
+  On Linux x86_64, you can install **rclip** as a self-contained executable.
+
+  1. Download the AppImage from the latest [release](https://github.com/yurijmikhalevich/rclip/releases).
+
+  2. Execute the following commands:
+
+  ```bash
+  chmod +x <downloaded AppImage filename>
+  sudo mv <downloaded AppImage filename> /usr/local/bin/rclip
+  ```
+
+  #### Using <code>pip</code>
+
+  ```bash
+  pip install --extra-index-url https://download.pytorch.org/whl/cpu rclip
+  ```
+</details>
+
+### macOS
+
+```bash
+brew install yurijmikhalevich/tap/rclip
+```
+
+<details>
+  <summary>Alternative option (<code>pip</code>)</summary>
+
+  ```bash
+  pip install rclip
+  ```
+</details>
+
+### Windows
+
+1. Download the "*.msi" from the latest [release](https://github.com/yurijmikhalevich/rclip/releases).
+2. Install **rclip** by running the installer.
+
+<details>
+  <summary>Alternative option (<code>pip</code>)</summary>
+
+  ```bash
+  pip install rclip
+  ```
+</details>
+
 ## Usage
 
 ```bash
@@ -73,66 +133,6 @@ rclip -p kitty
 
   ```bash
   rclip -f -t 5 kitty | feh -f - -t
-  ```
-</details>
-
-## Installation
-
-### Linux
-
-```bash
-sudo snap install rclip
-```
-
-<details>
-  <summary>Alternative options (AppImage and <code>pip</code>)</summary>
-
-  If your Linux distribution doesn't support [snap](https://snapcraft.io/rclip), you can use one of the alternative installation options:
-
-  #### AppImage (self-contained x86_64 executable)
-
-  On Linux x86_64, you can install **rclip** as a self-contained executable.
-
-  1. Download the AppImage from the latest [release](https://github.com/yurijmikhalevich/rclip/releases).
-
-  2. Execute the following commands:
-
-  ```bash
-  chmod +x <downloaded AppImage filename>
-  sudo mv <downloaded AppImage filename> /usr/local/bin/rclip
-  ```
-
-  #### Using <code>pip</code>
-
-  ```bash
-  pip install --extra-index-url https://download.pytorch.org/whl/cpu rclip
-  ```
-</details>
-
-### macOS
-
-```bash
-brew install yurijmikhalevich/tap/rclip
-```
-
-<details>
-  <summary>Alternative option (<code>pip</code>)</summary>
-
-  ```bash
-  pip install rclip
-  ```
-</details>
-
-### Windows
-
-1. Download the "*.msi" from the latest [release](https://github.com/yurijmikhalevich/rclip/releases).
-2. Install **rclip** by running the installer.
-
-<details>
-  <summary>Alternative option (<code>pip</code>)</summary>
-
-  ```bash
-  pip install rclip
   ```
 </details>
 
