@@ -23,6 +23,7 @@ jobs:
   pypi:
     needs: validate
     runs-on: ubuntu-22.04
+    if: false
     permissions:
       id-token: write
     steps:
@@ -93,7 +94,9 @@ jobs:
           mkdir snap/local
           cp -v dist/rclip-*.tar.gz snap/local
       - run: sudo snap install snapcraft --classic
-      - run: snapcraft remote-build --launchpad-accept-public-upload
+      - run: |
+        export SNAPCRAFT_REMOTE_BUILD_STRATEGY="force-fallback"
+        snapcraft remote-build --launchpad-accept-public-upload
       - name: Validate built snap
         run: |
           sudo snap install rclip_*_amd64.snap --dangerous
@@ -124,6 +127,7 @@ jobs:
   appimage:
     needs: [parse_tag, validate]
     runs-on: ubuntu-20.04
+    if: false
     steps:
       - uses: actions/checkout@v3
       - name: Set up APPDIR for after_bundle
@@ -183,7 +187,8 @@ jobs:
   create_release:
     needs: [parse_tag, pypi, snap, appimage, windows]
     # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
-    if: ${{ !cancelled() }}
+    # if: ${{ !cancelled() }}
+    if: false
     runs-on: ubuntu-22.04
     steps:
       # if any of the needs jobs fail, we don't want to create a release
