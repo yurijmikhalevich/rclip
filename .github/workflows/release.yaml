@@ -93,7 +93,9 @@ jobs:
           mkdir snap/local
           cp -v dist/rclip-*.tar.gz snap/local
       - run: sudo snap install snapcraft --classic
-      - run: snapcraft remote-build --launchpad-accept-public-upload
+      - run: |
+          export SNAPCRAFT_REMOTE_BUILD_STRATEGY="force-fallback"
+          snapcraft remote-build --launchpad-accept-public-upload
       - name: Validate built snap
         run: |
           sudo snap install rclip_*_amd64.snap --dangerous
