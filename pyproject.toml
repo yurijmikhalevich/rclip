@@ -21,7 +21,7 @@ classifiers = [
 python = ">=3.9 <3.13"
 open_clip_torch = "^2.24.0"
 pillow = "^10.3.0"
-requests = "~=2.26"
+requests = "~=2.32"
 torch = [
   { version = "==2.2.2", source = "pypi", markers = "sys_platform != 'linux' or platform_machine == 'aarch64'" },
   { version = "==2.2.2+cpu", source = "pytorch-cpu", markers = "sys_platform == 'linux' and platform_machine != 'aarch64'" }
