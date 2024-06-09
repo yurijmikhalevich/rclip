@@ -1,5 +1,6 @@
 score	filepath
 0.046	"<test_images_dir>bee.jpg"
+-0.032	"<test_images_dir>tree.webp"
 -0.045	"<test_images_dir>camera lens.jpg"
 -0.065	"<test_images_dir>cake.jpg"
 -0.088	"<test_images_dir>camera.jpg"
@@ -8,4 +9,3 @@ score	filepath
 -0.123	"<test_images_dir>boats on a lake.jpg"
 -0.190	"<test_images_dir>black cat at night.jpg"
 -0.202	"<test_images_dir>cautious cat.jpg"
--0.225	"<test_images_dir>black cat sleeping on a chair.JPG"
