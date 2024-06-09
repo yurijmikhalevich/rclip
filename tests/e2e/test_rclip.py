@@ -46,8 +46,14 @@ def test_search(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
 
 @pytest.mark.usefixtures('assert_output_snapshot')
 def test_search_webp(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
-  # this test result snapshot should contain webp image
+  # this test result snapshot should contain a webp image
   execute_query(test_images_dir, monkeypatch, 'tree')
+
+
+@pytest.mark.usefixtures('assert_output_snapshot')
+def test_search_png(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
+  # this test result snapshot should contain a png image
+  execute_query(test_images_dir, monkeypatch, 'boats on a lake')
 
 
 @pytest.mark.usefixtures('assert_output_snapshot')

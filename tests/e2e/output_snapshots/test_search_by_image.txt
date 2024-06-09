@@ -1,5 +1,5 @@
 score	filepath
-0.787	"<test_images_dir>black kitty.jpg"
+0.787	"<test_images_dir>black kitty.jpeg"
 0.780	"<test_images_dir>black cat sleeping on a chair.JPG"
 0.744	"<test_images_dir>black cat at night.jpg"
 0.700	"<test_images_dir>cautious cat.jpg"
