@@ -41,7 +41,7 @@ def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
 
 class RClip:
   EXCLUDE_DIRS_DEFAULT = ['@eaDir', 'node_modules', '.git']
-  IMAGE_REGEX = re.compile(r'^.+\.(jpe?g|png)$', re.I)
+  IMAGE_REGEX = re.compile(r'^.+\.(jpe?g|png|webp)$', re.I)
   DB_IMAGES_BEFORE_COMMIT = 50_000
 
   class SearchResult(NamedTuple):
