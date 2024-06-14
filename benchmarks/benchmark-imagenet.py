@@ -4,7 +4,6 @@ import numpy as np
 from tqdm import tqdm
 from benchmarks.config import BATCH_SIZE, DATASET_DIR
 
-# 
 from benchmarks.datasets.imagenet_1k.classes import IMAGENET2012_CLASSES  # type: ignore
 
 from rclip import model, db
