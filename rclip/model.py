@@ -37,14 +37,16 @@ class Model:
     self._tokenizer_var = None
 
     self._text_model_path = helpers.get_app_datadir() / f'{self._model_name}_{self._checkpoint_name}_text.pth'
-    self._text_model_version_path = helpers.get_app_datadir() / f'{self._model_name}_{self._checkpoint_name}_text.version'
+    self._text_model_version_path = (
+      helpers.get_app_datadir() / f'{self._model_name}_{self._checkpoint_name}_text.version'
+    )
 
   @property
   def _tokenizer(self):
     if not self._tokenizer_var:
       self._tokenizer_var = open_clip.get_tokenizer(self._model_name)
     return self._tokenizer_var
-  
+
   def _load_model(self):
     self._model_var, _, self._preprocess_var = open_clip.create_model_and_transforms(
       self._model_name,
@@ -74,10 +76,10 @@ class Model:
   def _should_update_text_model(self):
     if not self._text_model_path.exists():
       return True
-    
+
     if not self._text_model_version_path.exists():
       return True
-    
+
     with self._text_model_version_path.open('r') as f:
       text_model_version = f.read().strip()
 
@@ -88,8 +90,8 @@ class Model:
   def _model(self):
     if not self._model_var:
       self._load_model()
-    return self._model_var
-  
+    return cast(open_clip.CLIP, self._model_var)
+
   @property
   def _model_text(self):
     if self._model_var:
@@ -106,13 +108,14 @@ class Model:
     if not self._model_var:
       self._load_model()
 
-    return self._model_var
+    return cast(open_clip.CLIP, self._model_var)
 
   @property
   def _preprocess(self):
+    from torchvision.transforms import Compose
     if not self._preprocess_var:
       self._load_model()
-    return self._preprocess_var
+    return cast(Compose, self._preprocess_var)
 
   def compute_image_features(self, images: List[Image.Image]) -> np.ndarray:
     import torch
