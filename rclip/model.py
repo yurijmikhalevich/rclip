@@ -6,6 +6,8 @@ import numpy as np
 import numpy.typing as npt
 from PIL import Image, UnidentifiedImageError
 from rclip.utils import helpers
+from importlib.metadata import version
+import open_clip
 
 QUERY_WITH_MULTIPLIER_RE = re.compile(r'^(?P<multiplier>(\d+(\.\d+)?|\.\d+|\d+\.)):(?P<query>.+)$')
 QueryWithMultiplier = Tuple[float, str]
@@ -16,6 +18,11 @@ TEXT_ONLY_SUPPORTED_MODELS = [{
   'checkpoint_name': 'openai',
 }]
 
+
+def get_open_clip_version():
+  return version('open_clip_torch')
+
+
 class Model:
   VECTOR_SIZE = 512
   _model_name = 'ViT-B-32'
@@ -23,42 +30,46 @@ class Model:
 
   def __init__(self, device: str = 'cpu'):
     self._device = device
-    self.__model = None
-    self.__model_text = None
-    self.__preprocess = None
-    self.__tokenizer = None
+
+    self._model_var = None
+    self._model_text_var = None
+    self._preprocess_var = None
+    self._tokenizer_var = None
+
     self._text_model_path = helpers.get_app_datadir() / f'{self._model_name}_{self._checkpoint_name}_text.pth'
     self._text_model_version_path = helpers.get_app_datadir() / f'{self._model_name}_{self._checkpoint_name}_text.version'
 
   @property
   def _tokenizer(self):
-    import open_clip
-    if not self.__tokenizer:
-      self.__tokenizer = open_clip.get_tokenizer(self._model_name)
-    return self.__tokenizer
+    if not self._tokenizer_var:
+      self._tokenizer_var = open_clip.get_tokenizer(self._model_name)
+    return self._tokenizer_var
   
   def _load_model(self):
-    import open_clip
-    self.__model, _, self.__preprocess = open_clip.create_model_and_transforms(
+    self._model_var, _, self._preprocess_var = open_clip.create_model_and_transforms(
       self._model_name,
       pretrained=self._checkpoint_name,
       device=self._device,
     )
-    self.__model_text = None
+    self._model_text_var = None
 
     if (
       {'model_name': self._model_name, 'checkpoint_name': self._checkpoint_name} in TEXT_ONLY_SUPPORTED_MODELS
       and self._should_update_text_model()
     ):
-      import copy
       import torch
-
-      model_text = copy.deepcopy(self.__model)
-      model_text.visual = None  # type: ignore
+      model_text = self._get_text_model(cast(open_clip.CLIP, self._model_var))
       torch.save(model_text, self._text_model_path)
 
       with self._text_model_version_path.open('w') as f:
-        f.write(helpers.get_rclip_version())
+        f.write(get_open_clip_version())
+
+  @staticmethod
+  def _get_text_model(model: open_clip.CLIP):
+    import copy
+    model_text = copy.deepcopy(model)
+    model_text.visual = None  # type: ignore
+    return model_text
 
   def _should_update_text_model(self):
     if not self._text_model_path.exists():
@@ -67,41 +78,41 @@ class Model:
     if not self._text_model_version_path.exists():
       return True
     
-    rclip_version = helpers.get_rclip_version()
     with self._text_model_version_path.open('r') as f:
       text_model_version = f.read().strip()
 
-    return rclip_version != text_model_version
+    # to be safe, update the text model on open_clip update (which could update the base model)
+    return get_open_clip_version() != text_model_version
 
   @property
   def _model(self):
-    if not self.__model:
+    if not self._model_var:
       self._load_model()
-    return self.__model
+    return self._model_var
   
   @property
   def _model_text(self):
-    if self.__model:
-      return self.__model
+    if self._model_var:
+      return self._model_var
 
-    if self.__model_text:
-      return self.__model_text
+    if self._model_text_var:
+      return self._model_text_var
 
     if self._text_model_path.exists() and not self._should_update_text_model():
       import torch
-      self.__model_text = torch.load(self._text_model_path)
-      return self.__model_text
+      self._model_text_var = torch.load(self._text_model_path)
+      return self._model_text_var
 
-    if not self.__model:
+    if not self._model_var:
       self._load_model()
 
-    return self.__model
+    return self._model_var
 
   @property
   def _preprocess(self):
-    if not self.__preprocess:
+    if not self._preprocess_var:
       self._load_model()
-    return self.__preprocess
+    return self._preprocess_var
 
   def compute_image_features(self, images: List[Image.Image]) -> np.ndarray:
     import torch
