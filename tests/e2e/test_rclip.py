@@ -57,6 +57,13 @@ def test_search_png(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.usefixtures('assert_output_snapshot')
+def test_repeated_searches_should_be_the_same(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
+  execute_query(test_images_dir, monkeypatch, 'boats on a lake')
+  execute_query(test_images_dir, monkeypatch, 'boats on a lake')
+  execute_query(test_images_dir, monkeypatch, 'boats on a lake')
+
+
+@pytest.mark.usefixtures('assert_output_snapshot')
 def test_search_by_image(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
   execute_query(test_images_dir, monkeypatch, str(test_images_dir / 'cat.jpg'))
 
