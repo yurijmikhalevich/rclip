@@ -161,10 +161,12 @@ class Model:
     text_features: Optional[FeatureVector] = None
     image_features: Optional[FeatureVector] = None
     phrases, files, urls = self._group_queries_by_type(queries)
-    if phrases:
-      phrase_multipliers, phrase_queries = cast(Tuple[Tuple[float], Tuple[str]], zip(*phrases))
-      phrase_multipliers_np = np.array(phrase_multipliers).reshape(-1, 1)
-      text_features = np.add.reduce(self.compute_text_features([*phrase_queries]) * phrase_multipliers_np)
+
+    # process images first to avoid loading BOTH full and text-only models
+    # if we need to process images, we will load the full model, and the text processing logic will use it, too
+    # if we don't need to process images, we will skip loading the full model, and the text processing
+    # logic will load the text-only model
+
     if files or urls:
       file_multipliers, file_paths = cast(Tuple[Tuple[float], Tuple[str]], zip(*(files))) if files else ((), ())
       url_multipliers, url_paths = cast(Tuple[Tuple[float], Tuple[str]], zip(*(urls))) if urls else ((), ())
@@ -179,6 +181,11 @@ class Model:
         sys.exit(1)
       image_multipliers = np.array(url_multipliers + file_multipliers)
       image_features = np.add.reduce(self.compute_image_features(images) * image_multipliers.reshape(-1, 1))
+
+    if phrases:
+      phrase_multipliers, phrase_queries = cast(Tuple[Tuple[float], Tuple[str]], zip(*phrases))
+      phrase_multipliers_np = np.array(phrase_multipliers).reshape(-1, 1)
+      text_features = np.add.reduce(self.compute_text_features([*phrase_queries]) * phrase_multipliers_np)
 
     if text_features is not None and image_features is not None:
         return text_features + image_features
