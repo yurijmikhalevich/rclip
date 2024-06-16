@@ -11,6 +11,10 @@ QUERY_WITH_MULTIPLIER_RE = re.compile(r'^(?P<multiplier>(\d+(\.\d+)?|\.\d+|\d+\.
 QueryWithMultiplier = Tuple[float, str]
 FeatureVector = npt.NDArray[np.float32]
 
+TEXT_ONLY_SUPPORTED_MODELS = [{
+  'model_name': 'ViT-B-32',
+  'checkpoint_name': 'openai',
+}]
 
 class Model:
   VECTOR_SIZE = 512
@@ -20,8 +24,11 @@ class Model:
   def __init__(self, device: str = 'cpu'):
     self._device = device
     self.__model = None
+    self.__model_text = None
     self.__preprocess = None
     self.__tokenizer = None
+    self._text_model_path = helpers.get_app_datadir() / f'{self._model_name}_{self._checkpoint_name}_text.pth'
+    self._text_model_version_path = helpers.get_app_datadir() / f'{self._model_name}_{self._checkpoint_name}_text.version'
 
   @property
   def _tokenizer(self):
@@ -29,27 +36,71 @@ class Model:
     if not self.__tokenizer:
       self.__tokenizer = open_clip.get_tokenizer(self._model_name)
     return self.__tokenizer
+  
+  def _load_model(self):
+    import open_clip
+    self.__model, _, self.__preprocess = open_clip.create_model_and_transforms(
+      self._model_name,
+      pretrained=self._checkpoint_name,
+      device=self._device,
+    )
+    self.__model_text = None
+
+    if (
+      {'model_name': self._model_name, 'checkpoint_name': self._checkpoint_name} in TEXT_ONLY_SUPPORTED_MODELS
+      and self._should_update_text_model()
+    ):
+      import copy
+      import torch
+
+      model_text = copy.deepcopy(self.__model)
+      model_text.visual = None  # type: ignore
+      torch.save(model_text, self._text_model_path)
+
+      with self._text_model_version_path.open('w') as f:
+        f.write(helpers.get_rclip_version())
+
+  def _should_update_text_model(self):
+    if not self._text_model_path.exists():
+      return True
+    
+    if not self._text_model_version_path.exists():
+      return True
+    
+    rclip_version = helpers.get_rclip_version()
+    with self._text_model_version_path.open('r') as f:
+      text_model_version = f.read().strip()
+
+    return rclip_version != text_model_version
 
   @property
   def _model(self):
-    import open_clip
     if not self.__model:
-      self.__model, _, self.__preprocess = open_clip.create_model_and_transforms(
-        self._model_name,
-        pretrained=self._checkpoint_name,
-        device=self._device,
-      )
+      self._load_model()
+    return self.__model
+  
+  @property
+  def _model_text(self):
+    if self.__model:
+      return self.__model
+
+    if self.__model_text:
+      return self.__model_text
+
+    if self._text_model_path.exists() and not self._should_update_text_model():
+      import torch
+      self.__model_text = torch.load(self._text_model_path)
+      return self.__model_text
+
+    if not self.__model:
+      self._load_model()
+
     return self.__model
 
   @property
   def _preprocess(self):
-    import open_clip
     if not self.__preprocess:
-      self.__model, _, self.__preprocess = open_clip.create_model_and_transforms(
-        self._model_name,
-        pretrained=self._checkpoint_name,
-        device=self._device,
-      )
+      self._load_model()
     return self.__preprocess
 
   def compute_image_features(self, images: List[Image.Image]) -> np.ndarray:
@@ -63,7 +114,7 @@ class Model:
   def compute_text_features(self, text: List[str]) -> np.ndarray:
     import torch
     with torch.no_grad():
-      text_features = self._model.encode_text(self._tokenizer(text).to(self._device))
+      text_features = self._model_text.encode_text(self._tokenizer(text).to(self._device))
       text_features /= text_features.norm(dim=-1, keepdim=True)
     return text_features.cpu().numpy()
 

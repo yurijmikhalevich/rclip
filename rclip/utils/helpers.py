@@ -66,6 +66,10 @@ def get_terminal_text_width() -> int:
     return DEFAULT_TERMINAL_TEXT_WIDTH
 
 
+def get_rclip_version() -> str:
+  return version("rclip")
+
+
 class HelpFormatter(argparse.RawDescriptionHelpFormatter):
   def __init__(self, prog: str, indent_increment: int = 2, max_help_position: int = 24) -> None:
     text_width = get_terminal_text_width()
@@ -98,7 +102,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
     'get help:\n'
     '  https://github.com/yurijmikhalevich/rclip/discussions/new/choose\n\n',
   )
-  version_str = f'rclip {version("rclip")}'
+  version_str = f'rclip {get_rclip_version()}'
   parser.add_argument('--version', '-v', action='version', version=version_str, help=f'prints "{version_str}"')
   parser.add_argument('query', help='a text query or a path/URL to an image file')
   parser.add_argument('--add', '-a', '+', metavar='QUERY', action='append', default=[],
