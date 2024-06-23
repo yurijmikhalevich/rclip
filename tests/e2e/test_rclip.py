@@ -26,6 +26,11 @@ def test_empty_dir():
 
 
 @pytest.fixture
+def test_dir_with_nested_directories():
+  return Path(__file__).parent / 'images nested directories'
+
+
+@pytest.fixture
 def assert_output_snapshot(test_images_dir: Path, request: pytest.FixtureRequest, capsys: pytest.CaptureFixture[str]):
   yield
   out, _ = capsys.readouterr()
@@ -127,3 +132,14 @@ def test_combine_image_query_with_text_query(test_images_dir: Path, monkeypatch:
 @pytest.mark.usefixtures('assert_output_snapshot')
 def test_seach_empty_dir(test_empty_dir: Path, monkeypatch: pytest.MonkeyPatch):
   execute_query(test_empty_dir, monkeypatch, 'kitty')
+
+
+@pytest.mark.usefixtures('assert_output_snapshot')
+def test_seach_dir_with_multiple_nested_directories(test_dir_with_nested_directories: Path, monkeypatch: pytest.MonkeyPatch):
+  execute_query(test_dir_with_nested_directories, monkeypatch, 'kitty')
+
+
+@pytest.mark.usefixtures('assert_output_snapshot')
+def test_seach_dir_with_deeply_nested_directories(test_dir_with_nested_directories: Path, monkeypatch: pytest.MonkeyPatch):
+  # output should contain a nested path to the bee image
+  execute_query(test_dir_with_nested_directories, monkeypatch, 'bee')

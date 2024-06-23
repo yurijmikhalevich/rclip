@@ -1,0 +1,11 @@
+score	filepath
+0.261	"/Users/yurij/code/rclip/tests/e2e/images nested directories/cats/black cat at night.jpg"
+0.251	"/Users/yurij/code/rclip/tests/e2e/images nested directories/cats/black cat sleeping on a chair.JPG"
+0.248	"/Users/yurij/code/rclip/tests/e2e/images nested directories/cats/cat.jpg"
+0.247	"/Users/yurij/code/rclip/tests/e2e/images nested directories/cats/black kitty.jpeg"
+0.244	"/Users/yurij/code/rclip/tests/e2e/images nested directories/cats/cautious cat.jpg"
+0.184	"/Users/yurij/code/rclip/tests/e2e/images nested directories/misc/tree.webp"
+0.178	"/Users/yurij/code/rclip/tests/e2e/images nested directories/cameras/camera.jpg"
+0.175	"/Users/yurij/code/rclip/tests/e2e/images nested directories/cake.jpg"
+0.171	"/Users/yurij/code/rclip/tests/e2e/images nested directories/chessboard with rocks.JPG"
+0.164	"/Users/yurij/code/rclip/tests/e2e/images nested directories/misc/boats on a lake.png"
