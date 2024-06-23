@@ -21,6 +21,11 @@ def test_images_dir():
 
 
 @pytest.fixture
+def test_empty_dir():
+  return Path(__file__).parent / 'empty_directory'
+
+
+@pytest.fixture
 def assert_output_snapshot(test_images_dir: Path, request: pytest.FixtureRequest, capsys: pytest.CaptureFixture[str]):
   yield
   out, _ = capsys.readouterr()
@@ -117,3 +122,8 @@ def test_combine_text_query_with_image_query(test_images_dir: Path, monkeypatch:
 @pytest.mark.usefixtures('assert_output_snapshot')
 def test_combine_image_query_with_text_query(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
   execute_query(test_images_dir, monkeypatch, 'kitty', '-', str(test_images_dir / 'cat.jpg'), '+', '1.5:bee')
+
+
+@pytest.mark.usefixtures('assert_output_snapshot')
+def test_seach_empty_dir(test_empty_dir: Path, monkeypatch: pytest.MonkeyPatch):
+  execute_query(test_empty_dir, monkeypatch, 'kitty')
