@@ -179,7 +179,7 @@ def test_handles_addition_and_deletion_of_images(
   try:
     # copy bee image
     bee_image_path_copy.write_bytes(bee_image_path.read_bytes())
-    
+
     # should include bee image copy in the output snapshot
     execute_query(test_dir_with_nested_directories, monkeypatch, 'bee')
 
