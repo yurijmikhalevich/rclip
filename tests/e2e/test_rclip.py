@@ -163,3 +163,31 @@ def test_seach_dir_with_deeply_nested_directories(
 ):
   # output should contain a nested path to the bee image
   execute_query(test_dir_with_nested_directories, monkeypatch, 'bee')
+
+
+@pytest.mark.usefixtures('assert_output_snapshot_nested_directories')
+def test_handles_addition_and_deletion_of_images(
+  test_dir_with_nested_directories: Path,
+  monkeypatch: pytest.MonkeyPatch,
+):
+  execute_query(test_dir_with_nested_directories, monkeypatch, 'bee')
+
+  bee_image_path = test_dir_with_nested_directories / 'misc' / 'bees' / 'bee.jpg'
+  assert bee_image_path.exists()
+
+  bee_image_path_copy = bee_image_path.with_name('bee_copy.jpg')
+  try:
+    # copy bee image
+    bee_image_path_copy.write_bytes(bee_image_path.read_bytes())
+    
+    # should include bee image copy in the output snapshot
+    execute_query(test_dir_with_nested_directories, monkeypatch, 'bee')
+
+    # delete bee image copy
+    bee_image_path_copy.unlink()
+
+    # should not include bee image copy in the output snapshot
+    execute_query(test_dir_with_nested_directories, monkeypatch, 'bee')
+
+  finally:
+    bee_image_path_copy.unlink(missing_ok=True)
