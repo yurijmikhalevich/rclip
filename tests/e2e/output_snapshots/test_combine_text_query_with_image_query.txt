@@ -3,7 +3,7 @@ score	filepath
 0.482	"<test_images_dir>cake.jpg"
 0.471	"<test_images_dir>chessboard with rocks.JPG"
 0.449	"<test_images_dir>black kitty.jpeg"
-0.448	"<test_images_dir>tree.webp"
+0.425	"<test_images_dir>tree.webp"
 0.403	"<test_images_dir>camera.jpg"
 0.396	"<test_images_dir>black cat sleeping on a chair.JPG"
 0.386	"<test_images_dir>books.jpg"
