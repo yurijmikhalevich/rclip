@@ -26,14 +26,33 @@ def test_empty_dir():
 
 
 @pytest.fixture
-def assert_output_snapshot(test_images_dir: Path, request: pytest.FixtureRequest, capsys: pytest.CaptureFixture[str]):
-  yield
+def test_dir_with_nested_directories():
+  return Path(__file__).parent / 'images nested directories'
+
+
+def _assert_output_snapshot(images_dir: Path, request: pytest.FixtureRequest, capsys: pytest.CaptureFixture[str]):
   out, _ = capsys.readouterr()
   snapshot_path = Path(__file__).parent / 'output_snapshots' / f'{request.node.name}.txt'
-  snapshot = out.replace(str(test_images_dir) + os.path.sep, '<test_images_dir>')
+  snapshot = out.replace(str(images_dir) + os.path.sep, '<test_images_dir>').replace(os.path.sep, '/')
   if not snapshot_path.exists():
     snapshot_path.write_text(snapshot)
   assert snapshot == snapshot_path.read_text()
+
+
+@pytest.fixture
+def assert_output_snapshot(test_images_dir: Path, request: pytest.FixtureRequest, capsys: pytest.CaptureFixture[str]):
+  yield
+  _assert_output_snapshot(test_images_dir, request, capsys)
+
+
+@pytest.fixture
+def assert_output_snapshot_nested_directories(
+  test_dir_with_nested_directories: Path,
+  request: pytest.FixtureRequest,
+  capsys: pytest.CaptureFixture[str],
+):
+  yield
+  _assert_output_snapshot(test_dir_with_nested_directories, request, capsys)
 
 
 def execute_query(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, *args: str):
@@ -127,3 +146,20 @@ def test_combine_image_query_with_text_query(test_images_dir: Path, monkeypatch:
 @pytest.mark.usefixtures('assert_output_snapshot')
 def test_seach_empty_dir(test_empty_dir: Path, monkeypatch: pytest.MonkeyPatch):
   execute_query(test_empty_dir, monkeypatch, 'kitty')
+
+
+@pytest.mark.usefixtures('assert_output_snapshot_nested_directories')
+def test_seach_dir_with_multiple_nested_directories(
+  test_dir_with_nested_directories: Path,
+  monkeypatch: pytest.MonkeyPatch,
+):
+  execute_query(test_dir_with_nested_directories, monkeypatch, 'kitty')
+
+
+@pytest.mark.usefixtures('assert_output_snapshot_nested_directories')
+def test_seach_dir_with_deeply_nested_directories(
+  test_dir_with_nested_directories: Path,
+  monkeypatch: pytest.MonkeyPatch,
+):
+  # output should contain a nested path to the bee image
+  execute_query(test_dir_with_nested_directories, monkeypatch, 'bee')
