@@ -19,6 +19,7 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = ">=3.9 <3.13"
+numpy = "^1.26.4"
 open_clip_torch = "^2.24.0"
 pillow = "^10.3.0"
 requests = "~=2.32"
