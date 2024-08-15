@@ -146,7 +146,7 @@ jobs:
 
   windows:
     # needs: [parse_tag, validate]
-    needs: validate
+    needs: parse_tag
     # if: needs.parse_tag.outputs.is_stable_version == 'true'
     runs-on: windows-2022
     steps:
