@@ -194,6 +194,7 @@ jobs:
       - uses: actions/download-artifact@v3
         with:
           name: windows
+      - run: ls
       - run: |
           msiexec /i rclip/rclip-*.msi /quiet
           Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
