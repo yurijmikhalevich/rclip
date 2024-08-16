@@ -16,7 +16,7 @@ a = Analysis(
         *collect_data_files('torch', include_py_files=True),
         *collect_data_files('torchvision', include_py_files=True),
     ],
-    hiddenimports=['pkg_resources.extern'],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

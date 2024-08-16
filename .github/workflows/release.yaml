@@ -159,7 +159,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade poetry
           poetry install
-          poetry run pip install pyinstaller==5.13.2
+          poetry run pip install pyinstaller==6.10.0
       - run: make build-windows
       - name: Install Advinst
         uses: caphyon/advinst-github-action@main
@@ -195,12 +195,12 @@ jobs:
         with:
           name: windows
       - name: Install MSI
-        run: Start-Process msiexec.exe -Wait -ArgumentList '/i rclip-0.1.2.msi /quiet'
-      - name: Ensure it works
         run: |
+          Start-Process msiexec.exe -Wait -ArgumentList '/i rclip-0.1.2.msi /quiet'
           Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
           refreshenv
-          rclip cat
+      - name: Ensure it works
+        run: rclip cat
 
   # create_release:
   #   needs: [parse_tag, pypi, snap, appimage, windows-validate]
