@@ -194,14 +194,10 @@ jobs:
       - uses: actions/download-artifact@v3
         with:
           name: windows
-      - run: ls
-      - run: |
-          Start-Process msiexec.exe -Wait -ArgumentList '/i rclip-0.1.2.msi /qn'
-      - run: |
-          Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
-          refreshenv
-          echo $env:PATH
-          rclip cat
+      - name: Install MSI
+        run: Start-Process msiexec.exe -Wait -ArgumentList '/i rclip-0.1.2.msi /qn'
+      - name: Ensure it works
+        run: rclip cat
 
   # create_release:
   #   needs: [parse_tag, pypi, snap, appimage, windows-validate]
