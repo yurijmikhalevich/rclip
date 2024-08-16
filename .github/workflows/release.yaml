@@ -196,10 +196,13 @@ jobs:
           name: windows
       - run: ls
       - run: |
-          msiexec /i rclip-0.1.2.msi /norestart /quiet /qn
+          msiexec /i rclip-0.1.2.msi /norestart /quiet /qn /l*v install.log
+          cat install.log
+      - run: |
           Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
           refreshenv
-      - run: rclip cat
+          echo $env:PATH
+          rclip cat
 
   # create_release:
   #   needs: [parse_tag, pypi, snap, appimage, windows-validate]
