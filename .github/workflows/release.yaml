@@ -195,7 +195,7 @@ jobs:
         with:
           name: windows
       - name: Install MSI
-        run: Start-Process msiexec.exe -Wait -ArgumentList '/i rclip-0.1.2.msi /qn'
+        run: Start-Process msiexec.exe -Wait -ArgumentList '/i rclip-0.1.2.msi /quiet'
       - name: Ensure it works
         run: rclip cat
 
