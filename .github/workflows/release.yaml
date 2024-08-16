@@ -197,7 +197,10 @@ jobs:
       - name: Install MSI
         run: Start-Process msiexec.exe -Wait -ArgumentList '/i rclip-0.1.2.msi /quiet'
       - name: Ensure it works
-        run: rclip cat
+        run: |
+          Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
+          refreshenv
+          rclip cat
 
   # create_release:
   #   needs: [parse_tag, pypi, snap, appimage, windows-validate]
