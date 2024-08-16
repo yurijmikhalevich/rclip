@@ -196,8 +196,7 @@ jobs:
           name: windows
       - run: ls
       - run: |
-          msiexec /i rclip-0.1.2.msi /quiet
-          cat install.log
+          Start-Process msiexec.exe -Wait -ArgumentList '/i rclip-0.1.2.msi /qn'
       - run: |
           Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
           refreshenv
