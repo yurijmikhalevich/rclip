@@ -158,7 +158,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade poetry
           poetry install
-          poetry run pip install pyinstaller==5.13.2
+          poetry run pip install pyinstaller==6.10.0
       - run: make build-windows
       - name: Install Advinst
         uses: caphyon/advinst-github-action@main
@@ -182,8 +182,23 @@ jobs:
           path: signed/rclip-*.msi
           if-no-files-found: error
 
+  windows-validate:
+    needs: [parse_tag, windows]
+    runs-on: windows-2022
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: windows
+      - name: Install MSI
+        run: Start-Process msiexec.exe -Wait -ArgumentList '/i rclip-${{ needs.parse_tag.outputs.version }}.msi /quiet'
+      - name: Ensure it works
+        run: |
+          Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
+          refreshenv
+          rclip cat
+
   create_release:
-    needs: [parse_tag, pypi, snap, appimage, windows]
+    needs: [parse_tag, pypi, snap, appimage, windows-validate]
     # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
     if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
