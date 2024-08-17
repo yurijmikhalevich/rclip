@@ -166,12 +166,9 @@ jobs:
         with:
           advinst-version: '21.1'
           advinst-enable-automation: 'true'
-      # - run: |
-      #     & ./release-utils/windows/build-msi.ps1 "${{ needs.parse_tag.outputs.version }}"
-      #     mv build-msi/rclip-SetupFiles/rclip.msi build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi
       - run: |
-          & ./release-utils/windows/build-msi.ps1 "0.1.2"
-          mv build-msi/rclip-SetupFiles/rclip.msi build-msi/rclip-SetupFiles/rclip-0.1.2.msi
+          & ./release-utils/windows/build-msi.ps1 "${{ needs.parse_tag.outputs.version }}"
+          mv build-msi/rclip-SetupFiles/rclip.msi build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi
       # - name: Sign MSI
       #   run: |
       #     mkdir signed
@@ -184,18 +181,18 @@ jobs:
         with:
           name: windows
           # path: signed/rclip-*.msi
-          path: build-msi/rclip-SetupFiles/rclip-0.1.2.msi
+          path: build-msi/rclip-SetupFiles/rclip-*.msi
           if-no-files-found: error
 
   windows-validate:
-    needs: windows
+    needs: [parse_tag, windows]
     runs-on: windows-2022
     steps:
       - uses: actions/download-artifact@v3
         with:
           name: windows
       - name: Install MSI
-        run: Start-Process msiexec.exe -Wait -ArgumentList '/i rclip-0.1.2.msi /quiet'
+        run: Start-Process msiexec.exe -Wait -ArgumentList '/i rclip-${{ needs.parse_tag.outputs.version }}.msi /quiet'
       - name: Ensure it works
         run: |
           Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
