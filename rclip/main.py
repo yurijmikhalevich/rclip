@@ -9,6 +9,7 @@ import numpy as np
 from tqdm import tqdm
 import PIL
 from PIL import Image, ImageFile
+from rawpy import imread
 
 from rclip import db, fs, model
 from rclip.utils.preview import preview
@@ -41,7 +42,7 @@ def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
 
 class RClip:
   EXCLUDE_DIRS_DEFAULT = ['@eaDir', 'node_modules', '.git']
-  IMAGE_REGEX = re.compile(r'^.+\.(jpe?g|png|webp)$', re.I)
+  IMAGE_REGEX = re.compile(r'^.+\.(jpe?g|png|webp|arw|dng|cr2)$', re.I)
   DB_IMAGES_BEFORE_COMMIT = 50_000
 
   class SearchResult(NamedTuple):
@@ -62,6 +63,17 @@ class RClip:
     excluded_dirs = '|'.join(re.escape(dir) for dir in exclude_dirs or self.EXCLUDE_DIRS_DEFAULT)
     self._exclude_dir_regex = re.compile(f'^.+\\{os.path.sep}({excluded_dirs})(\\{os.path.sep}.+)?$')
 
+  def _read_raw_file(self, path: str):
+    image = None
+    try:
+      raw = imread(path)
+      rgb = raw.postprocess()
+      image = Image.fromarray(np.array(rgb))
+    except Exception as ex:
+      print(f'not a valid raw file {path}', ex, file=sys.stderr)
+    return image
+
+
   def _index_files(self, filepaths: List[str], metas: List[ImageMeta]):
     images: List[Image.Image] = []
     filtered_paths: List[str] = []
@@ -71,7 +83,10 @@ class RClip:
         images.append(image)
         filtered_paths.append(path)
       except PIL.UnidentifiedImageError as ex:
-        pass
+        image = self._read_raw_file(path)
+        if not image:
+          images.append(image)
+          filtered_paths.append(path)
       except Exception as ex:
         print(f'error loading image {path}:', ex, file=sys.stderr)
 
