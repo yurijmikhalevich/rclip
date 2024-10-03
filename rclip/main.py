@@ -1,11 +1,13 @@
 import itertools
 import os
+import subprocess
 import re
 import sys
 import threading
 from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
 
 import numpy as np
+
 from tqdm import tqdm
 import PIL
 from PIL import Image, ImageFile
@@ -27,9 +29,10 @@ class ImageMeta(TypedDict):
 PathMetaVector = Tuple[str, ImageMeta, model.FeatureVector]
 
 
-def get_image_meta(entry: os.DirEntry) -> ImageMeta:
-  stat = entry.stat()
-  return ImageMeta(modified_at=stat.st_mtime, size=stat.st_size)
+def get_image_meta(entry: os.DirEntry[str]) -> ImageMeta:
+    stat = entry.stat()
+    return ImageMeta(modified_at=stat.st_mtime, size=stat.st_size)
+
 
 
 def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
@@ -216,7 +219,7 @@ def main():
     args.exclude_dir,
     args.no_indexing,
   )
-
+  XNVIEW_PATH = "C:\\Program Files\\XnViewMP\\xnviewmp.exe"
   try:
     result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
     if args.filepath_only:
@@ -228,6 +231,13 @@ def main():
         print(f'{r.score:.3f}\t"{r.filepath}"')
         if args.preview:
           preview(r.filepath, args.preview_height)
+        if os.path.exists(XNVIEW_PATH):
+            try:
+                subprocess.run([XNVIEW_PATH, r.filepath])
+            except Exception as e:
+                print(f"Failed to open XnView for {r.filepath}: {e}")
+        else:
+            print(f"XnView not found at {XNVIEW_PATH}")
   except Exception as e:
     raise e
   finally:
