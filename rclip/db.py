@@ -13,6 +13,7 @@ class NewImage(ImageOmittable):
   modified_at: float
   size: int
   vector: bytes
+  hash: str
 
 
 class Image(NewImage):
@@ -27,11 +28,20 @@ class DB:
     self._con.row_factory = sqlite3.Row
     self.ensure_tables()
     self.ensure_version()
+    self._migrate_db()
 
   def close(self):
     self._con.commit()
     self._con.close()
 
+  def _migrate_db(self):
+    try:
+        self._con.execute('ALTER TABLE images ADD COLUMN hash TEXT')
+        self._con.commit()
+    except sqlite3.OperationalError:
+        # Column already exists, skip
+        pass
+    
   def ensure_tables(self):
     self._con.execute('''
       CREATE TABLE IF NOT EXISTS images (
@@ -40,6 +50,7 @@ class DB:
         filepath TEXT NOT NULL UNIQUE,
         modified_at DATETIME NOT NULL,
         size INTEGER NOT NULL,
+        hash TEXT NOT NULL, 
         vector BLOB NOT NULL
       )
     ''')
@@ -74,14 +85,14 @@ class DB:
 
   def upsert_image(self, image: NewImage, commit: bool = True):
     self._con.execute('''
-      INSERT INTO images(deleted, indexing, filepath, modified_at, size, vector)
-      VALUES (:deleted, :indexing, :filepath, :modified_at, :size, :vector)
+      INSERT INTO images(deleted, indexing, filepath, modified_at, size, hash, vector)
+      VALUES (:deleted, :indexing, :filepath, :modified_at, :size, :hash, :vector)
       ON CONFLICT(filepath) DO UPDATE SET
-        deleted=:deleted, indexing=:indexing, modified_at=:modified_at, size=:size, vector=:vector
+        deleted=:deleted, indexing=:indexing, modified_at=:modified_at, size=:size, hash=:hash, vector=:vector
     ''', {'deleted': None, 'indexing': None, **image})
     if commit:
       self._con.commit()
-
+  
   def remove_indexing_flag_from_all_images(self, commit: bool = True):
     self._con.execute('UPDATE images SET indexing = NULL')
     if commit:
@@ -113,3 +124,8 @@ class DB:
     return self._con.execute(
       f'SELECT filepath, vector FROM images WHERE filepath LIKE ? AND deleted IS NULL', (path + f'{os.path.sep}%',)
     )
+
+  def get_image_by_hash(self, hash: str) -> Optional[Image]:
+    row = self._con.execute('SELECT * FROM images WHERE hash = ?', (hash,))
+    row = row.fetchone()
+    return Image(**row) if row else None
