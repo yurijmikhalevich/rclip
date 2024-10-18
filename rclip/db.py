@@ -36,10 +36,11 @@ class DB:
 
   def _migrate_db(self):
     try:
-        self._con.execute('ALTER TABLE images ADD COLUMN hash TEXT')
+        self._con.execute('ALTER TABLE images ADD COLUMN hash TEXT NOT NULL DEFAULT ""')
+        self._con.execute('CREATE INDEX IF NOT EXISTS idx_images_hash ON images(hash)')
         self._con.commit()
     except sqlite3.OperationalError:
-        # Column already exists, skip
+        # Column or index already exists, skip
         pass
     
   def ensure_tables(self):
@@ -52,10 +53,11 @@ class DB:
         size INTEGER NOT NULL,
         hash TEXT NOT NULL, 
         vector BLOB NOT NULL
-      )
+      );
     ''')
     # Query for images
     self._con.execute('CREATE UNIQUE INDEX IF NOT EXISTS existing_images ON images(filepath) WHERE deleted IS NULL')
+    self._con.execute('CREATE INDEX IF NOT EXISTS idx_images_hash ON images(hash)')
     self._con.execute('CREATE TABLE IF NOT EXISTS db_version (version INTEGER)')
     self._con.commit()
 
