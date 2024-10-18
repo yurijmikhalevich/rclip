@@ -3,6 +3,7 @@ import os
 import re
 import sys
 import threading
+import time
 from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
 
 import numpy as np
@@ -101,7 +102,7 @@ class RClip:
         ' use "--no-indexing" to skip this if no images were added, changed, or removed',
         file=sys.stderr,
     )
-
+    
     self._db.remove_indexing_flag_from_all_images(commit=False)
     self._db.flag_images_in_a_dir_as_indexing(directory, commit=True)
 
@@ -118,6 +119,8 @@ class RClip:
         images_processed = 0
         batch: List[str] = []
         metas: List[ImageMeta] = []
+        lookup_time_sum = 0
+        start_time = time.time()
         for entry in fs.walk(directory, self._exclude_dir_regex, self.IMAGE_REGEX):
             filepath = entry.path
             try:
@@ -131,7 +134,9 @@ class RClip:
             images_processed += 1
             pbar.update()
 
+            lookup_start = time.time()
             existing_image = self._db.get_image_by_hash(meta['hash'])
+            lookup_time_sum += time.time() - lookup_start
             
             if existing_image:
                 if existing_image['filepath'] != filepath:
@@ -153,7 +158,9 @@ class RClip:
                 self._index_files(batch, metas)
                 batch = []
                 metas = []
-
+        total_time = time.time() - start_time
+        print(f"Total indexing time: {total_time:.2f} seconds {lookup_time_sum:.2f}")
+        print(f"Average lookup time: {lookup_time_sum/images_processed:.5f} seconds")
         if len(batch) != 0:
             self._index_files(batch, metas)
 
