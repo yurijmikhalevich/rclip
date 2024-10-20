@@ -4,13 +4,13 @@ import re
 import sys
 import threading
 import time
-from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
+from typing import List, NamedTuple, Optional, Tuple, TypedDict
 
 import numpy as np
 from tqdm import tqdm
 import PIL
 from PIL import Image, ImageFile
-import imagehash
+import hashlib
 
 from rclip import db, fs, model
 from rclip.utils.preview import preview
@@ -24,19 +24,14 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 class ImageMeta(TypedDict):
   modified_at: float
   size: int
-  hash: str
 
 
 PathMetaVector = Tuple[str, ImageMeta, model.FeatureVector]
 
 
-def compute_image_hash(image_path: str) -> str:
-    with Image.open(image_path) as img:
-        return str(imagehash.average_hash(img))
-    
-def get_image_meta(entry: os.DirEntry) -> ImageMeta:
+def get_image_meta(entry: os.DirEntry[str]) -> ImageMeta:
   stat = entry.stat()
-  return ImageMeta(modified_at=stat.st_mtime,size=stat.st_size,hash=compute_image_hash(entry.path))
+  return ImageMeta(modified_at=stat.st_mtime, size=stat.st_size)
 
 
 def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
@@ -69,14 +64,20 @@ class RClip:
     excluded_dirs = '|'.join(re.escape(dir) for dir in exclude_dirs or self.EXCLUDE_DIRS_DEFAULT)
     self._exclude_dir_regex = re.compile(f'^.+\\{os.path.sep}({excluded_dirs})(\\{os.path.sep}.+)?$')
 
+  def _compute_image_hash(self, image_path: str) -> str:
+    with open(image_path, 'rb') as f:
+      return hashlib.md5(f.read()).hexdigest()
+
   def _index_files(self, filepaths: List[str], metas: List[ImageMeta]):
     images: List[Image.Image] = []
     filtered_paths: List[str] = []
+    hashes: List[str] = []
     for path in filepaths:
       try:
         image = Image.open(path)
         images.append(image)
         filtered_paths.append(path)
+        hashes.append(self._compute_image_hash(path))
       except PIL.UnidentifiedImageError as ex:
         pass
       except Exception as ex:
@@ -87,85 +88,80 @@ class RClip:
     except Exception as ex:
       print('error computing features:', ex, file=sys.stderr)
       return
-    for path, meta, vector in cast(Iterable[PathMetaVector], zip(filtered_paths, metas, features)):
-      self._db.upsert_image(db.NewImage(
-        filepath=path,
-        modified_at=meta['modified_at'],
-        size=meta['size'],
-        vector=vector.tobytes(),
-        hash=meta['hash'],
-      ), commit=False)
+    for path, meta, vector, hash in zip(filtered_paths, metas, features, hashes):
+      existing_image = self._db.get_image_by_hash(hash)
+      if existing_image and existing_image['filepath'] != path:
+        # Image was renamed, update the filepath
+        self._db.update_image_filepath(existing_image['filepath'], path, commit=False)
+      else:
+        self._db.upsert_image(db.NewImage(
+          filepath=path,
+          modified_at=meta['modified_at'],
+          size=meta['size'],
+          vector=vector.tobytes(),
+          hash=hash
+        ), commit=False)
 
   def ensure_index(self, directory: str):
     print(
-        'checking images in the current directory for changes;'
-        ' use "--no-indexing" to skip this if no images were added, changed, or removed',
-        file=sys.stderr,
+      'checking images in the current directory for changes;'
+      ' use "--no-indexing" to skip this if no images were added, changed, or removed',
+      file=sys.stderr,
     )
-    
+
     self._db.remove_indexing_flag_from_all_images(commit=False)
     self._db.flag_images_in_a_dir_as_indexing(directory, commit=True)
 
     with tqdm(total=None, unit='images') as pbar:
-        def update_total_images(count: int):
-            pbar.total = count
-            pbar.refresh()
-        counter_thread = threading.Thread(
-            target=fs.count_files,
-            args=(directory, self._exclude_dir_regex, self.IMAGE_REGEX, update_total_images),
-        )
-        counter_thread.start()
+      def update_total_images(count: int):
+        pbar.total = count
+        pbar.refresh()
+      counter_thread = threading.Thread(
+        target=fs.count_files,
+        args=(directory, self._exclude_dir_regex, self.IMAGE_REGEX, update_total_images),
+      )
+      counter_thread.start()
 
-        images_processed = 0
-        batch: List[str] = []
-        metas: List[ImageMeta] = []
-        lookup_time_sum = 0
-        start_time = time.time()
-        for entry in fs.walk(directory, self._exclude_dir_regex, self.IMAGE_REGEX):
-            filepath = entry.path
-            try:
-                meta = get_image_meta(entry)
-            except Exception as ex:
-                print(f'error getting fs metadata for {filepath}:', ex, file=sys.stderr)
-                continue
+      images_processed = 0
+      batch: List[str] = []
+      metas: List[ImageMeta] = []
+      lookup_time_sum = 0
+      start_time = time.time()
+      for entry in fs.walk(directory, self._exclude_dir_regex, self.IMAGE_REGEX):
+        filepath = entry.path
+        lookup_start = time.time()
+        image = self._db.get_image(filepath=filepath)
+        lookup_time_sum += time.time() - lookup_start
+        try:
+          meta = get_image_meta(entry)
+        except Exception as ex:
+          print(f'error getting fs metadata for {filepath}:', ex, file=sys.stderr)
+          continue
 
-            if not images_processed % self.DB_IMAGES_BEFORE_COMMIT:
-                self._db.commit()
-            images_processed += 1
-            pbar.update()
+        if not images_processed % self.DB_IMAGES_BEFORE_COMMIT:
+          self._db.commit()
+        images_processed += 1
+        pbar.update()
 
-            lookup_start = time.time()
-            existing_image = self._db.get_image_by_hash(meta['hash'])
-            lookup_time_sum += time.time() - lookup_start
-            
-            if existing_image:
-                if existing_image['filepath'] != filepath:
-                    # Image was renamed, update the filepath
-                    self._db.upsert_image(db.NewImage(
-                        filepath=filepath,
-                        modified_at=meta['modified_at'],
-                        size=meta['size'],
-                        hash=meta['hash'],
-                        vector=existing_image['vector']
-                    ), commit=False)
-                self._db.remove_indexing_flag(filepath, commit=False)
-                continue
+        if image and is_image_meta_equal(image, meta):
+          self._db.remove_indexing_flag(filepath, commit=False)
+          continue
 
-            batch.append(filepath)
-            metas.append(meta)
+        batch.append(filepath)
+        metas.append(meta)
 
-            if len(batch) >= self._indexing_batch_size:
-                self._index_files(batch, metas)
-                batch = []
-                metas = []
-        total_time = time.time() - start_time
-        print(f"Total indexing time: {total_time:.2f} seconds {lookup_time_sum:.2f}")
-        print(f"Average lookup time: {lookup_time_sum/images_processed:.5f} seconds")
-        if len(batch) != 0:
-            self._index_files(batch, metas)
+        if len(batch) >= self._indexing_batch_size:
+          self._index_files(batch, metas)
+          batch = []
+          metas = []
+      total_time = time.time() - start_time
+      print(f"Total indexing time: {total_time:.2f} seconds")
+      print(f"Average lookup time: {lookup_time_sum/images_processed:.5f} seconds")
+      if len(batch) != 0:
+        self._index_files(batch, metas)
 
-        self._db.commit()
-        counter_thread.join()
+      self._db.commit()
+      counter_thread.join()
 
     self._db.flag_indexing_images_in_a_dir_as_deleted(directory)
     print('', file=sys.stderr)

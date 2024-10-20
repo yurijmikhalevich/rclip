@@ -21,28 +21,18 @@ class Image(NewImage):
 
 
 class DB:
-  VERSION = 2
+  VERSION = 3
 
   def __init__(self, filename: Union[str, pathlib.Path]):
     self._con = sqlite3.connect(filename)
     self._con.row_factory = sqlite3.Row
     self.ensure_tables()
     self.ensure_version()
-    self._migrate_db()
 
   def close(self):
     self._con.commit()
     self._con.close()
 
-  def _migrate_db(self):
-    try:
-        self._con.execute('ALTER TABLE images ADD COLUMN hash TEXT NOT NULL DEFAULT ""')
-        self._con.execute('CREATE INDEX IF NOT EXISTS idx_images_hash ON images(hash)')
-        self._con.commit()
-    except sqlite3.OperationalError:
-        # Column or index already exists, skip
-        pass
-    
   def ensure_tables(self):
     self._con.execute('''
       CREATE TABLE IF NOT EXISTS images (
@@ -51,13 +41,13 @@ class DB:
         filepath TEXT NOT NULL UNIQUE,
         modified_at DATETIME NOT NULL,
         size INTEGER NOT NULL,
-        hash TEXT NOT NULL, 
-        vector BLOB NOT NULL
-      );
+        vector BLOB NOT NULL,
+        hash TEXT NOT NULL
+      )
     ''')
     # Query for images
     self._con.execute('CREATE UNIQUE INDEX IF NOT EXISTS existing_images ON images(filepath) WHERE deleted IS NULL')
-    self._con.execute('CREATE INDEX IF NOT EXISTS idx_images_hash ON images(hash)')
+    self._con.execute('CREATE INDEX IF NOT EXISTS image_hash_index ON images(hash)')  # New index for hash
     self._con.execute('CREATE TABLE IF NOT EXISTS db_version (version INTEGER)')
     self._con.commit()
 
@@ -74,6 +64,17 @@ class DB:
     if db_version < 2:
       self._con.execute('ALTER TABLE images ADD COLUMN indexing BOOLEAN')
       db_version = 2
+    if db_version < 3:
+      # Check if the 'hash' column already exists
+      cursor = self._con.execute("PRAGMA table_info(images)")
+      columns = [column[1] for column in cursor.fetchall()]
+      if 'hash' not in columns:
+          self._con.execute('ALTER TABLE images ADD COLUMN hash TEXT')
+      # Check if the index already exists
+      cursor = self._con.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='image_hash_index'")
+      if not cursor.fetchone():
+          self._con.execute('CREATE INDEX image_hash_index ON images(hash)')
+      db_version = 3
     if db_version < self.VERSION:
       raise Exception('migration to a newer index version isn\'t implemented')
     if db_version_entry:
@@ -87,14 +88,14 @@ class DB:
 
   def upsert_image(self, image: NewImage, commit: bool = True):
     self._con.execute('''
-      INSERT INTO images(deleted, indexing, filepath, modified_at, size, hash, vector)
-      VALUES (:deleted, :indexing, :filepath, :modified_at, :size, :hash, :vector)
+      INSERT INTO images(deleted, indexing, filepath, modified_at, size, vector, hash)
+      VALUES (:deleted, :indexing, :filepath, :modified_at, :size, :vector, :hash)
       ON CONFLICT(filepath) DO UPDATE SET
-        deleted=:deleted, indexing=:indexing, modified_at=:modified_at, size=:size, hash=:hash, vector=:vector
+        deleted=:deleted, indexing=:indexing, modified_at=:modified_at, size=:size, vector=:vector, hash=:hash
     ''', {'deleted': None, 'indexing': None, **image})
     if commit:
       self._con.commit()
-  
+
   def remove_indexing_flag_from_all_images(self, commit: bool = True):
     self._con.execute('UPDATE images SET indexing = NULL')
     if commit:
@@ -128,6 +129,10 @@ class DB:
     )
 
   def get_image_by_hash(self, hash: str) -> Optional[Image]:
-    row = self._con.execute('SELECT * FROM images WHERE hash = ?', (hash,))
-    row = row.fetchone()
-    return Image(**row) if row else None
+    cur = self._con.execute('SELECT * FROM images WHERE hash = ? AND deleted IS NULL LIMIT 1', (hash,))
+    return cur.fetchone()
+
+  def update_image_filepath(self, old_filepath: str, new_filepath: str, commit: bool = True):
+    self._con.execute('UPDATE images SET filepath = ? WHERE filepath = ?', (new_filepath, old_filepath))
+    if commit:
+      self._con.commit()

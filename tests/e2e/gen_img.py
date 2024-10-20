@@ -6,11 +6,11 @@ import numpy as np
 import random
 
 # Create output directory if it doesn't exist
-output_dir = './tests/e2e/generated_images'
+output_dir = './tests/e2e/generated_images/images nested directories'
 os.makedirs(output_dir, exist_ok=True)
 
 # Number of images to generate
-num_images = 1000
+num_images = 10000
 image_size = (512, 512)  # Image size
 
 # List of random shapes and objects to add to the image
