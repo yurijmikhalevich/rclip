@@ -26,8 +26,8 @@ class DB:
   def __init__(self, filename: Union[str, pathlib.Path]):
     self._con = sqlite3.connect(filename)
     self._con.row_factory = sqlite3.Row
-    self.ensure_tables()
     self.ensure_version()
+    self.ensure_tables()
     self._migrate_db()
 
   def _migrate_db(self):
@@ -51,13 +51,18 @@ class DB:
         modified_at DATETIME NOT NULL,
         size INTEGER NOT NULL,
         vector BLOB NOT NULL,
-        hash TEXT NOT NULL
+        hash TEXT,
+        indexing BOOLEAN
       )
     ''')
     # Query for images
     self._con.execute('CREATE UNIQUE INDEX IF NOT EXISTS existing_images ON images(filepath) WHERE deleted IS NULL')
-    self._con.execute('CREATE INDEX IF NOT EXISTS image_hash_index ON images(hash)')  # New index for hash
     self._con.execute('CREATE TABLE IF NOT EXISTS db_version (version INTEGER)')
+    # Check if 'hash' column exists before creating the index
+    cursor = self._con.execute("PRAGMA table_info(images)")
+    columns = [column[1] for column in cursor.fetchall()]
+    if 'hash' in columns:
+        self._con.execute('CREATE INDEX IF NOT EXISTS image_hash_index ON images(hash)')
     self._con.commit()
 
   def ensure_version(self):
@@ -74,15 +79,7 @@ class DB:
       self._con.execute('ALTER TABLE images ADD COLUMN indexing BOOLEAN')
       db_version = 2
     if db_version < 3:
-      # Check if the 'hash' column already exists
-      cursor = self._con.execute("PRAGMA table_info(images)")
-      columns = [column[1] for column in cursor.fetchall()]
-      if 'hash' not in columns:
-          self._con.execute('ALTER TABLE images ADD COLUMN hash TEXT')
-      # Check if the index already exists
-      cursor = self._con.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='image_hash_index'")
-      if not cursor.fetchone():
-          self._con.execute('CREATE INDEX image_hash_index ON images(hash)')
+      self._con.execute('ALTER TABLE images ADD COLUMN hash TEXT')
       db_version = 3
     if db_version < self.VERSION:
       raise Exception('migration to a newer index version isn\'t implemented')
@@ -90,7 +87,7 @@ class DB:
       self._con.execute('UPDATE db_version SET version=?', (self.VERSION,))
     else:
       self._con.execute('INSERT INTO db_version(version) VALUES (?)', (self.VERSION,))
-    self._con.commit()
+      self._con.commit()
 
   def commit(self):
     self._con.commit()
