@@ -6,7 +6,7 @@ import numpy as np
 import random
 
 # Create output directory if it doesn't exist
-output_dir = './tests/e2e/generated_images/images nested directories'
+output_dir = './images nested directories/generated_images'
 os.makedirs(output_dir, exist_ok=True)
 
 # Number of images to generate
