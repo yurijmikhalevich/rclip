@@ -28,7 +28,16 @@ class DB:
     self._con.row_factory = sqlite3.Row
     self.ensure_tables()
     self.ensure_version()
+    self._migrate_db()
 
+  def _migrate_db(self):
+    try:
+        self._con.execute('ALTER TABLE images ADD COLUMN hash TEXT')
+        self._con.commit()
+    except sqlite3.OperationalError:
+        # Column already exists, skip
+        pass
+    
   def close(self):
     self._con.commit()
     self._con.close()
