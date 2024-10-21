@@ -1,14 +1,16 @@
 import itertools
 import os
 import re
+import sqlite3
 import sys
 import threading
-from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
+from typing import List, NamedTuple, Optional, Tuple, TypedDict
 
 import numpy as np
 from tqdm import tqdm
 import PIL
 from PIL import Image, ImageFile
+import hashlib
 
 from rclip import db, fs, model
 from rclip.utils.preview import preview
@@ -27,7 +29,7 @@ class ImageMeta(TypedDict):
 PathMetaVector = Tuple[str, ImageMeta, model.FeatureVector]
 
 
-def get_image_meta(entry: os.DirEntry) -> ImageMeta:
+def get_image_meta(entry: os.DirEntry[str]) -> ImageMeta:
   stat = entry.stat()
   return ImageMeta(modified_at=stat.st_mtime, size=stat.st_size)
 
@@ -62,31 +64,54 @@ class RClip:
     excluded_dirs = '|'.join(re.escape(dir) for dir in exclude_dirs or self.EXCLUDE_DIRS_DEFAULT)
     self._exclude_dir_regex = re.compile(f'^.+\\{os.path.sep}({excluded_dirs})(\\{os.path.sep}.+)?$')
 
+  def _compute_image_hash(self, image_path: str) -> str:
+    with open(image_path, 'rb') as f:
+      return hashlib.md5(f.read()).hexdigest()
+
   def _index_files(self, filepaths: List[str], metas: List[ImageMeta]):
     images: List[Image.Image] = []
     filtered_paths: List[str] = []
+    hashes: List[str] = []
     for path in filepaths:
-      try:
-        image = Image.open(path)
-        images.append(image)
-        filtered_paths.append(path)
-      except PIL.UnidentifiedImageError as ex:
-        pass
-      except Exception as ex:
-        print(f'error loading image {path}:', ex, file=sys.stderr)
+        try:
+            image = Image.open(path)
+            images.append(image)
+            filtered_paths.append(path)
+            hashes.append(self._compute_image_hash(path))
+        except PIL.UnidentifiedImageError as ex:
+            pass
+        except Exception as ex:
+            print(f'error loading image {path}:', ex, file=sys.stderr)
 
     try:
-      features = self._model.compute_image_features(images)
+        features = self._model.compute_image_features(images)
     except Exception as ex:
-      print('error computing features:', ex, file=sys.stderr)
-      return
-    for path, meta, vector in cast(Iterable[PathMetaVector], zip(filtered_paths, metas, features)):
-      self._db.upsert_image(db.NewImage(
-        filepath=path,
-        modified_at=meta['modified_at'],
-        size=meta['size'],
-        vector=vector.tobytes()
-      ), commit=False)
+        print('error computing features:', ex, file=sys.stderr)
+        return
+    for path, meta, vector, hash in zip(filtered_paths, metas, features, hashes):
+        existing_image = self._db.get_image_by_hash(hash)
+        if existing_image and existing_image['filepath'] != path:
+            # Image was renamed, update the filepath
+            try:
+                self._db.update_image_filepath(existing_image['filepath'], path, commit=False)
+            except sqlite3.IntegrityError:
+                # If updating fails, insert a new entry
+                self._db.upsert_image(db.NewImage(
+                    filepath=path,
+                    modified_at=meta['modified_at'],
+                    size=meta['size'],
+                    vector=vector.tobytes(),
+                    hash=hash
+                ), commit=False)
+        else:
+            self._db.upsert_image(db.NewImage(
+                filepath=path,
+                modified_at=meta['modified_at'],
+                size=meta['size'],
+                vector=vector.tobytes(),
+                hash=hash
+            ), commit=False)
+    self._db.commit()
 
   def ensure_index(self, directory: str):
     print(
@@ -136,7 +161,6 @@ class RClip:
           self._index_files(batch, metas)
           batch = []
           metas = []
-
       if len(batch) != 0:
         self._index_files(batch, metas)
 
