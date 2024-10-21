@@ -87,7 +87,7 @@ class DB:
       self._con.execute('UPDATE db_version SET version=?', (self.VERSION,))
     else:
       self._con.execute('INSERT INTO db_version(version) VALUES (?)', (self.VERSION,))
-      self._con.commit()
+    self._con.commit()
 
   def commit(self):
     self._con.commit()
