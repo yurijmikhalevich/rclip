@@ -1,6 +1,7 @@
 import itertools
 import os
 import re
+import sqlite3
 import sys
 import threading
 import time
@@ -73,34 +74,45 @@ class RClip:
     filtered_paths: List[str] = []
     hashes: List[str] = []
     for path in filepaths:
-      try:
-        image = Image.open(path)
-        images.append(image)
-        filtered_paths.append(path)
-        hashes.append(self._compute_image_hash(path))
-      except PIL.UnidentifiedImageError as ex:
-        pass
-      except Exception as ex:
-        print(f'error loading image {path}:', ex, file=sys.stderr)
+        try:
+            image = Image.open(path)
+            images.append(image)
+            filtered_paths.append(path)
+            hashes.append(self._compute_image_hash(path))
+        except PIL.UnidentifiedImageError as ex:
+            pass
+        except Exception as ex:
+            print(f'error loading image {path}:', ex, file=sys.stderr)
 
     try:
-      features = self._model.compute_image_features(images)
+        features = self._model.compute_image_features(images)
     except Exception as ex:
-      print('error computing features:', ex, file=sys.stderr)
-      return
+        print('error computing features:', ex, file=sys.stderr)
+        return
     for path, meta, vector, hash in zip(filtered_paths, metas, features, hashes):
-      existing_image = self._db.get_image_by_hash(hash)
-      if existing_image and existing_image['filepath'] != path:
-        # Image was renamed, update the filepath
-        self._db.update_image_filepath(existing_image['filepath'], path, commit=False)
-      else:
-        self._db.upsert_image(db.NewImage(
-          filepath=path,
-          modified_at=meta['modified_at'],
-          size=meta['size'],
-          vector=vector.tobytes(),
-          hash=hash
-        ), commit=False)
+        existing_image = self._db.get_image_by_hash(hash)
+        if existing_image and existing_image['filepath'] != path:
+            # Image was renamed, update the filepath
+            try:
+                self._db.update_image_filepath(existing_image['filepath'], path, commit=False)
+            except sqlite3.IntegrityError:
+                # If updating fails, insert a new entry
+                self._db.upsert_image(db.NewImage(
+                    filepath=path,
+                    modified_at=meta['modified_at'],
+                    size=meta['size'],
+                    vector=vector.tobytes(),
+                    hash=hash
+                ), commit=False)
+        else:
+            self._db.upsert_image(db.NewImage(
+                filepath=path,
+                modified_at=meta['modified_at'],
+                size=meta['size'],
+                vector=vector.tobytes(),
+                hash=hash
+            ), commit=False)
+    self._db.commit()
 
   def ensure_index(self, directory: str):
     print(

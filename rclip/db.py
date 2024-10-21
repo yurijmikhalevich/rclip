@@ -130,6 +130,16 @@ class DB:
     return cur.fetchone()
 
   def update_image_filepath(self, old_filepath: str, new_filepath: str, commit: bool = True):
-    self._con.execute('UPDATE images SET filepath = ? WHERE filepath = ?', (new_filepath, old_filepath))
+    try:
+        self._con.execute('UPDATE images SET filepath = ? WHERE filepath = ?', (new_filepath, old_filepath))
+    except sqlite3.IntegrityError:
+        # If the new filepath already exists, we need to merge the entries
+        existing_image = self.get_image(filepath=new_filepath)
+        if existing_image:
+            # Delete the old entry
+            self._con.execute('DELETE FROM images WHERE filepath = ?', (old_filepath,))
+        else:
+            # If there's no existing image with the new filepath, re-raise the exception
+            raise
     if commit:
-      self._con.commit()
+        self._con.commit()
