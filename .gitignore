@@ -152,3 +152,5 @@ requirements.txt
 
 benchmarks/datasets/
 benchmarks/datasets
+
+*.png

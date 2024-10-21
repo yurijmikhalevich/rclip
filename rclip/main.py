@@ -4,7 +4,6 @@ import re
 import sqlite3
 import sys
 import threading
-import time
 from typing import List, NamedTuple, Optional, Tuple, TypedDict
 
 import numpy as np
@@ -137,13 +136,9 @@ class RClip:
       images_processed = 0
       batch: List[str] = []
       metas: List[ImageMeta] = []
-      lookup_time_sum = 0
-      start_time = time.time()
       for entry in fs.walk(directory, self._exclude_dir_regex, self.IMAGE_REGEX):
         filepath = entry.path
-        lookup_start = time.time()
         image = self._db.get_image(filepath=filepath)
-        lookup_time_sum += time.time() - lookup_start
         try:
           meta = get_image_meta(entry)
         except Exception as ex:
@@ -166,9 +161,6 @@ class RClip:
           self._index_files(batch, metas)
           batch = []
           metas = []
-      total_time = time.time() - start_time
-      print(f"Total indexing time: {total_time:.2f} seconds")
-      print(f"Average lookup time: {lookup_time_sum/images_processed:.5f} seconds")
       if len(batch) != 0:
         self._index_files(batch, metas)
 
