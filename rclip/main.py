@@ -9,7 +9,7 @@ import numpy as np
 from tqdm import tqdm
 import PIL
 from PIL import Image, ImageFile
-from rawpy import imread
+import rawpy
 
 from rclip import db, fs, model
 from rclip.utils.preview import preview
@@ -40,9 +40,39 @@ def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
   return True
 
 
+def read_raw_image_file(path: str):
+  image = None
+  try:
+    raw = rawpy.imread(path)
+    rgb = raw.postprocess()
+    image = Image.fromarray(np.array(rgb))
+  except Exception as ex:
+    print(f'not a valid raw file {path}', ex, file=sys.stderr)
+  return image
+
+
+def read_image_file(path: str):
+  image = None
+  try:
+    image = Image.open(path)
+  except PIL.UnidentifiedImageError as ex:
+    print(f'unidentified image error {path}:', ex, file=sys.stderr)
+  except Exception as ex:
+    print(f'error loading image {path}:', ex, file=sys.stderr)
+  return image
+
+
+def get_file_extension(path: str) -> str:
+  return os.path.splitext(path)[1].lower()[1:]
+
+
 class RClip:
   EXCLUDE_DIRS_DEFAULT = ['@eaDir', 'node_modules', '.git']
-  IMAGE_REGEX = re.compile(r'^.+\.(jpe?g|png|webp|arw|dng|cr2)$', re.I)
+  # these images are always processed
+  IMAGE_EXT = ["jpg", "jpeg", "png", "webp"]
+  # RAW images are processed only if there is no processed image alongside it
+  IMAGE_RAW_EXT = ["arw", "dng", "cr2"]
+  IMAGE_REGEX = re.compile(f'^.+\\.({"|".join([*IMAGE_EXT, *IMAGE_RAW_EXT])})$', re.I)
   DB_IMAGES_BEFORE_COMMIT = 50_000
 
   class SearchResult(NamedTuple):
@@ -63,34 +93,17 @@ class RClip:
     excluded_dirs = '|'.join(re.escape(dir) for dir in exclude_dirs or self.EXCLUDE_DIRS_DEFAULT)
     self._exclude_dir_regex = re.compile(f'^.+\\{os.path.sep}({excluded_dirs})(\\{os.path.sep}.+)?$')
 
-  def _read_raw_image_file(self, path: str):
-    image = None
-    try:
-      raw = imread(path)
-      rgb = raw.postprocess()
-      image = Image.fromarray(np.array(rgb))
-    except Exception as ex:
-      print(f'not a valid raw file {path}', ex, file=sys.stderr)
-    return image
-
-  def _read_image_file(self, path: str):
-    image = None
-    try:
-      image = Image.open(path)
-    except PIL.UnidentifiedImageError as ex:
-      print(f'unidentified image error {path}:', ex, file=sys.stderr)
-    except Exception as ex:
-      print(f'error loading image {path}:', ex, file=sys.stderr)
-    return image
-
   def _index_files(self, filepaths: List[str], metas: List[ImageMeta]):
     images: List[Image.Image] = []
     filtered_paths: List[str] = []
     for path in filepaths:
-      if os.path.splitext(path)[1].lower() in fs.PRIORITIZED_IMAGE_EXTENSIONS:
-        image = self._read_image_file(path)
+      file_ext = get_file_extension(path)
+      if file_ext in self.IMAGE_EXT:
+        image = read_image_file(path)
+      elif file_ext in self.IMAGE_RAW_EXT:
+        image = read_raw_image_file(path)
       else:
-        image = self._read_raw_image_file(path)
+        raise ValueError(f'unsupported image extension: .{file_ext}')
 
       if image:
         images.append(image)
@@ -108,6 +121,18 @@ class RClip:
         size=meta['size'],
         vector=vector.tobytes()
       ), commit=False)
+
+  def _does_processed_image_exist_for_raw(self, raw_path: str) -> bool:
+    """Check if there is a processed image alongside the raw one; doesn't support mixed-case extensions,
+    e.g. it won't detect the .JpG image, but will detect .jpg or .JPG"""
+
+    image_path = os.path.splitext(raw_path)[0]
+    for ext in self.IMAGE_EXT:
+      if os.path.isfile(image_path + "." + ext):
+        return True
+      if os.path.isfile(image_path + "." + ext.upper()):
+        return True
+    return False
 
   def ensure_index(self, directory: str):
     print(
@@ -134,7 +159,13 @@ class RClip:
       metas: List[ImageMeta] = []
       for entry in fs.walk(directory, self._exclude_dir_regex, self.IMAGE_REGEX):
         filepath = entry.path
-        image = self._db.get_image(filepath=filepath)
+
+        file_ext = get_file_extension(filepath)
+        if file_ext in self.IMAGE_RAW_EXT and self._does_processed_image_exist_for_raw(filepath):
+          images_processed += 1
+          pbar.update()
+          continue
+
         try:
           meta = get_image_meta(entry)
         except Exception as ex:
@@ -146,6 +177,7 @@ class RClip:
         images_processed += 1
         pbar.update()
 
+        image = self._db.get_image(filepath=filepath)
         if image and is_image_meta_equal(image, meta):
           self._db.remove_indexing_flag(filepath, commit=False)
           continue
