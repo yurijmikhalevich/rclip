@@ -202,12 +202,10 @@ def read_image(query: str) -> Image.Image:
   path = remove_prefix(query, 'file://')
   try:
     file_ext = get_file_extension(path)
-    if file_ext in IMAGE_EXT:
-      image = Image.open(path)
-    elif file_ext in IMAGE_RAW_EXT:
+    if file_ext in IMAGE_RAW_EXT:
       image = read_raw_image_file(path)
     else:
-      raise UnidentifiedImageError(f'unsupported image extension: .{file_ext}')
+      image = Image.open(path)
   except UnidentifiedImageError as e:
     # by default the filename on the UnidentifiedImageError is None
     e.filename = path
