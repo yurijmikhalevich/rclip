@@ -10,7 +10,7 @@ import requests
 import sys
 from importlib.metadata import version
 
-from rclip.const import IMAGE_EXT, IMAGE_RAW_EXT, IS_LINUX, IS_MACOS, IS_WINDOWS
+from rclip.const import IMAGE_RAW_EXT, IS_LINUX, IS_MACOS, IS_WINDOWS
 
 
 MAX_DOWNLOAD_SIZE_BYTES = 50_000_000
