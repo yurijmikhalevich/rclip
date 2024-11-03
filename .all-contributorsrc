@@ -22,6 +22,15 @@
       "contributions": [
         "infra"
       ]
+    },
+    {
+      "login": "abidkhan484",
+      "name": "AbId KhAn",
+      "avatar_url": "https://avatars.githubusercontent.com/u/15053047?v=4",
+      "profile": "http://abidkhan484.github.io",
+      "contributions": [
+        "code"
+      ]
     }
   ],
   "contributorsPerLine": 7,
