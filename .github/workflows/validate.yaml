@@ -33,7 +33,9 @@ jobs:
       matrix:
         python: ['3.9', '3.10', '3.11', '3.12']
         # macos-13 is amd64, macos-14 is arm64
-        os: [ubuntu-22.04, macos-13, macos-14, windows-2022]
+        # skipping macos-13 here because newer versions of torch aren't being built for amd64 macOS anymore
+        # the brew builds for amd64 macOS are being validated during brew release
+        os: [ubuntu-22.04, macos-14, windows-2022]
         exclude:
           # github's setup-python action can't install Python 3.9 on macos-14
           - python: '3.9'
