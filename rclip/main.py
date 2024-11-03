@@ -67,17 +67,14 @@ class RClip:
     images: List[Image.Image] = []
     filtered_paths: List[str] = []
     for path in filepaths:
-      image = None
       try:
         image = helpers.read_image(path)
-      except PIL.UnidentifiedImageError as ex:
-        print(f'unidentified image error {path}:', ex, file=sys.stderr)
-      except Exception as ex:
-        print(f'error loading image {path}:', ex, file=sys.stderr)
-
-      if image:
         images.append(image)
         filtered_paths.append(path)
+      except PIL.UnidentifiedImageError as ex:
+        pass
+      except Exception as ex:
+        print(f'error loading image {path}:', ex, file=sys.stderr)
 
     try:
       features = self._model.compute_image_features(images)

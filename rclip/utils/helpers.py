@@ -207,9 +207,7 @@ def read_image(query: str) -> Image.Image:
     elif file_ext in IMAGE_RAW_EXT:
       image = read_raw_image_file(path)
     else:
-      ex = UnidentifiedImageError(f'unsupported image extension: .{file_ext}')
-      ex.filename = path
-      raise ex
+      raise UnidentifiedImageError(f'unsupported image extension: .{file_ext}')
   except UnidentifiedImageError as e:
     # by default the filename on the UnidentifiedImageError is None
     e.filename = path
