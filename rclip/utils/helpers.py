@@ -4,11 +4,13 @@ import pathlib
 import textwrap
 from PIL import Image, UnidentifiedImageError
 import re
+import numpy as np
+import rawpy
 import requests
 import sys
 from importlib.metadata import version
 
-from rclip.const import IS_LINUX, IS_MACOS, IS_WINDOWS
+from rclip.const import IMAGE_RAW_EXT, IS_LINUX, IS_MACOS, IS_WINDOWS
 
 
 MAX_DOWNLOAD_SIZE_BYTES = 50_000_000
@@ -186,15 +188,29 @@ def download_image(url: str) -> Image.Image:
   return img
 
 
+def get_file_extension(path: str) -> str:
+  return os.path.splitext(path)[1].lower()[1:]
+
+
+def read_raw_image_file(path: str):
+  raw = rawpy.imread(path)
+  rgb = raw.postprocess()
+  return Image.fromarray(np.array(rgb))
+
+
 def read_image(query: str) -> Image.Image:
   path = remove_prefix(query, 'file://')
   try:
-    img = Image.open(path)
+    file_ext = get_file_extension(path)
+    if file_ext in IMAGE_RAW_EXT:
+      image = read_raw_image_file(path)
+    else:
+      image = Image.open(path)
   except UnidentifiedImageError as e:
     # by default the filename on the UnidentifiedImageError is None
     e.filename = path
     raise e
-  return img
+  return image
 
 
 def is_http_url(path: str) -> bool:
