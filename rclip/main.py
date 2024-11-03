@@ -9,9 +9,9 @@ import numpy as np
 from tqdm import tqdm
 import PIL
 from PIL import Image, ImageFile
-import rawpy
 
 from rclip import db, fs, model
+from rclip.const import IMAGE_EXT, IMAGE_RAW_EXT
 from rclip.utils.preview import preview
 from rclip.utils.snap import check_snap_permissions, is_snap
 from rclip.utils import helpers
@@ -40,26 +40,8 @@ def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
   return True
 
 
-def read_raw_image_file(path: str):
-  raw = rawpy.imread(path)
-  rgb = raw.postprocess()
-  return Image.fromarray(np.array(rgb))
-
-
-def read_image_file(path: str):
-  return Image.open(path)
-
-
-def get_file_extension(path: str) -> str:
-  return os.path.splitext(path)[1].lower()[1:]
-
-
 class RClip:
   EXCLUDE_DIRS_DEFAULT = ['@eaDir', 'node_modules', '.git']
-  # these images are always processed
-  IMAGE_EXT = ["jpg", "jpeg", "png", "webp"]
-  # RAW images are processed only if there is no processed image alongside it
-  IMAGE_RAW_EXT = ["arw", "dng", "cr2"]
   IMAGE_REGEX = re.compile(f'^.+\\.({"|".join([*IMAGE_EXT, *IMAGE_RAW_EXT])})$', re.I)
   DB_IMAGES_BEFORE_COMMIT = 50_000
 
@@ -86,15 +68,8 @@ class RClip:
     filtered_paths: List[str] = []
     for path in filepaths:
       image = None
-
       try:
-        file_ext = get_file_extension(path)
-        if file_ext in self.IMAGE_EXT:
-          image = read_image_file(path)
-        elif file_ext in self.IMAGE_RAW_EXT:
-          image = read_raw_image_file(path)
-        else:
-          print(f'unsupported image extension: .{file_ext}', file=sys.stderr)
+        image = helpers.read_image(path)
       except PIL.UnidentifiedImageError as ex:
         print(f'unidentified image error {path}:', ex, file=sys.stderr)
       except Exception as ex:
@@ -122,7 +97,7 @@ class RClip:
     e.g. it won't detect the .JpG image, but will detect .jpg or .JPG"""
 
     image_path = os.path.splitext(raw_path)[0]
-    for ext in self.IMAGE_EXT:
+    for ext in IMAGE_EXT:
       if os.path.isfile(image_path + "." + ext):
         return True
       if os.path.isfile(image_path + "." + ext.upper()):
@@ -155,8 +130,8 @@ class RClip:
       for entry in fs.walk(directory, self._exclude_dir_regex, self.IMAGE_REGEX):
         filepath = entry.path
 
-        file_ext = get_file_extension(filepath)
-        if file_ext in self.IMAGE_RAW_EXT and self._does_processed_image_exist_for_raw(filepath):
+        file_ext = helpers.get_file_extension(filepath)
+        if file_ext in IMAGE_RAW_EXT and self._does_processed_image_exist_for_raw(filepath):
           images_processed += 1
           pbar.update()
           continue
