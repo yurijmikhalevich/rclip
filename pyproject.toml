@@ -24,12 +24,12 @@ open_clip_torch = "^2.24.0"
 pillow = "^10.3.0"
 requests = "~=2.32"
 torch = [
-  { version = "==2.2.2", source = "pypi", markers = "sys_platform != 'linux' or platform_machine == 'aarch64'" },
-  { version = "==2.2.2+cpu", source = "pytorch-cpu", markers = "sys_platform == 'linux' and platform_machine != 'aarch64'" }
+  { version = "==2.4.1", source = "pypi", markers = "sys_platform != 'linux' or platform_machine == 'aarch64'" },
+  { version = "==2.4.1+cpu", source = "pytorch-cpu", markers = "sys_platform == 'linux' and platform_machine != 'aarch64'" }
 ]
 torchvision = [
-  { version = "==0.17.2", source = "pypi", markers = "sys_platform != 'linux' or platform_machine == 'aarch64'" },
-  { version = "==0.17.2+cpu", source = "pytorch-cpu", markers = "sys_platform == 'linux' and platform_machine != 'aarch64'" }
+  { version = "==0.19.1", source = "pypi", markers = "sys_platform != 'linux' or platform_machine == 'aarch64'" },
+  { version = "==0.19.1+cpu", source = "pytorch-cpu", markers = "sys_platform == 'linux' and platform_machine != 'aarch64'" }
 ]
 tqdm = "^4.65.0"
 rawpy = "^0.23.2"
