@@ -146,6 +146,12 @@ def init_arg_parser() -> argparse.ArgumentParser:
     ' adding this argument overrides the default of ("@eaDir", "node_modules", ".git");'
     ' WARNING: the default will be removed in v2'
   )
+  parser.add_argument(
+    '--experimental-raw-support',
+    action='store_true',
+    default=False,
+    help='enables support for RAW images (only ARW and CR2 are supported)'
+  )
   if IS_MACOS:
     if is_mps_available():
       parser.add_argument('--device', '-d', default='mps', choices=['cpu', 'mps'],
