@@ -31,7 +31,7 @@ jobs:
   test:
     strategy:
       matrix:
-        python: ['3.9', '3.10', '3.11', '3.12']
+        python: ['3.9', '3.10', '3.11', '3.12', '3.13', '3.14']
         # macos-13 is amd64, macos-14 is arm64
         os: [ubuntu-22.04, macos-13, macos-14, windows-2022]
         exclude:
