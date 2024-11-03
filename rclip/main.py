@@ -41,25 +41,13 @@ def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
 
 
 def read_raw_image_file(path: str):
-  image = None
-  try:
-    raw = rawpy.imread(path)
-    rgb = raw.postprocess()
-    image = Image.fromarray(np.array(rgb))
-  except Exception as ex:
-    print(f'not a valid raw file {path}', ex, file=sys.stderr)
-  return image
+  raw = rawpy.imread(path)
+  rgb = raw.postprocess()
+  return Image.fromarray(np.array(rgb))
 
 
 def read_image_file(path: str):
-  image = None
-  try:
-    image = Image.open(path)
-  except PIL.UnidentifiedImageError as ex:
-    print(f'unidentified image error {path}:', ex, file=sys.stderr)
-  except Exception as ex:
-    print(f'error loading image {path}:', ex, file=sys.stderr)
-  return image
+  return Image.open(path)
 
 
 def get_file_extension(path: str) -> str:
@@ -97,13 +85,20 @@ class RClip:
     images: List[Image.Image] = []
     filtered_paths: List[str] = []
     for path in filepaths:
-      file_ext = get_file_extension(path)
-      if file_ext in self.IMAGE_EXT:
-        image = read_image_file(path)
-      elif file_ext in self.IMAGE_RAW_EXT:
-        image = read_raw_image_file(path)
-      else:
-        raise ValueError(f'unsupported image extension: .{file_ext}')
+      image = None
+
+      try:
+        file_ext = get_file_extension(path)
+        if file_ext in self.IMAGE_EXT:
+          image = read_image_file(path)
+        elif file_ext in self.IMAGE_RAW_EXT:
+          image = read_raw_image_file(path)
+        else:
+          print(f'unsupported image extension: .{file_ext}', file=sys.stderr)
+      except PIL.UnidentifiedImageError as ex:
+        print(f'unidentified image error {path}:', ex, file=sys.stderr)
+      except Exception as ex:
+        print(f'error loading image {path}:', ex, file=sys.stderr)
 
       if image:
         images.append(image)
