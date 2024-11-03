@@ -42,7 +42,6 @@ def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
 
 class RClip:
   EXCLUDE_DIRS_DEFAULT = ['@eaDir', 'node_modules', '.git']
-  IMAGE_REGEX = re.compile(f'^.+\\.({"|".join([*IMAGE_EXT, *IMAGE_RAW_EXT])})$', re.I)
   DB_IMAGES_BEFORE_COMMIT = 50_000
 
   class SearchResult(NamedTuple):
@@ -55,10 +54,15 @@ class RClip:
     database: db.DB,
     indexing_batch_size: int,
     exclude_dirs: Optional[List[str]],
+    enable_raw_support: bool = False,
   ):
     self._model = model_instance
     self._db = database
     self._indexing_batch_size = indexing_batch_size
+    self._enable_raw_support = enable_raw_support
+
+    supported_image_ext = IMAGE_EXT + (IMAGE_RAW_EXT if enable_raw_support else [])
+    self._image_regex = re.compile(f'^.+\\.({"|".join(supported_image_ext)})$', re.I)
 
     excluded_dirs = '|'.join(re.escape(dir) for dir in exclude_dirs or self.EXCLUDE_DIRS_DEFAULT)
     self._exclude_dir_regex = re.compile(f'^.+\\{os.path.sep}({excluded_dirs})(\\{os.path.sep}.+)?$')
@@ -117,21 +121,22 @@ class RClip:
         pbar.refresh()
       counter_thread = threading.Thread(
         target=fs.count_files,
-        args=(directory, self._exclude_dir_regex, self.IMAGE_REGEX, update_total_images),
+        args=(directory, self._exclude_dir_regex, self._image_regex, update_total_images),
       )
       counter_thread.start()
 
       images_processed = 0
       batch: List[str] = []
       metas: List[ImageMeta] = []
-      for entry in fs.walk(directory, self._exclude_dir_regex, self.IMAGE_REGEX):
+      for entry in fs.walk(directory, self._exclude_dir_regex, self._image_regex):
         filepath = entry.path
 
-        file_ext = helpers.get_file_extension(filepath)
-        if file_ext in IMAGE_RAW_EXT and self._does_processed_image_exist_for_raw(filepath):
-          images_processed += 1
-          pbar.update()
-          continue
+        if self._enable_raw_support:
+          file_ext = helpers.get_file_extension(filepath)
+          if file_ext in IMAGE_RAW_EXT and self._does_processed_image_exist_for_raw(filepath):
+            images_processed += 1
+            pbar.update()
+            continue
 
         try:
           meta = get_image_meta(entry)
@@ -207,13 +212,20 @@ def init_rclip(
   device: str = "cpu",
   exclude_dir: Optional[List[str]] = None,
   no_indexing: bool = False,
+  enable_raw_support: bool = False,
 ):
   datadir = helpers.get_app_datadir()
   db_path = datadir / 'db.sqlite3'
 
   database = db.DB(db_path)
   model_instance = model.Model(device=device or "cpu")
-  rclip = RClip(model_instance, database, indexing_batch_size, exclude_dir)
+  rclip = RClip(
+    model_instance=model_instance,
+    database=database,
+    indexing_batch_size=indexing_batch_size,
+    exclude_dirs=exclude_dir,
+    enable_raw_support=enable_raw_support,
+  )
 
   if not no_indexing:
     rclip.ensure_index(working_directory)
@@ -235,6 +247,7 @@ def main():
     vars(args).get("device", "cpu"),
     args.exclude_dir,
     args.no_indexing,
+    args.experimental_raw_support,
   )
 
   try:
