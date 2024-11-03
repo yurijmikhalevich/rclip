@@ -2,7 +2,6 @@ import os
 from typing import Callable, Pattern
 
 COUNT_FILES_UPDATE_EVERY = 10_000
-PRIORITIZED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png'}
 
 
 def count_files(
@@ -31,16 +30,9 @@ def walk(
   while dirs_to_process:
     dir = dirs_to_process.pop()
     with os.scandir(dir) as it:
-      base_names = {}
-      sorted_entries = sorted(it, key=(
-        lambda entry: os.path.splitext(entry.name)[1].lower() not in PRIORITIZED_IMAGE_EXTENSIONS
-      ))
-      for entry in sorted_entries:
+      for entry in it:
         if entry.is_dir():
           if not exclude_dir_re.match(entry.path):
             dirs_to_process.append(entry.path)
         elif entry.is_file() and file_re.match(entry.name):
-          base_name = os.path.splitext(entry.name)[0]
-          if base_name not in base_names:
-            base_names[base_name] = entry.name
-            yield entry
+          yield entry
