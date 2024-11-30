@@ -70,7 +70,8 @@ jobs:
     needs: [validate, parse_tag]
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+      - uses: canonical/setup-lxd@main
       - name: Configure git for "snapcraft remote-build"
         run: |
           git config --global user.email "yurij@mikhalevi.ch"
