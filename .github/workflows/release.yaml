@@ -102,6 +102,7 @@ jobs:
         run: snapcraft build --build-for amd64
       - run: ls -lah
       - run: ls -lah snap/
+      - run: ls -lah snap/local/
       - run: exit 1
       - name: Validate built snap
         run: |
