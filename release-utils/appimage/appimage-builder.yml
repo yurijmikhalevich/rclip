@@ -41,7 +41,6 @@ AppDir:
       - python3.10
       - python3.10-distutils
       - python3.10-minimal
-      - python3-pip
     exclude: []
 
   after_bundle: >
