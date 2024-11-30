@@ -99,7 +99,7 @@ jobs:
       #     export SNAPCRAFT_REMOTE_BUILD_STRATEGY="force-fallback"
       #     snapcraft remote-build --launchpad-accept-public-upload --build-for arm64
       - name: Build amd64 snap locally
-        run: snapcraft build --build-for amd64
+        run: snapcraft --use-lxd --build-for amd64
       - run: ls -lah
       - run: ls -lah dist/
       - run: exit 1
