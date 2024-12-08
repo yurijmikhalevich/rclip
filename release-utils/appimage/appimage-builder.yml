@@ -35,13 +35,13 @@ AppDir:
         key_url: 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xba6932366a755776'
 
     include:
-      - curl
       - libffi7
       - libpython3.10-minimal
       - libpython3.10-stdlib
       - python3.10
       - python3.10-distutils
       - python3.10-minimal
+      - python3-pip
     exclude: []
 
   after_bundle: >
