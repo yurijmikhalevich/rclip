@@ -36,6 +36,7 @@ AppDir:
 
     include:
       - libffi7
+      - libc-bin
       - libpython3.10-minimal
       - libpython3.10-stdlib
       - python3.10
