@@ -150,6 +150,8 @@ jobs:
           APP_VERSION: ${{ needs.parse_tag.outputs.version }}
         run: |
           make build-appimage
+      - name: Validate built AppImage
+        run: ./rclip*.AppImage cat
       - name: Rename AppImage for GitHub releases page
         run: mv rclip-${{ needs.parse_tag.outputs.version }}-x86_64.AppImage rclip-${{ needs.parse_tag.outputs.version }}-amd64.AppImage
       - uses: actions/upload-artifact@v3
