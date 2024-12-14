@@ -132,6 +132,13 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install poetry
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade poetry
       - name: Set up APPDIR for after_bundle
         run: echo "APPDIR=$PWD/AppDir" >> $GITHUB_ENV
       - name: Install appimage-builder
