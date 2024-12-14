@@ -10,7 +10,6 @@ script:
   - cp rclip AppDir/usr/src -r
   - cp release-utils/appimage/logo@256.png AppDir/usr/share/icons/hicolor/256x256/apps/rclip.png
 
-
 AppDir:
   path: ./AppDir
 
@@ -36,7 +35,6 @@ AppDir:
 
     include:
       - libffi7
-      - libc6
       - libpython3.10-minimal
       - libpython3.10-stdlib
       - python3.10
@@ -45,8 +43,11 @@ AppDir:
       - python3-pip
     exclude: []
 
-  after_bundle: >
-    PATH=${APPDIR}/usr/bin:${PATH} ./release-utils/appimage/appimage_after_bundle.sh
+  after_bundle:
+    - echo ${APPDIR}
+    - ls ${APPDIR}/usr/lib
+    - ls ${APPDIR}/usr/lib/python3.10
+    - PATH="${APPDIR}/usr/bin:${PATH}" ./release-utils/appimage/appimage_after_bundle.sh
 
   runtime:
     env:
