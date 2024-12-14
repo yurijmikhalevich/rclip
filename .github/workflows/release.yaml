@@ -134,12 +134,16 @@ jobs:
       - uses: actions/checkout@v3
       - name: Set up APPDIR for after_bundle
         run: echo "APPDIR=$PWD/AppDir" >> $GITHUB_ENV
+      - name: Install appimage-builder
+        run: |
+          wget -O appimage-builder-x86_64.AppImage https://github.com/AppImageCrafters/appimage-builder/releases/download/v1.1.0/appimage-builder-1.1.0-x86_64.AppImage
+          chmod +x appimage-builder-x86_64.AppImage
+          sudo mv appimage-builder-x86_64.AppImage /usr/local/bin/appimage-builder
       - name: Build AppImage
-        uses: AppImageCrafters/build-appimage@v1.3
-        with:
-          recipe: './release-utils/appimage/appimage-builder.yml'
         env:
           APP_VERSION: ${{ needs.parse_tag.outputs.version }}
+        run: |
+          make build-appimage
       - name: Rename AppImage for GitHub releases page
         run: mv rclip-${{ needs.parse_tag.outputs.version }}-x86_64.AppImage rclip-${{ needs.parse_tag.outputs.version }}-amd64.AppImage
       - uses: actions/upload-artifact@v3
