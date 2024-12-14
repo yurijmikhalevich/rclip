@@ -21,7 +21,7 @@ AppDir:
     # Set the python executable as entry point
     exec: usr/bin/python3.10
     # Set the application main script path as argument. Use '$@' to forward CLI parameters
-    exec_args: "${APPDIR}/usr/bin/rclip $@"
+    exec_args: "${APPDIR}/usr/local/bin/rclip $@"
 
   apt:
     arch: amd64
@@ -38,16 +38,15 @@ AppDir:
       - libpython3.10-minimal
       - libpython3.10-stdlib
       - python3.10
-      - python3.10-distutils
       - python3.10-minimal
       - python3-pip
+      - python3-distutils
     exclude: []
 
-  after_bundle:
-    - echo ${APPDIR}
-    - ls ${APPDIR}/usr/lib
-    - ls ${APPDIR}/usr/lib/python3.10
-    - PATH="${APPDIR}/usr/bin:${PATH}" ./release-utils/appimage/appimage_after_bundle.sh
+  after_bundle: |
+    export APPDIR="$(pwd)/AppDir"
+    echo ${APPDIR}
+    PATH="${APPDIR}/usr/bin:${PATH}" ./release-utils/appimage/appimage_after_bundle.sh
 
   runtime:
     env:

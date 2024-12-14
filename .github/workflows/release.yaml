@@ -140,8 +140,6 @@ jobs:
           python -m pip install --upgrade pip
           pip install --upgrade poetry
       - run: sudo apt-get install -y fuse
-      - name: Set up APPDIR for after_bundle
-        run: echo "APPDIR=$PWD/AppDir" >> $GITHUB_ENV
       - name: Install appimage-builder
         run: |
           wget -O appimage-builder-x86_64.AppImage https://github.com/AppImageCrafters/appimage-builder/releases/download/v1.1.0/appimage-builder-1.1.0-x86_64.AppImage
