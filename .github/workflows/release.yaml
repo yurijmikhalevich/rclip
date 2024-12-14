@@ -148,8 +148,7 @@ jobs:
       - name: Build AppImage
         env:
           APP_VERSION: ${{ needs.parse_tag.outputs.version }}
-        run: |
-          make build-appimage
+        run: poetry run appimage-builder --skip-tests --recipe ./release-utils/appimage/appimage-builder.yml
       - name: Validate built AppImage
         run: ./rclip*.AppImage cat
       - name: Rename AppImage for GitHub releases page
