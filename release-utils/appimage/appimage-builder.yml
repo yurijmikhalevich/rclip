@@ -10,7 +10,6 @@ script:
   - cp rclip AppDir/usr/src -r
   - cp release-utils/appimage/logo@256.png AppDir/usr/share/icons/hicolor/256x256/apps/rclip.png
 
-
 AppDir:
   path: ./AppDir
 
@@ -22,30 +21,32 @@ AppDir:
     # Set the python executable as entry point
     exec: usr/bin/python3.10
     # Set the application main script path as argument. Use '$@' to forward CLI parameters
-    exec_args: "${APPDIR}/usr/bin/rclip $@"
+    exec_args: "${APPDIR}/usr/local/bin/rclip $@"
 
   apt:
     arch: amd64
     sources:
-      - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal main restricted universe multiverse'
-        key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x3b4fe6acc0b21f32'
-      - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ focal-updates main restricted'
-        key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x3b4fe6acc0b21f32'
-      - sourceline: 'deb http://ppa.launchpad.net/deadsnakes/ppa/ubuntu focal main'
+      - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse'
+        key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x871920D1991BC93C'
+      - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted'
+        key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x871920D1991BC93C'
+      - sourceline: 'deb http://ppa.launchpad.net/deadsnakes/ppa/ubuntu jammy main'
         key_url: 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xba6932366a755776'
 
     include:
-      - curl
       - libffi7
       - libpython3.10-minimal
       - libpython3.10-stdlib
       - python3.10
-      - python3.10-distutils
       - python3.10-minimal
+      - python3-pip
+      - python3-distutils
     exclude: []
 
-  after_bundle: >
-    PATH=${APPDIR}/usr/bin:${PATH} ./release-utils/appimage/appimage_after_bundle.sh
+  after_bundle: |
+    export APPDIR="$(pwd)/AppDir"
+    echo ${APPDIR}
+    PATH="${APPDIR}/usr/bin:${PATH}" ./release-utils/appimage/appimage_after_bundle.sh
 
   runtime:
     env:
