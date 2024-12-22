@@ -14,7 +14,7 @@ QueryWithMultiplier = Tuple[float, str]
 FeatureVector = npt.NDArray[np.float32]
 
 TEXT_ONLY_SUPPORTED_MODELS = [{
-  'model_name': 'ViT-B-32',
+  'model_name': 'ViT-B-32-quickgelu',
   'checkpoint_name': 'openai',
 }]
 
@@ -25,7 +25,7 @@ def get_open_clip_version():
 
 class Model:
   VECTOR_SIZE = 512
-  _model_name = 'ViT-B-32'
+  _model_name = 'ViT-B-32-quickgelu'
   _checkpoint_name = 'openai'
 
   def __init__(self, device: str = 'cpu'):
@@ -102,7 +102,7 @@ class Model:
 
     if self._text_model_path.exists() and not self._should_update_text_model():
       import torch
-      self._model_text_var = torch.load(self._text_model_path)
+      self._model_text_var = torch.load(self._text_model_path, weights_only=False)
       return self._model_text_var
 
     if not self._model_var:
