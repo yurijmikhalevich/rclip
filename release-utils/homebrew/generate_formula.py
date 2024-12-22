@@ -22,10 +22,10 @@ TEMPLATE = env.from_string('''class Rclip < Formula
   depends_on "libyaml"
   depends_on "numpy"
   depends_on "pillow"
-  depends_on "python@3.13"
-  depends_on "pytorch"
+  depends_on "python@3.12"
+  depends_on "pytorch-python312@2.5.1"
   depends_on "sentencepiece"
-  depends_on "torchvision"
+  depends_on "torchvision-python312@0.20.1"
 
 {{ resources }}
 
@@ -33,8 +33,8 @@ TEMPLATE = env.from_string('''class Rclip < Formula
     virtualenv_install_with_resources
 
     # link dependent virtualenvs to this one
-    site_packages = Language::Python.site_packages("python3.13")
-    paths = %w[pytorch torchvision].map do |package_name|
+    site_packages = Language::Python.site_packages("python3.12")
+    paths = %w[pytorch-python312@2.5.1 torchvision-python312@0.20.1].map do |package_name|
       package = Formula[package_name].opt_libexec
       package/site_packages
     end
