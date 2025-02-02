@@ -1,0 +1,2 @@
+score	filepath
+0.290	"<test_images_dir>boats on a lake.png"
