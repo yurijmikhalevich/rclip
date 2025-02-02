@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import subprocess
 import sys
 import tempfile
 
@@ -35,8 +36,8 @@ def test_dir_with_raw_images():
   return Path(__file__).parent / 'images raw'
 
 
-def _assert_output_snapshot(images_dir: Path, request: pytest.FixtureRequest, capsys: pytest.CaptureFixture[str]):
-  out, _ = capsys.readouterr()
+def _assert_output_snapshot(images_dir: Path, request: pytest.FixtureRequest, capfd: pytest.CaptureFixture[str]):
+  out, _ = capfd.readouterr()
   snapshot_path = Path(__file__).parent / 'output_snapshots' / f'{request.node.name}.txt'
   snapshot = out.replace(str(images_dir) + os.path.sep, '<test_images_dir>').replace(os.path.sep, '/')
   if not snapshot_path.exists():
@@ -45,37 +46,45 @@ def _assert_output_snapshot(images_dir: Path, request: pytest.FixtureRequest, ca
 
 
 @pytest.fixture
-def assert_output_snapshot(test_images_dir: Path, request: pytest.FixtureRequest, capsys: pytest.CaptureFixture[str]):
+def assert_output_snapshot(test_images_dir: Path, request: pytest.FixtureRequest, capfd: pytest.CaptureFixture[str]):
   yield
-  _assert_output_snapshot(test_images_dir, request, capsys)
+  _assert_output_snapshot(test_images_dir, request, capfd)
 
 
 @pytest.fixture
 def assert_output_snapshot_nested_directories(
   test_dir_with_nested_directories: Path,
   request: pytest.FixtureRequest,
-  capsys: pytest.CaptureFixture[str],
+  capfd: pytest.CaptureFixture[str],
 ):
   yield
-  _assert_output_snapshot(test_dir_with_nested_directories, request, capsys)
+  _assert_output_snapshot(test_dir_with_nested_directories, request, capfd)
 
 
 @pytest.fixture
 def assert_output_snapshot_raw_images(
   test_dir_with_raw_images: Path,
   request: pytest.FixtureRequest,
-  capsys: pytest.CaptureFixture[str],
+  capfd: pytest.CaptureFixture[str],
 ):
   yield
-  _assert_output_snapshot(test_dir_with_raw_images, request, capsys)
+  _assert_output_snapshot(test_dir_with_raw_images, request, capfd)
 
 
 def execute_query(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, *args: str):
   with tempfile.TemporaryDirectory() as tmpdirname:
-    monkeypatch.setenv('RCLIP_DATADIR', tmpdirname)
-    monkeypatch.chdir(test_images_dir)
-    set_argv(*args)
-    main()
+    run_system_rclip = os.getenv('RCLIP_TEST_RUN_SYSTEM_RCLIP')
+    if run_system_rclip:
+      subprocess.run(
+        ["rclip", *args],
+        cwd=test_images_dir,
+        env={**os.environ, 'RCLIP_DATADIR': tmpdirname, 'RCLIP_TEST_RUN_SYSTEM_RCLIP': ''},
+      )
+    else:
+      monkeypatch.setenv('RCLIP_DATADIR', tmpdirname)
+      monkeypatch.chdir(test_images_dir)
+      set_argv(*args)
+      main()
 
 
 @pytest.mark.usefixtures('assert_output_snapshot')
