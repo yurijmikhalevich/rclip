@@ -159,12 +159,12 @@ def test_combine_image_query_with_text_query(test_images_dir: Path, monkeypatch:
 
 
 @pytest.mark.usefixtures('assert_output_snapshot')
-def test_seach_empty_dir(test_empty_dir: Path, monkeypatch: pytest.MonkeyPatch):
+def test_search_empty_dir(test_empty_dir: Path, monkeypatch: pytest.MonkeyPatch):
   execute_query(test_empty_dir, monkeypatch, 'kitty')
 
 
 @pytest.mark.usefixtures('assert_output_snapshot_nested_directories')
-def test_seach_dir_with_multiple_nested_directories(
+def test_search_dir_with_multiple_nested_directories(
   test_dir_with_nested_directories: Path,
   monkeypatch: pytest.MonkeyPatch,
 ):
@@ -172,7 +172,7 @@ def test_seach_dir_with_multiple_nested_directories(
 
 
 @pytest.mark.usefixtures('assert_output_snapshot_nested_directories')
-def test_seach_dir_with_deeply_nested_directories(
+def test_search_dir_with_deeply_nested_directories(
   test_dir_with_nested_directories: Path,
   monkeypatch: pytest.MonkeyPatch,
 ):
