@@ -1,0 +1,14 @@
+tests/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+tests/**/*.JPG filter=lfs diff=lfs merge=lfs -text
+tests/**/*.jpeg filter=lfs diff=lfs merge=lfs -text
+tests/**/*.JPEG filter=lfs diff=lfs merge=lfs -text
+tests/**/*.png filter=lfs diff=lfs merge=lfs -text
+tests/**/*.PNG filter=lfs diff=lfs merge=lfs -text
+tests/**/*.webp filter=lfs diff=lfs merge=lfs -text
+tests/**/*.WEBP filter=lfs diff=lfs merge=lfs -text
+tests/**/*.arw filter=lfs diff=lfs merge=lfs -text
+tests/**/*.ARW filter=lfs diff=lfs merge=lfs -text
+tests/**/*.cr2 filter=lfs diff=lfs merge=lfs -text
+tests/**/*.CR2 filter=lfs diff=lfs merge=lfs -text
+tests/**/*.gif filter=lfs diff=lfs merge=lfs -text
+tests/**/*.GIF filter=lfs diff=lfs merge=lfs -text
