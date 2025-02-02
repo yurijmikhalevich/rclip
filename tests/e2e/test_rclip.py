@@ -75,11 +75,13 @@ def execute_query(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, *args:
   with tempfile.TemporaryDirectory() as tmpdirname:
     run_system_rclip = os.getenv('RCLIP_TEST_RUN_SYSTEM_RCLIP')
     if run_system_rclip:
-      subprocess.run(
+      completed_run = subprocess.run(
         ["rclip", *args],
         cwd=test_images_dir,
         env={**os.environ, 'RCLIP_DATADIR': tmpdirname, 'RCLIP_TEST_RUN_SYSTEM_RCLIP': ''},
       )
+      if completed_run.returncode != 0:
+        raise SystemExit(completed_run.returncode)
     else:
       monkeypatch.setenv('RCLIP_DATADIR', tmpdirname)
       monkeypatch.chdir(test_images_dir)
