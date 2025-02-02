@@ -17,6 +17,10 @@ TEMPLATE = env.from_string('''class Rclip < Formula
   sha256 "{{ package.checksum }}"
   license "MIT"
 
+  if OS.linux?
+    depends_on "patchelf" => :build # for rawpy
+  end
+
   depends_on "rust" => :build # for safetensors
   depends_on "certifi"
   depends_on "libyaml"
@@ -29,8 +33,57 @@ TEMPLATE = env.from_string('''class Rclip < Formula
 
 {{ resources }}
 
+  if OS.mac?
+    if Hardware::CPU.arm?
+      resource "rawpy" do
+        url "https://files.pythonhosted.org/packages/87/75/610a34caf048aa87248f8393e70073610146f379fdda8194a988ba286d5b/rawpy-0.24.0-cp312-cp312-macosx_11_0_arm64.whl", using: :nounzip
+        sha256 "1097b10eed4027e5b50006548190602e1adba9c824526b45f7a37781cfa01818"
+      end
+    elsif Hardware::CPU.intel?
+      resource "rawpy" do
+        url "https://files.pythonhosted.org/packages/27/1c/59024e87c20b325e10b43e3b709929681a0ed23bda3885c7825927244fcc/rawpy-0.24.0-cp312-cp312-macosx_10_9_x86_64.whl", using: :nounzip
+        sha256 "ed639b0dc91c3e85d6c39303a1523b7e1edc4f4b0381c376ed0ff99febb306e4"
+      end
+    else
+      raise "Unknown CPU architecture, only amd64 and arm64 are supported"
+    end
+  elsif OS.linux?
+    if Hardware::CPU.arm?
+      resource "rawpy" do
+        url "https://files.pythonhosted.org/packages/9c/c4/576853c0eea14d62a2776f683dae23c994572dfc2dcb47fd1a1473b7b18a/rawpy-0.24.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", using: :nounzip
+        sha256 "17a970fd8cdece57929d6e99ce64503f21b51c00ab132bad53065bd523154892"
+      end
+    elsif Hardware::CPU.intel?
+      resource "rawpy" do
+        url "https://files.pythonhosted.org/packages/fe/35/5d6765359ce6e06fe0aee5a3e4e731cfe08c056df093d97c292bdc02132a/rawpy-0.24.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", using: :nounzip
+        sha256 "a12fc4e6c5879b88c6937abb9f3f6670dd34d126b4a770ad4566e9f747e306fb"
+      end
+    else
+      raise "Unknown CPU architecture, only amd64 and arm64 are supported"
+    end
+  end
+
   def install
-    virtualenv_install_with_resources
+    virtualenv_install_with_resources without: "rawpy"
+
+    resource("rawpy").stage do
+      wheel = Dir["*.whl"].first
+      valid_wheel = wheel.sub(/^.*--/, "")
+      File.rename(wheel, valid_wheel)
+      system "python3.12", "-m", "pip", "--python=#{libexec}/bin/python", "install", "--no-deps", valid_wheel
+    end
+
+    if OS.linux?
+      rawpy_so = Dir[libexec/"lib/python3.12/site-packages/rawpy/_rawpy*.so"].first
+      raise "rawpy shared object not found" unless rawpy_so
+
+      system "patchelf", "--set-rpath", "$ORIGIN/../rawpy.libs", rawpy_so
+
+      libraw_so = Dir[libexec/"lib/python3.12/site-packages/rawpy.libs/libraw*.so.*"].first
+      raise "libraw shared object not found" unless libraw_so
+
+      system "patchelf", "--set-rpath", "$ORIGIN", libraw_so
+    end
 
     # link dependent virtualenvs to this one
     site_packages = Language::Python.site_packages("python3.12")
@@ -46,11 +99,11 @@ TEMPLATE = env.from_string('''class Rclip < Formula
     assert_match("score\\tfilepath", output)
   end
 end
-''')
+''')  # noqa
 
 
 # These deps are being installed from brew
-DEPS_TO_IGNORE = ['numpy', 'pillow', 'certifi', 'torch', 'torchvision']
+DEPS_TO_IGNORE = ['numpy', 'pillow', 'certifi', 'rawpy', 'torch', 'torchvision']
 RESOURCE_URL_OVERRIDES = {
   # open-clip-torch publishes an incomplete tarball to pypi, so we will fetch one from GitHub
   'open-clip-torch': env.from_string(
