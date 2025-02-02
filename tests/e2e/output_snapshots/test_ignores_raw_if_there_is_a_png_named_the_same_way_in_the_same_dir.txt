@@ -1,0 +1,4 @@
+score	filepath
+0.290	"<test_images_dir>boats on a lake.png"
+0.189	"<test_images_dir>RAW_CANON_400D_ARGB.CR2"
+0.172	"<test_images_dir>DSC08882.ARW"

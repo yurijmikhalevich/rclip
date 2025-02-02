@@ -30,6 +30,11 @@ def test_dir_with_nested_directories():
   return Path(__file__).parent / 'images nested directories'
 
 
+@pytest.fixture
+def test_dir_with_raw_images():
+  return Path(__file__).parent / 'images raw'
+
+
 def _assert_output_snapshot(images_dir: Path, request: pytest.FixtureRequest, capsys: pytest.CaptureFixture[str]):
   out, _ = capsys.readouterr()
   snapshot_path = Path(__file__).parent / 'output_snapshots' / f'{request.node.name}.txt'
@@ -53,6 +58,16 @@ def assert_output_snapshot_nested_directories(
 ):
   yield
   _assert_output_snapshot(test_dir_with_nested_directories, request, capsys)
+
+
+@pytest.fixture
+def assert_output_snapshot_raw_images(
+  test_dir_with_raw_images: Path,
+  request: pytest.FixtureRequest,
+  capsys: pytest.CaptureFixture[str],
+):
+  yield
+  _assert_output_snapshot(test_dir_with_raw_images, request, capsys)
 
 
 def execute_query(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, *args: str):
@@ -97,7 +112,7 @@ def test_search_by_image_from_url(test_images_dir: Path, monkeypatch: pytest.Mon
   execute_query(
     test_images_dir,
     monkeypatch,
-    'https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/tests/e2e/images/cat.jpg'
+    'https://raw.githubusercontent.com/yurijmikhalevich/rclip/5630d6279ee94f0cad823777433d7fbeb921d19e/tests/e2e/images/cat.jpg'
   )
 
 
@@ -191,3 +206,39 @@ def test_handles_addition_and_deletion_of_images(
 
   finally:
     bee_image_path_copy.unlink(missing_ok=True)
+
+
+@pytest.mark.usefixtures('assert_output_snapshot_raw_images')
+def test_ignores_raw_files_if_raw_support_is_disabled(
+  test_dir_with_raw_images: Path,
+  monkeypatch: pytest.MonkeyPatch,
+):
+  # output should not contain any raw images
+  execute_query(test_dir_with_raw_images, monkeypatch, 'boat on a lake')
+
+
+@pytest.mark.usefixtures('assert_output_snapshot_raw_images')
+def test_ignores_raw_if_there_is_a_png_named_the_same_way_in_the_same_dir(
+  test_dir_with_raw_images: Path,
+  monkeypatch: pytest.MonkeyPatch,
+):
+  # output should not contain "boat on a lake.ARW" image
+  execute_query(test_dir_with_raw_images, monkeypatch, '--experimental-raw-support', 'boat on a lake')
+
+
+@pytest.mark.usefixtures('assert_output_snapshot_raw_images')
+def test_can_read_arw_images(
+  test_dir_with_raw_images: Path,
+  monkeypatch: pytest.MonkeyPatch,
+):
+  # DSC08882.ARW should be at the top of the results
+  execute_query(test_dir_with_raw_images, monkeypatch, '--experimental-raw-support', 'green ears of rye')
+
+
+@pytest.mark.usefixtures('assert_output_snapshot_raw_images')
+def test_can_read_cr2_images(
+  test_dir_with_raw_images: Path,
+  monkeypatch: pytest.MonkeyPatch,
+):
+  # RAW_CANON_400D_ARGB.CR2 should be at the top of the results
+  execute_query(test_dir_with_raw_images, monkeypatch, '--experimental-raw-support', 'dragon in a cave')
