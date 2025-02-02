@@ -112,7 +112,7 @@ def test_search_by_image_from_url(test_images_dir: Path, monkeypatch: pytest.Mon
   execute_query(
     test_images_dir,
     monkeypatch,
-    'https://raw.githubusercontent.com/yurijmikhalevich/rclip/5630d6279ee94f0cad823777433d7fbeb921d19e/tests/e2e/images/cat.jpg'
+    'https://raw.githubusercontent.com/yurijmikhalevich/rclip/5630d6279ee94f0cad823777433d7fbeb921d19e/tests/e2e/images/cat.jpg'  # noqa
   )
 
 
