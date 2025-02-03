@@ -13,8 +13,11 @@ runs:
         python -m pip install --upgrade pip
         pip install --upgrade poetry
         poetry install
+      shell: bash
     - name: Print tested rclip version
       run: |
         which rclip
         rclip --version
+      shell: bash
     - run: make test-system-rclip
+      shell: bash
