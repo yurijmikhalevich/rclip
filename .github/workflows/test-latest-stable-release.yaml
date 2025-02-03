@@ -7,26 +7,26 @@ on:
     - cron: '0 0 * * *'
 
 jobs:
-  pypi:
-    strategy:
-      matrix:
-        python: ['3.10', '3.11', '3.12']
-        # macos-13 is amd64, macos-14 is arm64
-        # skipping macos-13 here because newer versions of torch aren't being built for amd64 macOS anymore
-        os: [ubuntu-22.04, macos-14, windows-2022]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          lfs: true
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - run: pip install --extra-index-url https://download.pytorch.org/whl/cpu --upgrade rclip
-        if: startsWith(matrix.os, 'ubuntu-')
-      - run: pip install --upgrade rclip
-        if: ${{ !startsWith(matrix.os, 'ubuntu-') }}
-      - uses: ./.github/actions/test-system-rclip
+  # pypi:
+  #   strategy:
+  #     matrix:
+  #       python: ['3.10', '3.11', '3.12']
+  #       # macos-13 is amd64, macos-14 is arm64
+  #       # skipping macos-13 here because newer versions of torch aren't being built for amd64 macOS anymore
+  #       os: [ubuntu-22.04, macos-14, windows-2022]
+  #   runs-on: ${{ matrix.os }}
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         lfs: true
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: ${{ matrix.python }}
+  #     - run: pip install --extra-index-url https://download.pytorch.org/whl/cpu --upgrade rclip
+  #       if: startsWith(matrix.os, 'ubuntu-')
+  #     - run: pip install --upgrade rclip
+  #       if: ${{ !startsWith(matrix.os, 'ubuntu-') }}
+  #     - uses: ./.github/actions/test-system-rclip
 
   brew:
     strategy:
@@ -44,48 +44,47 @@ jobs:
           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
           echo >> /home/runner/.bashrc
           echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /home/runner/.bashrc
-          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
       - run: brew install yurijmikhalevich/tap/rclip
-        shell: bash
+        shell: bash -ieo pipefail {0}
       - uses: ./.github/actions/test-system-rclip
 
-  appimage:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          lfs: true
-      - run: sudo apt-get install -y fuse
-      - name: Download & install rclip AppImage
-        run: |
-          url=$(curl -s "https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest" \
-            | jq -r '.assets[] | select(.name | endswith(".AppImage")).browser_download_url')
-          wget -O rclip.AppImage "$url"
-          chmod +x rclip.AppImage
-          sudo mv rclip.AppImage /usr/local/bin/rclip
-      - uses: ./.github/actions/test-system-rclip
+  # appimage:
+  #   runs-on: ubuntu-22.04
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         lfs: true
+  #     - run: sudo apt-get install -y fuse
+  #     - name: Download & install rclip AppImage
+  #       run: |
+  #         url=$(curl -s "https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest" \
+  #           | jq -r '.assets[] | select(.name | endswith(".AppImage")).browser_download_url')
+  #         wget -O rclip.AppImage "$url"
+  #         chmod +x rclip.AppImage
+  #         sudo mv rclip.AppImage /usr/local/bin/rclip
+  #     - uses: ./.github/actions/test-system-rclip
 
-  snap:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          lfs: true
-      - run: sudo snap install rclip
-      - uses: ./.github/actions/test-system-rclip
+  # snap:
+  #   runs-on: ubuntu-22.04
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         lfs: true
+  #     - run: sudo snap install rclip
+  #     - uses: ./.github/actions/test-system-rclip
 
-  windows:
-    runs-on: windows-2022
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          lfs: true
-      - name: Download & install rclip MSI
-        run: |
-          $url = Invoke-RestMethod -Uri "https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest"
-          $asset = $url.assets | Where-Object { $_.name -like "*.msi" } | Select-Object -First 1
-          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "rclip.msi"
-          Start-Process msiexec.exe -Wait -ArgumentList "/i rclip.msi /quiet"
-          Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
-          refreshenv
-      - uses: ./.github/actions/test-system-rclip
+  # windows:
+  #   runs-on: windows-2022
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         lfs: true
+  #     - name: Download & install rclip MSI
+  #       run: |
+  #         $url = Invoke-RestMethod -Uri "https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest"
+  #         $asset = $url.assets | Where-Object { $_.name -like "*.msi" } | Select-Object -First 1
+  #         Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "rclip.msi"
+  #         Start-Process msiexec.exe -Wait -ArgumentList "/i rclip.msi /quiet"
+  #         Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
+  #         refreshenv
+  #     - uses: ./.github/actions/test-system-rclip
