@@ -22,8 +22,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - run: pip install --extra-index-url https://download.pytorch.org/whl/cpu --upgrade rclip
+        if: startsWith(matrix.os, 'ubuntu-')
       - run: pip install --upgrade rclip
-      - run: make test-system-rclip
+        if: !startsWith(matrix.os, 'ubuntu-')
+      - uses: ./.github/actions/test-system-rclip
 
   brew:
     strategy:
@@ -37,9 +40,13 @@ jobs:
           lfs: true
       - name: Install Linuxbrew (only on Ubuntu)
         if: startsWith(matrix.os, 'ubuntu-')
-        run: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        run: |
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo >> /home/runner/.bashrc
+          echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /home/runner/.bashrc
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
       - run: brew install yurijmikhalevich/tap/rclip
-      - run: make test-system-rclip
+      - uses: ./.github/actions/test-system-rclip
 
   appimage:
     runs-on: ubuntu-22.04
@@ -54,7 +61,7 @@ jobs:
           wget -O rclip.AppImage "$url"
           chmod +x rclip.AppImage
           sudo mv rclip.AppImage /usr/local/bin/rclip
-      - run: make test-system-rclip
+      - uses: ./.github/actions/test-system-rclip
 
   snap:
     runs-on: ubuntu-22.04
@@ -63,7 +70,7 @@ jobs:
         with:
           lfs: true
       - run: sudo snap install rclip
-      - run: make test-system-rclip
+      - uses: ./.github/actions/test-system-rclip
 
   windows:
     runs-on: windows-2022
@@ -79,4 +86,4 @@ jobs:
           Start-Process msiexec.exe -Wait -ArgumentList "/i rclip.msi /quiet"
           Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
           refreshenvi
-      - run: make test-system-rclip
+      - uses: ./.github/actions/test-system-rclip
