@@ -45,7 +45,8 @@ jobs:
           echo >> /home/runner/.bashrc
           echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /home/runner/.bashrc
       - run: brew install yurijmikhalevich/tap/rclip
-        shell: bash -leo pipefail {0}
+        # overriding shell to ensure it reads `.bashrc`
+        shell: bash -ieo pipefail {0}
       - uses: ./.github/actions/test-system-rclip
 
   # appimage:
