@@ -27,6 +27,6 @@ runs:
       run: |
         which rclip
         rclip --version
-      shell: bash -ieo pipefail {0}
+      shell: bash -leo pipefail {0}
     - run: make test-system-rclip
-      shell: bash -ieo pipefail {0}
+      shell: bash -leo pipefail {0}
