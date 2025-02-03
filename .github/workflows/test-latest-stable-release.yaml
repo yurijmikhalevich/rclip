@@ -22,12 +22,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - name: Install rclip (Linux)
+      - run: pip install --extra-index-url https://download.pytorch.org/whl/cpu --upgrade rclip
         if: startsWith(matrix.os, 'ubuntu-')
-        run: pip install --extra-index-url https://download.pytorch.org/whl/cpu --upgrade rclip
-      - name: Install rclip (other OSes)
-        if: !startsWith(matrix.os, 'ubuntu-')
-        run: pip install --upgrade rclip
+      - run: pip install --upgrade rclip
+        if: ${{ !startsWith(matrix.os, 'ubuntu-') }}
       - uses: ./.github/actions/test-system-rclip
 
   brew:
