@@ -13,11 +13,12 @@ runs:
         python -m pip install --upgrade pip
         pip install --upgrade poetry
         poetry install --only dev
-      shell: bash -leo pipefail {0}
+      # here and below, passing `-ieo pipefail` to the shell to ensure it reads `.bashrc`
+      shell: bash -ieo pipefail {0}
     - name: Print tested rclip version
       run: |
         which rclip
         rclip --version
-      shell: bash -leo pipefail {0}
+      shell: bash -ieo pipefail {0}
     - run: make test-system-rclip
-      shell: bash -leo pipefail {0}
+      shell: bash -ieo pipefail {0}
