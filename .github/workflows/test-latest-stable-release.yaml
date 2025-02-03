@@ -46,6 +46,7 @@ jobs:
           echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /home/runner/.bashrc
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
       - run: brew install yurijmikhalevich/tap/rclip
+        shell: bash
       - uses: ./.github/actions/test-system-rclip
 
   appimage:
@@ -54,6 +55,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           lfs: true
+      - run: sudo apt-get install -y fuse
       - name: Download & install rclip AppImage
         run: |
           url=$(curl -s "https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest" \
@@ -85,5 +87,5 @@ jobs:
           Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "rclip.msi"
           Start-Process msiexec.exe -Wait -ArgumentList "/i rclip.msi /quiet"
           Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
-          refreshenvi
+          refreshenv
       - uses: ./.github/actions/test-system-rclip
