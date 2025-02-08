@@ -36,7 +36,7 @@ jobs:
           pip install --upgrade poetry
           poetry install
       - run: poetry build
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: pypi
           path: dist/*
@@ -121,7 +121,7 @@ jobs:
           for snap in *.snap; do
             mv "$snap" "${snap//_/-}"
           done
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: snap
           path: rclip-*.snap
@@ -153,7 +153,7 @@ jobs:
         run: ./rclip*.AppImage cat
       - name: Rename AppImage for GitHub releases page
         run: mv rclip-${{ needs.parse_tag.outputs.version }}-x86_64.AppImage rclip-${{ needs.parse_tag.outputs.version }}-amd64.AppImage
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: appimage
           path: rclip-*.AppImage
@@ -191,7 +191,7 @@ jobs:
           Expand-Archive -Path CodeSignTool.zip -DestinationPath .
           cd CodeSignTool-v1.2.7-windows
           & ./CodeSignTool.bat sign -input_file_path="${env:GITHUB_WORKSPACE}/build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi" -username=${{ secrets.WINDOWS_SIGNING_USERNAME }} -credential_id='${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }}' -password='${{ secrets.WINDOWS_SIGNING_PASSWORD }}' -totp_secret='${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}' -output_dir_path="${env:GITHUB_WORKSPACE}/signed"
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: windows
           path: signed/rclip-*.msi
@@ -201,7 +201,7 @@ jobs:
     needs: [parse_tag, windows]
     runs-on: windows-2022
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           name: windows
       - name: Install MSI
@@ -223,7 +223,7 @@ jobs:
       - if: ${{ contains(needs.*.result, 'failure') }}
         run: exit 1
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
         with:
           path: artifacts/
       - name: Generate Changelog
