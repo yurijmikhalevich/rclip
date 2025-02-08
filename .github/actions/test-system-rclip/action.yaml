@@ -15,22 +15,18 @@ runs:
         python-version: ${{ inputs.python }}
     - name: Print commit that we are going to run the tests from
       run: git rev-parse HEAD
-      working-directory: rclip-to-run-tests-from
       shell: bash
     - name: Install dev dependencies required to run e2e tests
       run: |
         python -m pip install --upgrade pip
         pip install --upgrade poetry
         poetry install --no-root --only dev
-      working-directory: rclip-to-run-tests-from
       # here and below, passing `-ieo pipefail` to the shell to ensure it reads `.bashrc`
       shell: bash -ieo pipefail {0}
     - name: Print tested rclip version
       run: |
         which rclip
         rclip --version
-      working-directory: rclip-to-run-tests-from
       shell: bash -ieo pipefail {0}
     - run: make test-system-rclip
-      working-directory: rclip-to-run-tests-from
       shell: bash -ieo pipefail {0}
