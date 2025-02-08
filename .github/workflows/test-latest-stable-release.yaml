@@ -2,7 +2,7 @@ name: test-latest-stable-release
 
 on:
   workflow_dispatch:
-  push:
+  # push:
   schedule:
     - cron: '0 0 * * *'
 
