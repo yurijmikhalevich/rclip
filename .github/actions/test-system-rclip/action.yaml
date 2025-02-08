@@ -7,7 +7,6 @@ inputs:
     required: false
     default: 'main'
 
-# The action expects that the code was already checked out, with lfs: true
 runs:
   using: 'composite'
   steps:
