@@ -23,8 +23,6 @@ jobs:
   pypi:
     needs: validate
     runs-on: ubuntu-22.04
-    permissions:
-      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -41,11 +39,34 @@ jobs:
           name: pypi
           path: dist/*
           if-no-files-found: error
+
+  pypi-validate:
+    needs: pypi
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: pypi
+          path: dist/
+      - run: pip install --extra-index-url https://download.pytorch.org/whl/cpu dist/rclip-*.whl
+      - uses: ./.github/actions/test-system-rclip
+
+  pypi-release:
+    needs: pypi-validate
+    runs-on: ubuntu-22.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pypi
+          path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
 
   brew:
     # the Formula references the rclip package published to PyPI
-    needs: [validate, parse_tag, pypi]
+    needs: [validate, parse_tag, pypi-release]
     if: needs.parse_tag.outputs.is_stable_version == 'true'
     runs-on: ubuntu-22.04
     steps:
@@ -213,7 +234,7 @@ jobs:
           rclip cat
 
   create_release:
-    needs: [parse_tag, pypi, snap, appimage, windows-validate]
+    needs: [parse_tag, pypi-release, snap, appimage, windows-validate]
     # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
     if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04

@@ -6,8 +6,6 @@ import tempfile
 
 import pytest
 
-from rclip.main import main
-
 
 def set_argv(*args: str):
   script_name = sys.argv[0]
@@ -83,6 +81,7 @@ def execute_query(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, *args:
       if completed_run.returncode != 0:
         raise SystemExit(completed_run.returncode)
     else:
+      from rclip.main import main
       monkeypatch.setenv('RCLIP_DATADIR', tmpdirname)
       monkeypatch.chdir(test_images_dir)
       set_argv(*args)
