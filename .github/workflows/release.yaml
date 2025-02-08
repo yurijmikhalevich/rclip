@@ -49,7 +49,7 @@ jobs:
         with:
           name: pypi
           path: dist/
-      - run: pip install dist/rclip-*.whl
+      - run: pip install --extra-index-url https://download.pytorch.org/whl/cpu dist/rclip-*.whl
       - uses: ./.github/actions/test-system-rclip
 
   # pypi-release:
