@@ -2,7 +2,7 @@ name: test-latest-stable-release
 
 on:
   workflow_dispatch:
-  # push:
+  push:
   schedule:
     - cron: '0 0 * * *'
 
@@ -17,8 +17,6 @@ jobs:
   #   runs-on: ${{ matrix.os }}
   #   steps:
   #     - uses: actions/checkout@v4
-  #       with:
-  #         lfs: true
   #     - uses: actions/setup-python@v5
   #       with:
   #         python-version: ${{ matrix.python }}
@@ -32,12 +30,11 @@ jobs:
     strategy:
       matrix:
         # macos-13 is amd64, macos-15 is arm64
-        os: [ubuntu-22.04, macos-13, macos-15]
+        # os: [ubuntu-22.04, macos-13, macos-15]
+        os: [macos-15]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          lfs: true
       - name: Install Linuxbrew (only on Ubuntu)
         if: startsWith(matrix.os, 'ubuntu-')
         run: |
@@ -53,8 +50,6 @@ jobs:
   #   runs-on: ubuntu-22.04
   #   steps:
   #     - uses: actions/checkout@v4
-  #       with:
-  #         lfs: true
   #     - run: sudo apt-get install -y fuse
   #     - name: Download & install rclip AppImage
   #       run: |
@@ -69,8 +64,6 @@ jobs:
   #   runs-on: ubuntu-22.04
   #   steps:
   #     - uses: actions/checkout@v4
-  #       with:
-  #         lfs: true
   #     - run: sudo snap install rclip
   #     - uses: ./.github/actions/test-system-rclip
 
@@ -78,8 +71,6 @@ jobs:
   #   runs-on: windows-2022
   #   steps:
   #     - uses: actions/checkout@v4
-  #       with:
-  #         lfs: true
   #     - name: Download & install rclip MSI
   #       run: |
   #         $url = Invoke-RestMethod -Uri "https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest"
