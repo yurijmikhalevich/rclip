@@ -48,6 +48,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: pypi
+          path: dist/
       - run: pip install dist/rclip-*.whl
       - uses: ./.github/actions/test-system-rclip
 
