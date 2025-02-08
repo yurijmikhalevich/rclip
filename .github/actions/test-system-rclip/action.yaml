@@ -1,18 +1,9 @@
 name: Test system rclip
 description: Runs e2e tests on the rclip installed system-wide
 
-inputs:
-  ref:
-    description: 'The version of rclip we are testing, used to checkout the correct commit with tests'
-    required: false
-    default: ''
-
 runs:
   using: 'composite'
   steps:
-    - uses: actions/checkout@v4
-      with:
-        ref: ${{ inputs.ref }}
     - uses: actions/setup-python@v4
       with:
         python-version: '3.10'
