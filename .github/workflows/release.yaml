@@ -16,7 +16,8 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       is_stable_version: ${{ steps.parse.outputs.is_stable_version }}
-      version: ${{ steps.parse.outputs.version }}
+      # version: ${{ steps.parse.outputs.version }}
+      version: 0.0.999
     steps:
       - id: parse
         run: |
