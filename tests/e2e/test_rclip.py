@@ -37,7 +37,12 @@ def test_dir_with_raw_images():
 def _assert_output_snapshot(images_dir: Path, request: pytest.FixtureRequest, capfd: pytest.CaptureFixture[str]):
   out, _ = capfd.readouterr()
   snapshot_path = Path(__file__).parent / 'output_snapshots' / f'{request.node.name}.txt'
-  snapshot = out.replace(str(images_dir) + os.path.sep, '<test_images_dir>').replace(os.path.sep, '/')
+  snapshot = (
+    out
+      .replace(str(images_dir) + os.path.sep, '<test_images_dir>')
+      .replace(os.path.sep, '/')
+      .replace('\r\n', '\n')
+  )
   if not snapshot_path.exists():
     snapshot_path.write_text(snapshot)
   assert snapshot == snapshot_path.read_text()
