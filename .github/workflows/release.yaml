@@ -58,7 +58,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: pip install --upgrade pip
+      - run: python -m pip install --upgrade pip
       - uses: actions/download-artifact@v4
         with:
           name: pypi
@@ -108,9 +108,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.ZHIBOT_GITHUB_TOKEN }}
 
-  snap-arm64-build:
+  snap-build:
     needs: pypi-build
-    runs-on: ubuntu-22.04-arm
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-20.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: canonical/setup-lxd@main
@@ -124,60 +131,33 @@ jobs:
           mkdir snap/local
           cp -v dist/rclip-*.tar.gz snap/local
       - run: sudo snap install snapcraft --classic
-      - run: snapcraft --use-lxd --build-for arm64
+      - run: snapcraft --use-lxd --build-for ${{ matrix.arch }}
       - uses: actions/upload-artifact@v4
         with:
-          name: snap-arm64
+          name: snap-${{ matrix.arch }}
           path: rclip_*.snap
           if-no-files-found: error
 
-  snap-amd64-build:
-    needs: pypi-build
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: canonical/setup-lxd@main
-      - name: Download built wheel
-        uses: actions/download-artifact@v4
-        with:
-          name: pypi
-          path: dist/
-      - name: Copy wheel to snapcraft local dir
-        run: |
-          mkdir snap/local
-          cp -v dist/rclip-*.tar.gz snap/local
-      - run: sudo snap install snapcraft --classic
-      - run: snapcraft --use-lxd --build-for amd64
-      - uses: actions/upload-artifact@v4
-        with:
-          name: snap-amd64
-          path: rclip_*.snap
-          if-no-files-found: error
-
-  snap-arm64-test:
-    needs: snap-arm64-build
-    runs-on: ubuntu-22.04-arm
+  snap-test:
+    needs: snap-build
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-20.04
+          - arch: arm64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: snap-arm64
-      - run: sudo snap install rclip_*_arm64.snap --dangerous
-      - uses: ./.github/actions/test-system-rclip
-
-  snap-amd64-test:
-    needs: snap-amd64-build
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: snap-amd64
-      - run: sudo snap install rclip_*_amd64.snap --dangerous
+          name: snap-${{ matrix.arch }}
+      - run: sudo snap install rclip_*_${{ matrix.arch }}.snap --dangerous
       - uses: ./.github/actions/test-system-rclip
 
   snap-release:
-    needs: [snap-arm64-test, snap-amd64-test, parse_tag]
+    needs: [snap-test, parse_tag]
     runs-on: ubuntu-20.04
     steps:
       - run: sudo snap install snapcraft --classic
