@@ -52,13 +52,13 @@ jobs:
         # skipping macos-13 here because newer versions of torch aren't being built for amd64 macOS anymore
         # builds for amd64 macOS are being tested during brew release
         os: [ubuntu-22.04, macos-15, windows-2022]
-        exclude:
-          # there is no supported numpy for python 3.10 on Windows
-          - os: windows-2022
-            python: '3.10'
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install --upgrade pip
       - uses: actions/download-artifact@v4
         with:
           name: pypi
@@ -70,6 +70,8 @@ jobs:
         if: ${{ !startsWith(matrix.os, 'ubuntu-') }}
         shell: bash
       - uses: ./.github/actions/test-system-rclip
+        with:
+          python: ${{ matrix.python }}
 
   # pypi-release:
   #   needs: pypi-test
