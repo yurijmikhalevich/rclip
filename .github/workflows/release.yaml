@@ -6,8 +6,11 @@ on:
       - v[0-9]+.[0-9]+.[0-9]+*
 
 jobs:
-  validate:
-    uses: ./.github/workflows/validate.yaml
+  lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/lint
 
   parse_tag:
     runs-on: ubuntu-22.04
@@ -20,8 +23,8 @@ jobs:
           echo "is_stable_version=$([[ $GITHUB_REF_NAME =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo true || echo false)" >> $GITHUB_OUTPUT
           echo "version=${GITHUB_REF_NAME:1}" >> $GITHUB_OUTPUT
 
-  pypi:
-    needs: validate
+  pypi-build:
+    needs: lint
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -40,20 +43,38 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  pypi-validate:
-    needs: pypi
-    runs-on: ubuntu-22.04
+  pypi-test:
+    needs: pypi-build
+    strategy:
+      matrix:
+        python: ['3.10', '3.11', '3.12']
+        # macos-13 is amd64, macos-15 is arm64
+        # skipping macos-13 here because newer versions of torch aren't being built for amd64 macOS anymore
+        # builds for amd64 macOS are being tested during brew release
+        os: [ubuntu-22.04, macos-15, windows-2022]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install --upgrade pip
       - uses: actions/download-artifact@v4
         with:
           name: pypi
           path: dist/
       - run: pip install --extra-index-url https://download.pytorch.org/whl/cpu dist/rclip-*.whl
+        if: startsWith(matrix.os, 'ubuntu-')
+        shell: bash
+      - run: pip install dist/rclip-*.whl
+        if: ${{ !startsWith(matrix.os, 'ubuntu-') }}
+        shell: bash
       - uses: ./.github/actions/test-system-rclip
+        with:
+          python: ${{ matrix.python }}
 
   pypi-release:
-    needs: pypi-validate
+    needs: pypi-test
     runs-on: ubuntu-22.04
     permissions:
       id-token: write
@@ -66,7 +87,7 @@ jobs:
 
   brew:
     # the Formula references the rclip package published to PyPI
-    needs: [validate, parse_tag, pypi-release]
+    needs: [parse_tag, pypi-release]
     if: needs.parse_tag.outputs.is_stable_version == 'true'
     runs-on: ubuntu-22.04
     steps:
@@ -88,7 +109,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.ZHIBOT_GITHUB_TOKEN }}
 
   snap:
-    needs: [validate, parse_tag]
+    needs: [pypi-test, parse_tag]
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v4
@@ -149,7 +170,7 @@ jobs:
           if-no-files-found: error
 
   appimage:
-    needs: [parse_tag, validate]
+    needs: [pypi-test, parse_tag]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -181,7 +202,7 @@ jobs:
           if-no-files-found: error
 
   windows:
-    needs: [parse_tag, validate]
+    needs: [pypi-test, parse_tag]
     if: needs.parse_tag.outputs.is_stable_version == 'true'
     runs-on: windows-2022
     steps:
@@ -218,7 +239,7 @@ jobs:
           path: signed/rclip-*.msi
           if-no-files-found: error
 
-  windows-validate:
+  windows-test:
     needs: [parse_tag, windows]
     runs-on: windows-2022
     steps:
@@ -234,7 +255,7 @@ jobs:
           rclip cat
 
   create_release:
-    needs: [parse_tag, pypi-release, snap, appimage, windows-validate]
+    needs: [parse_tag, pypi-release, snap, appimage, windows-test]
     # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
     if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04

@@ -1,12 +1,18 @@
 name: Test system rclip
 description: Runs e2e tests on the rclip installed system-wide
 
+inputs:
+  python:
+    description: 'Python version to use'
+    required: false
+    default: '3.10'
+
 runs:
   using: 'composite'
   steps:
-    - uses: actions/setup-python@v4
+    - uses: actions/setup-python@v5
       with:
-        python-version: '3.10'
+        python-version: ${{ inputs.python }}
     - name: Print commit that we are going to run the tests from
       run: git rev-parse HEAD
       shell: bash
