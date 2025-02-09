@@ -280,7 +280,7 @@ jobs:
           if-no-files-found: error
 
   windows-test:
-    needs: [parse_tag, windows]
+    needs: [parse_tag, windows-build]
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
