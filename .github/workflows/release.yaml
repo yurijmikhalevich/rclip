@@ -23,7 +23,7 @@ jobs:
           echo "is_stable_version=$([[ $GITHUB_REF_NAME =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo true || echo false)" >> $GITHUB_OUTPUT
           echo "version=${GITHUB_REF_NAME:1}" >> $GITHUB_OUTPUT
 
-  pypi:
+  pypi-build:
     needs: lint
     runs-on: ubuntu-22.04
     steps:
@@ -44,7 +44,7 @@ jobs:
           if-no-files-found: error
 
   pypi-test:
-    needs: pypi
+    needs: pypi-build
     strategy:
       matrix:
         python: ['3.10', '3.11', '3.12']
@@ -61,8 +61,10 @@ jobs:
           path: dist/
       - run: pip install --extra-index-url https://download.pytorch.org/whl/cpu dist/rclip-*.whl
         if: startsWith(matrix.os, 'ubuntu-')
+        shell: bash
       - run: pip install dist/rclip-*.whl
         if: ${{ !startsWith(matrix.os, 'ubuntu-') }}
+        shell: bash
       - uses: ./.github/actions/test-system-rclip
 
   # pypi-release:
