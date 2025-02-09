@@ -52,6 +52,10 @@ jobs:
         # skipping macos-13 here because newer versions of torch aren't being built for amd64 macOS anymore
         # builds for amd64 macOS are being tested during brew release
         os: [ubuntu-22.04, macos-15, windows-2022]
+        # exclude:
+        #   # there is no supported numpy for python 3.10 on Windows
+        #   - os: windows-2022
+        #     python: '3.10'
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -59,10 +63,10 @@ jobs:
         with:
           name: pypi
           path: dist/
-      - run: pip install --extra-index-url https://download.pytorch.org/whl/cpu dist/rclip-*.whl
+      - run: pip install --extra-index-url https://download.pytorch.org/whl/cpu --upgrade dist/rclip-*.whl
         if: startsWith(matrix.os, 'ubuntu-')
         shell: bash
-      - run: pip install dist/rclip-*.whl
+      - run: pip install --upgrade dist/rclip-*.whl
         if: ${{ !startsWith(matrix.os, 'ubuntu-') }}
         shell: bash
       - uses: ./.github/actions/test-system-rclip
