@@ -26,6 +26,7 @@ runs:
     - name: Print tested rclip version
       run: |
         which rclip
+        ls -lah $(which rclip)
         rclip --version
       shell: bash -ieo pipefail {0}
     - run: make test-system-rclip
