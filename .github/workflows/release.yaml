@@ -48,10 +48,10 @@ jobs:
     strategy:
       matrix:
         python: ['3.10', '3.11', '3.12']
-        # macos-13 is amd64, macos-14 is arm64
+        # macos-13 is amd64, macos-15 is arm64
         # skipping macos-13 here because newer versions of torch aren't being built for amd64 macOS anymore
         # builds for amd64 macOS are being tested during brew release
-        os: [ubuntu-22.04, macos-14, windows-2022]
+        os: [ubuntu-22.04, macos-15, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
