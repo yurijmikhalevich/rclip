@@ -110,17 +110,10 @@ jobs:
 
   snap-arm64-build:
     needs: pypi-build
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04-arm
     steps:
       - uses: actions/checkout@v4
-      - name: Configure git for "snapcraft remote-build"
-        run: |
-          git config --global user.email "yurij@mikhalevi.ch"
-          git config --global user.name "Yurij Mikhalevich"
-      - name: Setup launchpad creds
-        run: |
-          mkdir -p ~/.local/share/snapcraft/provider/launchpad
-          echo "${{ secrets.LAUNCHPAD_CREDENTIALS }}" > ~/.local/share/snapcraft/provider/launchpad/credentials
+      - uses: canonical/setup-lxd@main
       - name: Download built wheel
         uses: actions/download-artifact@v4
         with:
@@ -131,10 +124,7 @@ jobs:
           mkdir snap/local
           cp -v dist/rclip-*.tar.gz snap/local
       - run: sudo snap install snapcraft --classic
-      - name: Build arm64 snap remotely
-        run: |
-          export SNAPCRAFT_REMOTE_BUILD_STRATEGY="force-fallback"
-          snapcraft remote-build --launchpad-accept-public-upload --build-for arm64
+      - run: snapcraft --use-lxd --build-for arm64
       - uses: actions/upload-artifact@v4
         with:
           name: snap-arm64
@@ -164,6 +154,17 @@ jobs:
           path: rclip_*.snap
           if-no-files-found: error
 
+  snap-arm64-test:
+    needs: snap-arm64-build
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: snap-arm64
+      - run: sudo snap install rclip_*_arm64.snap --dangerous
+      - uses: ./.github/actions/test-system-rclip
+
   snap-amd64-test:
     needs: snap-amd64-build
     runs-on: ubuntu-20.04
@@ -176,7 +177,7 @@ jobs:
       - uses: ./.github/actions/test-system-rclip
 
   snap-release:
-    needs: [snap-arm64-build, snap-amd64-test, parse_tag]
+    needs: [snap-arm64-test, snap-amd64-test, parse_tag]
     runs-on: ubuntu-20.04
     steps:
       - run: sudo snap install snapcraft --classic
