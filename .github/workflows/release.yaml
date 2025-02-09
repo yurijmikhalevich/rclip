@@ -173,7 +173,7 @@ jobs:
         with:
           name: snap-amd64
       - run: sudo snap install rclip_*_amd64.snap --dangerous
-      - run: ./.github/actions/test-system-rclip
+      - uses: ./.github/actions/test-system-rclip
 
   snap-release:
     needs: [snap-arm64-build, snap-amd64-test, parse_tag]
@@ -238,7 +238,7 @@ jobs:
         run: |
           chmod +x rclip-*.AppImage
           sudo mv rclip-*.AppImage /usr/local/bin/rclip
-      - run: ./.github/actions/test-system-rclip
+      - uses: ./.github/actions/test-system-rclip
 
   windows:
     needs: [pypi-test, parse_tag]
