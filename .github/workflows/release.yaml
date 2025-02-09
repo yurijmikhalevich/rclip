@@ -138,7 +138,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: snap-arm64
-          path: rclip-*.snap
+          path: rclip_*.snap
           if-no-files-found: error
 
   snap-amd64-build:
@@ -161,7 +161,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: snap-amd64
-          path: rclip-*.snap
+          path: rclip_*.snap
           if-no-files-found: error
 
   snap-amd64-test:
@@ -237,7 +237,7 @@ jobs:
       - name: Install AppImage
         run: |
           chmod +x rclip-*.AppImage
-          mv rclip-*.AppImage ~/.local/bin/rclip
+          sudo mv rclip-*.AppImage /usr/local/bin/rclip
       - run: ./.github/actions/test-system-rclip
 
   windows:
