@@ -21,6 +21,7 @@ runs:
         python -m pip install --upgrade pip
         pip install --upgrade poetry
         poetry install --no-root --only dev
+      # here and below, passing `-elxo pipefail` to the shell to ensure it reads `.bashrc` and env vars on Windows
       shell: bash -elxo pipefail {0}
     - name: Print tested rclip version
       run: |
