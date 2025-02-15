@@ -28,6 +28,7 @@ runs:
         which rclip
         ls -lah $(which rclip)
         rclip --version
+      # ensure that when running this GHA on windows, it reloads the up-to-date PATH env AI!
       shell: bash -ieo pipefail {0}
     - run: make test-system-rclip
       shell: bash -ieo pipefail {0}
