@@ -33,5 +33,5 @@ runs:
       run: |
         Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
         refreshenv
-        make test-system-rclip
+        RCLIP_TEST_RUN_SYSTEM_RCLIP=true poetry run pytest tests/e2e
       shell: powershell
