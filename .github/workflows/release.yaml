@@ -292,7 +292,7 @@ jobs:
           name: windows
       - name: Install MSI
         run: Start-Process msiexec.exe -Wait -ArgumentList '/i rclip-${{ needs.parse_tag.outputs.version }}.msi /quiet'
-      - uses: ./.github/actions/test-system-rclip
+      - uses: ./.github/actions/test-system-rclip-windows
 
   # create_release:
   #   needs: [parse_tag, pypi-release, snap-release, appimage-test, windows-test]
