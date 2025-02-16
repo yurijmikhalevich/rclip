@@ -24,10 +24,29 @@ runs:
       # here and below, passing `-ieo pipefail` to the shell to ensure it reads `.bashrc`
       shell: bash -ieo pipefail {0}
     - name: Print tested rclip version
+      if: ${{ !startsWith(matrix.os, 'windows-') }}
       run: |
         which rclip
         ls -lah $(which rclip)
         rclip --version
       shell: bash -ieo pipefail {0}
-    - run: make test-system-rclip
+    - name: Print tested rclip version (Windows)
+      if: ${{ startsWith(matrix.os, 'windows-') }}
+      run: |
+        Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
+        refreshenv
+        which rclip
+        ls -lah $(which rclip)
+        rclip --version
+      shell: powershell
+    - name: Run e2e tests on the rclip installed system-wide
+      run: make test-system-rclip
+      if: ${{ !startsWith(matrix.os, 'windows-') }}
       shell: bash -ieo pipefail {0}
+    - name: Run e2e tests on the rclip installed system-wide (Windows)
+      run: |
+        Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
+        refreshenv
+        make test-system-rclip
+      if: ${{ startsWith(matrix.os, 'windows-') }}
+      shell: powershell
