@@ -1,0 +1,37 @@
+name: Test system rclip (Windows)
+description: Runs e2e tests on the rclip installed system-wide on Windows
+
+inputs:
+  python:
+    description: 'Python version to use'
+    required: false
+    default: '3.10'
+
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python }}
+    - name: Print commit that we are going to run the tests from
+      run: git rev-parse HEAD
+      shell: bash
+    - name: Install dev dependencies required to run e2e tests
+      run: |
+        python -m pip install --upgrade pip
+        pip install --upgrade poetry
+        poetry install --no-root --only dev
+      shell: bash
+    - name: Print tested rclip version (Windows)
+      run: |
+        Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
+        refreshenv
+        which rclip
+        rclip --version
+      shell: powershell
+    - name: Run e2e tests on the rclip installed system-wide (Windows)
+      run: |
+        Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
+        refreshenv
+        make test-system-rclip
+      shell: powershell
