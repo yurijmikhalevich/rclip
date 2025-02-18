@@ -21,7 +21,7 @@ runs:
         python -m pip install --upgrade pip
         pip install --upgrade poetry
         poetry install --no-root --only dev
-      shell: powershell
+      shell: powershell -NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command "$env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User'); & {0}"
     - name: Print tested rclip version (Windows)
       run: |
         which rclip
