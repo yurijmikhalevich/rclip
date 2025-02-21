@@ -6,6 +6,10 @@ inputs:
     description: 'Python version to use'
     required: false
     default: '3.10'
+  force-bash:
+    description: 'Force using bash instead of PowerShell on Windows'
+    required: false
+    default: false
 
 runs:
   using: 'composite'
@@ -24,11 +28,11 @@ runs:
       # here and below, on Windows, we set the latest PATH to ensure that the
       # action can find system rclip
       # on other OSes, we pass -ieo pipefail to bash to ensure it reads the .bashrc
-      shell: ${{ runner.os == 'Windows' && 'powershell -NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command "$env:Path = [Environment]::GetEnvironmentVariable(''Path'', ''Machine'') + '';'' + [Environment]::GetEnvironmentVariable(''Path'', ''User''); & {0}"' || 'bash -ieo pipefail {0}' }}
+      shell: ${{ (runner.os != 'Windows' || inputs.force-bash == 'true') && 'bash -ieo pipefail {0}' || 'powershell -NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command "$env:Path = [Environment]::GetEnvironmentVariable(''Path'', ''Machine'') + '';'' + [Environment]::GetEnvironmentVariable(''Path'', ''User''); & {0}"' }}
     - name: Print tested rclip version
       run: |
         which rclip
         rclip --version
-      shell: ${{ runner.os == 'Windows' && 'powershell -NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command "$env:Path = [Environment]::GetEnvironmentVariable(''Path'', ''Machine'') + '';'' + [Environment]::GetEnvironmentVariable(''Path'', ''User''); & {0}"' || 'bash -ieo pipefail {0}' }}
+      shell: ${{ (runner.os != 'Windows' || inputs.force-bash == 'true') && 'bash -ieo pipefail {0}' || 'powershell -NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command "$env:Path = [Environment]::GetEnvironmentVariable(''Path'', ''Machine'') + '';'' + [Environment]::GetEnvironmentVariable(''Path'', ''User''); & {0}"' }}
     - run: make test-system-rclip
-      shell: ${{ runner.os == 'Windows' && 'powershell -NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command "$env:Path = [Environment]::GetEnvironmentVariable(''Path'', ''Machine'') + '';'' + [Environment]::GetEnvironmentVariable(''Path'', ''User''); & {0}"' || 'bash -ieo pipefail {0}' }}
+      shell: ${{ (runner.os != 'Windows' || inputs.force-bash == 'true') && 'bash -ieo pipefail {0}' || 'powershell -NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command "$env:Path = [Environment]::GetEnvironmentVariable(''Path'', ''Machine'') + '';'' + [Environment]::GetEnvironmentVariable(''Path'', ''User''); & {0}"' }}

@@ -72,6 +72,7 @@ jobs:
       - uses: ./.github/actions/test-system-rclip
         with:
           python: ${{ matrix.python }}
+          force-bash: true
 
   pypi-release:
     needs: pypi-test
