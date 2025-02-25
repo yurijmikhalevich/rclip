@@ -107,7 +107,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
                       help='a text query or a path/URL to an image file to add to the "original" query,'
                       ' can be used multiple times')
   parser.add_argument('--subtract', '--sub', '-s', '-', metavar='QUERY', action='append', default=[],
-                      help='a text query or a path/URL to an image file to add to the "original" query,'
+                      help='a text query or a path/URL to an image file to subtract from the "original" query,'
                       ' can be used multiple times')
   parser.add_argument('--top', '-t', type=positive_int_arg_type, default=10,
                       help='number of top results to display; default: 10')
