@@ -29,8 +29,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout latest release tag
-        run: git checkout ${{ needs.get_last_release_tag.outputs.last_release_tag }}
+        with:
+          ref: ${{ needs.get_last_release_tag.outputs.last_release_tag }}
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -48,8 +48,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout latest release tag
-        run: git checkout ${{ needs.get_last_release_tag.outputs.last_release_tag }}
+        with:
+          ref: ${{ needs.get_last_release_tag.outputs.last_release_tag }}
       - name: Install Linuxbrew (only on Ubuntu)
         if: startsWith(matrix.os, 'ubuntu-')
         run: |
@@ -66,8 +66,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout latest release tag
-        run: git checkout ${{ needs.get_last_release_tag.outputs.last_release_tag }}
+        with:
+          ref: ${{ needs.get_last_release_tag.outputs.last_release_tag }}
       - run: sudo apt-get install -y fuse
       - name: Download & install rclip AppImage
         run: |
@@ -83,8 +83,8 @@ jobs:
     runs-on: [ubuntu-22.04, ubuntu-22.04-arm]
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout latest release tag
-        run: git checkout ${{ needs.get_last_release_tag.outputs.last_release_tag }}
+        with:
+          ref: ${{ needs.get_last_release_tag.outputs.last_release_tag }}
       - run: sudo snap install rclip
       - uses: ./.github/actions/test-system-rclip
 
@@ -93,8 +93,8 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
-      - name: Checkout latest release tag
-        run: git checkout ${{ needs.get_last_release_tag.outputs.last_release_tag }}
+        with:
+          ref: ${{ needs.get_last_release_tag.outputs.last_release_tag }}
       - name: Download & install rclip MSI
         run: |
           $url = Invoke-RestMethod -Uri "https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest"
