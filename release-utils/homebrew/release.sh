@@ -25,7 +25,7 @@ else
 fi
 cd homebrew-tap
 
-PR_BRANCH="rclip-$VERSION"
+PR_BRANCH="release-rclip-$VERSION"
 PR_TITLE="rclip $VERSION"
 
 git checkout -b "$PR_BRANCH"
