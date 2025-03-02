@@ -7,34 +7,49 @@ on:
     - cron: '0 0 * * *'
 
 jobs:
-  # pypi:
-  #   strategy:
-  #     matrix:
-  #       python: ['3.10', '3.11', '3.12']
-  #       # macos-13 is amd64, macos-14 is arm64
-  #       # skipping macos-13 here because newer versions of torch aren't being built for amd64 macOS anymore
-  #       os: [ubuntu-22.04, macos-14, windows-2022]
-  #   runs-on: ${{ matrix.os }}
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-python@v5
-  #       with:
-  #         python-version: ${{ matrix.python }}
-  #     - run: pip install --extra-index-url https://download.pytorch.org/whl/cpu --upgrade rclip
-  #       if: startsWith(matrix.os, 'ubuntu-')
-  #     - run: pip install --upgrade rclip
-  #       if: ${{ !startsWith(matrix.os, 'ubuntu-') }}
-  #     - uses: ./.github/actions/test-system-rclip
+  get_last_release_tag:
+    runs-on: ubuntu-22.04
+    outputs:
+      last_release_tag: ${{ steps.extract_tag.outputs.last_release_tag }}
+    steps:
+      - id: extract_tag
+        run: |
+          LAST_RELEASE_TAG=$(curl -s https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest | jq -r '.tag_name')
+          echo "last_release_tag=$LAST_RELEASE_TAG" >> $GITHUB_OUTPUT
+          echo "Latest release tag: $LAST_RELEASE_TAG"
 
-  brew:
+  pypi:
+    needs: get_last_release_tag
     strategy:
       matrix:
-        # macos-13 is amd64, macos-15 is arm64
-        # os: [ubuntu-22.04, macos-13, macos-15]
-        os: [macos-15]
+        python: ['3.10', '3.11', '3.12']
+        # macos-13 is amd64, macos-14 is arm64
+        # skipping macos-13 here because newer versions of torch aren't being built for amd64 macOS anymore
+        os: [ubuntu-22.04, macos-14, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Checkout latest release tag
+        run: git checkout ${{ needs.get_last_release_tag.outputs.last_release_tag }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install --extra-index-url https://download.pytorch.org/whl/cpu --upgrade rclip
+        if: startsWith(matrix.os, 'ubuntu-')
+      - run: pip install --upgrade rclip
+        if: ${{ !startsWith(matrix.os, 'ubuntu-') }}
+      - uses: ./.github/actions/test-system-rclip
+
+  brew:
+    needs: get_last_release_tag
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, macos-13, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout latest release tag
+        run: git checkout ${{ needs.get_last_release_tag.outputs.last_release_tag }}
       - name: Install Linuxbrew (only on Ubuntu)
         if: startsWith(matrix.os, 'ubuntu-')
         run: |
@@ -46,37 +61,44 @@ jobs:
         shell: bash -ieo pipefail {0}
       - uses: ./.github/actions/test-system-rclip
 
-  # appimage:
-  #   runs-on: ubuntu-22.04
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - run: sudo apt-get install -y fuse
-  #     - name: Download & install rclip AppImage
-  #       run: |
-  #         url=$(curl -s "https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest" \
-  #           | jq -r '.assets[] | select(.name | endswith(".AppImage")).browser_download_url')
-  #         wget -O rclip.AppImage "$url"
-  #         chmod +x rclip.AppImage
-  #         sudo mv rclip.AppImage /usr/local/bin/rclip
-  #     - uses: ./.github/actions/test-system-rclip
+  appimage:
+    needs: get_last_release_tag
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout latest release tag
+        run: git checkout ${{ needs.get_last_release_tag.outputs.last_release_tag }}
+      - run: sudo apt-get install -y fuse
+      - name: Download & install rclip AppImage
+        run: |
+          url=$(curl -s "https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest" \
+            | jq -r '.assets[] | select(.name | endswith(".AppImage")).browser_download_url')
+          wget -O rclip.AppImage "$url"
+          chmod +x rclip.AppImage
+          sudo mv rclip.AppImage /usr/local/bin/rclip
+      - uses: ./.github/actions/test-system-rclip
 
-  # snap:
-  #   runs-on: ubuntu-22.04
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - run: sudo snap install rclip
-  #     - uses: ./.github/actions/test-system-rclip
+  snap:
+    needs: get_last_release_tag
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout latest release tag
+        run: git checkout ${{ needs.get_last_release_tag.outputs.last_release_tag }}
+      - run: sudo snap install rclip
+      - uses: ./.github/actions/test-system-rclip
 
-  # windows:
-  #   runs-on: windows-2022
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - name: Download & install rclip MSI
-  #       run: |
-  #         $url = Invoke-RestMethod -Uri "https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest"
-  #         $asset = $url.assets | Where-Object { $_.name -like "*.msi" } | Select-Object -First 1
-  #         Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "rclip.msi"
-  #         Start-Process msiexec.exe -Wait -ArgumentList "/i rclip.msi /quiet"
-  #         Import-Module "$env:ChocolateyInstall/helpers/chocolateyInstaller.psm1"
-  #         refreshenv
-  #     - uses: ./.github/actions/test-system-rclip
+  windows:
+    needs: get_last_release_tag
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout latest release tag
+        run: git checkout ${{ needs.get_last_release_tag.outputs.last_release_tag }}
+      - name: Download & install rclip MSI
+        run: |
+          $url = Invoke-RestMethod -Uri "https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest"
+          $asset = $url.assets | Where-Object { $_.name -like "*.msi" } | Select-Object -First 1
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "rclip.msi"
+          Start-Process msiexec.exe -Wait -ArgumentList "/i rclip.msi /quiet"
+      - uses: ./.github/actions/test-system-rclip
