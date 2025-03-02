@@ -40,6 +40,7 @@ def _assert_output_snapshot(images_dir: Path, request: pytest.FixtureRequest, ca
   snapshot = (
     out
     .replace(str(images_dir) + os.path.sep, '<test_images_dir>')
+    .replace('.' + os.path.sep, '<test_images_dir>')
     .replace(os.path.sep, '/')
     .replace('\r\n', '\n')
   )
