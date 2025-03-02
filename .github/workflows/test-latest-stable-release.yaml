@@ -39,6 +39,9 @@ jobs:
       - run: pip install --upgrade rclip
         if: ${{ !startsWith(matrix.os, 'ubuntu-') }}
       - uses: ./.github/actions/test-system-rclip
+        with:
+          python: ${{ matrix.python }}
+          force-bash: true
 
   brew:
     needs: get_last_release_tag
