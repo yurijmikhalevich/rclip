@@ -10,13 +10,13 @@ jobs:
   get_last_release_tag:
     runs-on: ubuntu-22.04
     outputs:
-      last_release_tag: ${{ steps.extract_tag.outputs.last_release_tag }}
+      tag: ${{ steps.extract_tag.outputs.tag }}
     steps:
       - id: extract_tag
         run: |
-          LAST_RELEASE_TAG=$(curl -s https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest | jq -r '.tag_name')
-          echo "last_release_tag=$LAST_RELEASE_TAG" >> $GITHUB_OUTPUT
-          echo "Latest release tag: $LAST_RELEASE_TAG"
+          TAG=$(curl -s https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest | jq -r '.tag_name')
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Last release tag: $TAG"
 
   pypi:
     needs: get_last_release_tag
@@ -30,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.get_last_release_tag.outputs.last_release_tag }}
+          ref: ${{ needs.get_last_release_tag.outputs.tag }}
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -52,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.get_last_release_tag.outputs.last_release_tag }}
+          ref: ${{ needs.get_last_release_tag.outputs.tag }}
       - name: Install Linuxbrew (only on Ubuntu)
         if: startsWith(matrix.os, 'ubuntu-')
         run: |
@@ -70,7 +70,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.get_last_release_tag.outputs.last_release_tag }}
+          ref: ${{ needs.get_last_release_tag.outputs.tag }}
       - run: sudo apt-get install -y fuse
       - name: Download & install rclip AppImage
         run: |
@@ -90,7 +90,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.get_last_release_tag.outputs.last_release_tag }}
+          ref: ${{ needs.get_last_release_tag.outputs.tag }}
       - run: sudo snap install rclip
       - uses: ./.github/actions/test-system-rclip
 
@@ -100,7 +100,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.get_last_release_tag.outputs.last_release_tag }}
+          ref: ${{ needs.get_last_release_tag.outputs.tag }}
       - name: Download & install rclip MSI
         run: |
           $url = Invoke-RestMethod -Uri "https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest"
