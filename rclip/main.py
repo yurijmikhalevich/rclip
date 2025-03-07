@@ -28,7 +28,7 @@ class ImageMeta(TypedDict):
 PathMetaVector = Tuple[str, ImageMeta, model.FeatureVector]
 
 
-def get_image_meta(entry: os.DirEntry) -> ImageMeta:
+def get_image_meta(entry: os.DirEntry[str]) -> ImageMeta:
   stat = entry.stat()
   return ImageMeta(modified_at=stat.st_mtime, size=stat.st_size)
 
@@ -41,7 +41,7 @@ def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
 
 
 class RClip:
-  EXCLUDE_DIRS_DEFAULT = ['@eaDir', 'node_modules', '.git']
+  EXCLUDE_DIRS_DEFAULT = ["@eaDir", "node_modules", ".git"]
   DB_IMAGES_BEFORE_COMMIT = 50_000
 
   class SearchResult(NamedTuple):
@@ -62,10 +62,10 @@ class RClip:
     self._enable_raw_support = enable_raw_support
 
     supported_image_ext = IMAGE_EXT + (IMAGE_RAW_EXT if enable_raw_support else [])
-    self._image_regex = re.compile(f'^.+\\.({"|".join(supported_image_ext)})$', re.I)
+    self._image_regex = re.compile(f"^.+\\.({'|'.join(supported_image_ext)})$", re.I)
 
-    excluded_dirs = '|'.join(re.escape(dir) for dir in exclude_dirs or self.EXCLUDE_DIRS_DEFAULT)
-    self._exclude_dir_regex = re.compile(f'^.+\\{os.path.sep}({excluded_dirs})(\\{os.path.sep}.+)?$')
+    excluded_dirs = "|".join(re.escape(dir) for dir in exclude_dirs or self.EXCLUDE_DIRS_DEFAULT)
+    self._exclude_dir_regex = re.compile(f"^.+\\{os.path.sep}({excluded_dirs})(\\{os.path.sep}.+)?$")
 
   def _index_files(self, filepaths: List[str], metas: List[ImageMeta]):
     images: List[Image.Image] = []
@@ -75,23 +75,21 @@ class RClip:
         image = helpers.read_image(path)
         images.append(image)
         filtered_paths.append(path)
-      except PIL.UnidentifiedImageError as ex:
+      except PIL.UnidentifiedImageError:
         pass
       except Exception as ex:
-        print(f'error loading image {path}:', ex, file=sys.stderr)
+        print(f"error loading image {path}:", ex, file=sys.stderr)
 
     try:
       features = self._model.compute_image_features(images)
     except Exception as ex:
-      print('error computing features:', ex, file=sys.stderr)
+      print("error computing features:", ex, file=sys.stderr)
       return
     for path, meta, vector in cast(Iterable[PathMetaVector], zip(filtered_paths, metas, features)):
-      self._db.upsert_image(db.NewImage(
-        filepath=path,
-        modified_at=meta['modified_at'],
-        size=meta['size'],
-        vector=vector.tobytes()
-      ), commit=False)
+      self._db.upsert_image(
+        db.NewImage(filepath=path, modified_at=meta["modified_at"], size=meta["size"], vector=vector.tobytes()),
+        commit=False,
+      )
 
   def _does_processed_image_exist_for_raw(self, raw_path: str) -> bool:
     """Check if there is a processed image alongside the raw one; doesn't support mixed-case extensions,
@@ -107,7 +105,7 @@ class RClip:
 
   def ensure_index(self, directory: str):
     print(
-      'checking images in the current directory for changes;'
+      "checking images in the current directory for changes;"
       ' use "--no-indexing" to skip this if no images were added, changed, or removed',
       file=sys.stderr,
     )
@@ -115,10 +113,12 @@ class RClip:
     self._db.remove_indexing_flag_from_all_images(commit=False)
     self._db.flag_images_in_a_dir_as_indexing(directory, commit=True)
 
-    with tqdm(total=None, unit='images') as pbar:
+    with tqdm(total=None, unit="images") as pbar:
+
       def update_total_images(count: int):
         pbar.total = count
         pbar.refresh()
+
       counter_thread = threading.Thread(
         target=fs.count_files,
         args=(directory, self._exclude_dir_regex, self._image_regex, update_total_images),
@@ -141,7 +141,7 @@ class RClip:
         try:
           meta = get_image_meta(entry)
         except Exception as ex:
-          print(f'error getting fs metadata for {filepath}:', ex, file=sys.stderr)
+          print(f"error getting fs metadata for {filepath}:", ex, file=sys.stderr)
           continue
 
         if not images_processed % self.DB_IMAGES_BEFORE_COMMIT:
@@ -169,11 +169,16 @@ class RClip:
       counter_thread.join()
 
     self._db.flag_indexing_images_in_a_dir_as_deleted(directory)
-    print('', file=sys.stderr)
+    print("", file=sys.stderr)
 
   def search(
-      self, query: str, directory: str, top_k: int = 10,
-      positive_queries: List[str] = [], negative_queries: List[str] = []) -> List[SearchResult]:
+    self,
+    query: str,
+    directory: str,
+    top_k: int = 10,
+    positive_queries: List[str] = [],
+    negative_queries: List[str] = [],
+  ) -> List[SearchResult]:
     filepaths, features = self._get_features(directory)
 
     positive_queries = [query] + positive_queries
@@ -186,10 +191,9 @@ class RClip:
 
     filtered_similarities = filter(
       lambda similarity: (
-        not self._exclude_dir_regex.match(filepaths[similarity[1]]) and
-        not filepaths[similarity[1]] in exclude_files
+        not self._exclude_dir_regex.match(filepaths[similarity[1]]) and filepaths[similarity[1]] not in exclude_files
       ),
-      sorted_similarities
+      sorted_similarities,
     )
     top_k_similarities = itertools.islice(filtered_similarities, top_k)
 
@@ -199,8 +203,8 @@ class RClip:
     filepaths: List[str] = []
     features: List[model.FeatureVector] = []
     for image in self._db.get_image_vectors_by_dir_path(directory):
-      filepaths.append(image['filepath'])
-      features.append(np.frombuffer(image['vector'], np.float32))
+      filepaths.append(image["filepath"])
+      features.append(np.frombuffer(image["vector"], np.float32))
     if not filepaths:
       return [], np.ndarray(shape=(0, model.Model.VECTOR_SIZE))
     return filepaths, np.stack(features)
@@ -215,7 +219,7 @@ def init_rclip(
   enable_raw_support: bool = False,
 ):
   datadir = helpers.get_app_datadir()
-  db_path = datadir / 'db.sqlite3'
+  db_path = datadir / "db.sqlite3"
 
   database = db.DB(db_path)
   model_instance = model.Model(device=device or "cpu")
@@ -256,7 +260,7 @@ def main():
       for r in result:
         print(r.filepath)
     else:
-      print('score\tfilepath')
+      print("score\tfilepath")
       for r in result:
         print(f'{r.score:.3f}\t"{r.filepath}"')
         if args.preview:
@@ -267,5 +271,5 @@ def main():
     db.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   main()

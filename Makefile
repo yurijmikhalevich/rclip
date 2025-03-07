@@ -9,13 +9,14 @@ build-appimage:
 	poetry run appimage-builder --recipe ./release-utils/appimage/appimage-builder.yml
 
 lint-style:
-	poetry run pycodestyle .
+	poetry run ruff check
+
+fix-style:
+	poetry run ruff check --fix
+	poetry run ruff format
 
 lint-types:
 	poetry run pyright .
-
-install-pyright:
-	npm i -g pyright@1.1.185
 
 lint: lint-style lint-types
 
