@@ -16,7 +16,6 @@ runs:
         python -m pip install --upgrade pip
         pip install --upgrade poetry
         poetry install
-        make install-pyright
       shell: bash
     - run: make lint-style
       shell: bash
