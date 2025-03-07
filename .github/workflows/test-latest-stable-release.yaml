@@ -62,6 +62,7 @@ jobs:
           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
           echo >> /home/runner/.bashrc
           echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /home/runner/.bashrc
+      - run: brew update && brew upgrade
       - run: brew install yurijmikhalevich/tap/rclip
         # overriding shell to ensure it reads `.bashrc`
         shell: bash -ieo pipefail {0}
