@@ -5,10 +5,7 @@ COUNT_FILES_UPDATE_EVERY = 10_000
 
 
 def count_files(
-  directory: str,
-  exclude_dir_re: Pattern[str],
-  file_re: Pattern[str],
-  on_change: Callable[[int], None]
+  directory: str, exclude_dir_re: Pattern[str], file_re: Pattern[str], on_change: Callable[[int], None]
 ) -> None:
   prev_update_count = 0
   count = 0
@@ -25,7 +22,7 @@ def walk(
   exclude_dir_re: Pattern[str],
   file_re: Pattern[str],
 ):
-  '''Walks through a directory recursively and yields files that match the given regex'''
+  """Walks through a directory recursively and yields files that match the given regex"""
   dirs_to_process = [directory]
   while dirs_to_process:
     dir = dirs_to_process.pop()

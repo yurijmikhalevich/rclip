@@ -8,7 +8,7 @@ import sys
 env = jinja2.Environment(trim_blocks=True)
 
 
-TEMPLATE = env.from_string('''class Rclip < Formula
+TEMPLATE = env.from_string("""class Rclip < Formula
   include Language::Python::Virtualenv
 
   desc "AI-Powered Command-Line Photo Search Tool"
@@ -102,22 +102,22 @@ TEMPLATE = env.from_string('''class Rclip < Formula
     assert_match("score\\tfilepath", output)
   end
 end
-''')  # noqa
+""")  # noqa
 
 
 # These deps are being installed from brew
-DEPS_TO_IGNORE = ['numpy', 'pillow', 'certifi', 'rawpy', 'torch', 'torchvision']
+DEPS_TO_IGNORE = ["numpy", "pillow", "certifi", "rawpy", "torch", "torchvision"]
 RESOURCE_URL_OVERRIDES = {
   # open-clip-torch publishes an incomplete tarball to pypi, so we will fetch one from GitHub
-  'open-clip-torch': env.from_string(
-    'https://github.com/mlfoundations/open_clip/archive/refs/tags/v{{ version }}.tar.gz'
+  "open-clip-torch": env.from_string(
+    "https://github.com/mlfoundations/open_clip/archive/refs/tags/v{{ version }}.tar.gz"
   ),
 }
 
 
 def main():
   if len(sys.argv) != 2:
-    print('Usage: generate_formula.py <version>')
+    print("Usage: generate_formula.py <version>")
     sys.exit(1)
 
   target_version = sys.argv[1]
@@ -126,14 +126,14 @@ def main():
   for dep in DEPS_TO_IGNORE:
     deps.pop(dep, None)
   for dep, url in RESOURCE_URL_OVERRIDES.items():
-    new_url = url.render(version=deps[dep]['version'])
-    deps[dep]['url'] = new_url
-    deps[dep]['checksum'] = compute_checksum(new_url)
+    new_url = url.render(version=deps[dep]["version"])
+    deps[dep]["url"] = new_url
+    deps[dep]["checksum"] = compute_checksum(new_url)
   for _, dep in deps.items():
-    dep['name'] = dep['name'].lower()
+    dep["name"] = dep["name"].lower()
 
-  rclip_metadata = deps.pop('rclip')
-  resources = '\n\n'.join([poet.RESOURCE_TEMPLATE.render(resource=dep) for dep in deps.values()])
+  rclip_metadata = deps.pop("rclip")
+  resources = "\n\n".join([poet.RESOURCE_TEMPLATE.render(resource=dep) for dep in deps.values()])
   print(TEMPLATE.render(package=rclip_metadata, resources=resources))
 
 
@@ -143,28 +143,28 @@ def compute_checksum(url: str):
 
 
 def get_deps_for_requested_rclip_version_or_die(target_version: str):
-  deps = poet.make_graph('rclip')
-  rclip_metadata = deps['rclip']
-  target_tarball = f'rclip-{target_version}.tar.gz'
+  deps = poet.make_graph("rclip")
+  rclip_metadata = deps["rclip"]
+  target_tarball = f"rclip-{target_version}.tar.gz"
 
   # it takes a few seconds for a published wheel appear in PyPI
   retries_left = 5
-  while not rclip_metadata['url'].endswith(target_tarball):
+  while not rclip_metadata["url"].endswith(target_tarball):
     if retries_left == 0:
-      print(f'Version mismatch: {rclip_metadata["version"]} != {target_version}. Exiting.', file=sys.stderr)
+      print(f"Version mismatch: {rclip_metadata['version']} != {target_version}. Exiting.", file=sys.stderr)
       sys.exit(1)
     retries_left -= 1
     print(
-      f'Version mismatch: {rclip_metadata["url"].split("/")[-1]} != {target_tarball}. Retrying in 10 seconds.',
+      f"Version mismatch: {rclip_metadata['url'].split('/')[-1]} != {target_tarball}. Retrying in 10 seconds.",
       file=sys.stderr,
     )
     # it takes a few seconds for a published wheel appear in PyPI
     sleep(10)
-    deps = poet.make_graph('rclip')
-    rclip_metadata = deps['rclip']
+    deps = poet.make_graph("rclip")
+    rclip_metadata = deps["rclip"]
 
   return deps
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   main()

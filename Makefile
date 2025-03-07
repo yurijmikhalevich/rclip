@@ -12,7 +12,8 @@ lint-style:
 	poetry run ruff check
 
 fix-style:
-	poetry run ruff fix
+	poetry run ruff check --fix
+	poetry run ruff format
 
 lint-types:
 	poetry run pyright .

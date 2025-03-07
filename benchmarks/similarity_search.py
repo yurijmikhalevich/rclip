@@ -17,37 +17,39 @@ from rclip.main import RClip
 # You may also need to increase the ulimit to avoid "Too many open files" error:
 # `ulimit -n 1024`
 
+
 def main(tmp_datadir: str):
-    TEST_IMAGE_PREFIX = os.path.join(DATASET_DIR, 'imagenet_1k', 'data')
+  TEST_IMAGE_PREFIX = os.path.join(DATASET_DIR, "imagenet_1k", "data")
 
-    model_instance = model.Model('mps')
-    database = db.DB(os.path.join(tmp_datadir, 'db.sqlite3'))
-    rclip = RClip(model_instance, database, BATCH_SIZE, None)
+  model_instance = model.Model("mps")
+  database = db.DB(os.path.join(tmp_datadir, "db.sqlite3"))
+  rclip = RClip(model_instance, database, BATCH_SIZE, None)
 
-    rclip.ensure_index(TEST_IMAGE_PREFIX)
+  rclip.ensure_index(TEST_IMAGE_PREFIX)
 
-    def get_images_for_class(class_id: str, limit: int = 750):
-        return database._con.execute(  # type: ignore
-            '''
+  def get_images_for_class(class_id: str, limit: int = 750):
+    return database._con.execute(  # type: ignore
+      """
                 SELECT filepath, vector FROM images WHERE filepath LIKE ? AND deleted IS NULL ORDER BY RANDOM() LIMIT ?
-            ''', (TEST_IMAGE_PREFIX + f'{os.path.sep}%{os.path.sep}{class_id}_%', limit)
-        )
+            """,
+      (TEST_IMAGE_PREFIX + f"{os.path.sep}%{os.path.sep}{class_id}_%", limit),
+    )
 
-    def get_image_class(filepath: str):
-        return filepath.split('/')[-1].split('_')[0]
+  def get_image_class(filepath: str):
+    return filepath.split("/")[-1].split("_")[0]
 
-    accuracies = []
-    for class_id in tqdm(IMAGENET2012_CLASSES.keys()):
-        images = get_images_for_class(class_id, limit=10)
-        for image in images:
-            results = rclip.search(image['filepath'], TEST_IMAGE_PREFIX, top_k=100)
-            top100_classes = [get_image_class(result.filepath) for result in results]
-            accuracies.append(np.mean(np.array(top100_classes) == class_id))
+  accuracies = []
+  for class_id in tqdm(IMAGENET2012_CLASSES.keys()):
+    images = get_images_for_class(class_id, limit=10)
+    for image in images:
+      results = rclip.search(image["filepath"], TEST_IMAGE_PREFIX, top_k=100)
+      top100_classes = [get_image_class(result.filepath) for result in results]
+      accuracies.append(np.mean(np.array(top100_classes) == class_id))
 
-    print(f'Accuracy: {np.mean(accuracies)}')  # type: ignore
+  print(f"Accuracy: {np.mean(accuracies)}")  # type: ignore
 
 
-if __name__ == '__main__':
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        print(f'Using temporary directory: {tmp_dir}')
-        main(tmp_dir)
+if __name__ == "__main__":
+  with tempfile.TemporaryDirectory() as tmp_dir:
+    print(f"Using temporary directory: {tmp_dir}")
+    main(tmp_dir)
