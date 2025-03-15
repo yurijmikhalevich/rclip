@@ -12,5 +12,5 @@
 
 ## Checklist
 
-- [ ] my PR is focused and contains one wholistic change
+- [ ] my PR is focused and contains one holistic change
 - [ ] I have added screenshots or screen recordings to show the changes
