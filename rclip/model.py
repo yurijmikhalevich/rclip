@@ -13,12 +13,6 @@ QUERY_WITH_MULTIPLIER_RE = re.compile(r"^(?P<multiplier>(\d+(\.\d+)?|\.\d+|\d+\.
 QueryWithMultiplier = Tuple[float, str]
 FeatureVector = npt.NDArray[np.float32]
 
-TEXT_ONLY_SUPPORTED_MODELS = [
-  {
-    "model_name": "ViT-B-32-quickgelu",
-    "checkpoint_name": "openai",
-  }
-]
 
 
 def get_open_clip_version():
@@ -26,13 +20,11 @@ def get_open_clip_version():
 
 
 class Model:
-  VECTOR_SIZE = 512
-  _model_name = "ViT-B-32-quickgelu"
-  _checkpoint_name = "openai"
 
-  def __init__(self, device: str = "cpu"):
+  def __init__(self, device: str = "cpu", model_name: str, checkpoint_name: str):
     self._device = device
-
+    self._model_name = model_name
+    self._checkpoint_name = checkpoint_name
     self._model_var = None
     self._model_text_var = None
     self._preprocess_var = None
@@ -57,10 +49,7 @@ class Model:
     )
     self._model_text_var = None
 
-    if {
-      "model_name": self._model_name,
-      "checkpoint_name": self._checkpoint_name,
-    } in TEXT_ONLY_SUPPORTED_MODELS and self._should_update_text_model():
+    if self._should_update_text_model():
       import torch
 
       model_text = self._get_text_model(cast(open_clip.CLIP, self._model_var))
@@ -141,6 +130,9 @@ class Model:
       text_features = self._model_text.encode_text(self._tokenizer(text).to(self._device))
       text_features /= text_features.norm(dim=-1, keepdim=True)
     return text_features.cpu().numpy()
+
+  def get_vector_size(self) -> int:
+    return open_clip.factory.get_model_config(self._model_name)["embed_dim"]
 
   @staticmethod
   def _extract_query_multiplier(query: str) -> QueryWithMultiplier:

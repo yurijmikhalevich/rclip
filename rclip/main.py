@@ -206,12 +206,14 @@ class RClip:
       filepaths.append(image["filepath"])
       features.append(np.frombuffer(image["vector"], np.float32))
     if not filepaths:
-      return [], np.ndarray(shape=(0, model.Model.VECTOR_SIZE))
+      return [], np.ndarray(shape=(0, self._model.get_vector_size()))
     return filepaths, np.stack(features)
 
 
 def init_rclip(
   working_directory: str,
+  model_name: str,
+  checkpoint_name: str,
   indexing_batch_size: int,
   device: str = "cpu",
   exclude_dir: Optional[List[str]] = None,
@@ -222,7 +224,7 @@ def init_rclip(
   db_path = datadir / "db.sqlite3"
 
   database = db.DB(db_path)
-  model_instance = model.Model(device=device or "cpu")
+  model_instance = model.Model(device=device or "cpu", model_name=model_name, checkpoint_name=checkpoint_name)
   rclip = RClip(
     model_instance=model_instance,
     database=database,
@@ -247,6 +249,8 @@ def main():
 
   rclip, _, db = init_rclip(
     current_directory,
+    args.model_name,
+    args.checkpoint_name,
     args.indexing_batch_size,
     vars(args).get("device", "cpu"),
     args.exclude_dir,
