@@ -21,7 +21,7 @@ def get_open_clip_version():
 
 class Model:
 
-  def __init__(self, device: str = "cpu", model_name, checkpoint_name):
+  def __init__(self, device: str = "cpu", model_name: str = "", checkpoint_name: str = ""):
     self._device = device
     self._model_name = model_name
     self._checkpoint_name = checkpoint_name
