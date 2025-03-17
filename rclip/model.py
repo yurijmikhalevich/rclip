@@ -196,7 +196,7 @@ class Model:
     elif image_features is not None:
       return image_features
     else:
-      return np.zeros(Model.VECTOR_SIZE, dtype=np.float32)
+      return np.zeros(self.get_vector_size(), dtype=np.float32)
 
   def compute_similarities_to_text(
     self, item_features: FeatureVector, positive_queries: List[str], negative_queries: List[str]
