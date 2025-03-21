@@ -11,6 +11,7 @@ import requests
 import sys
 from importlib.metadata import version
 
+from open_clip import list_pretrained
 from rclip.const import IMAGE_RAW_EXT, IS_LINUX, IS_MACOS, IS_WINDOWS
 
 
@@ -102,7 +103,9 @@ def init_arg_parser() -> argparse.ArgumentParser:
     "  https://github.com/yurijmikhalevich/rclip/discussions/new/choose\n\n",
   )
   version_str = f"rclip {version('rclip')}"
+  pretrained_list_str = str(list_pretrained(as_str=True))
   parser.add_argument("--version", "-v", action="version", version=version_str, help=f'prints "{version_str}"')
+  parser.add_argument("--list-pretrained", "-l", action="pretrained_list", pretrained_list=pretrained_list_str, help="list pretrained OpenCLIP model checkpoints")
   parser.add_argument("query", help="a text query or a path/URL to an image file")
   parser.add_argument(
     "--add",
@@ -155,8 +158,8 @@ def init_arg_parser() -> argparse.ArgumentParser:
     "--model-checkpoint",
     "-M",
     type=str,
-    default="ViT-B-32-quickgelu,openai",
-    help="OpenCLIP model and checkpoint name; default: ViT-B-32-quickgelu,openai",
+    default="ViT-B-32-quickgelu:openai",
+    help="OpenCLIP model and checkpoint name; default = ViT-B-32-quickgelu:openai",
   )
   parser.add_argument(
     "--no-indexing",
