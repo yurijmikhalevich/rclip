@@ -103,7 +103,8 @@ def init_arg_parser() -> argparse.ArgumentParser:
   )
   version_str = f"rclip {version('rclip')}"
   parser.add_argument("--version", "-v", action="version", version=version_str, help=f'prints "{version_str}"')
-  parser.add_argument("query", help="a text query or a path/URL to an image file")
+  parser.add_argument("--list-pretrained", "-l", action="store_true", help="list pretrained OpenCLIP model checkpoints")
+  parser.add_argument("query", nargs='?', help="a text query or a path/URL to an image file")
   parser.add_argument(
     "--add",
     "-a",
@@ -150,6 +151,13 @@ def init_arg_parser() -> argparse.ArgumentParser:
     type=int,
     default=400,
     help="preview height in pixels; default: 400",
+  )
+  parser.add_argument(
+    "--model-checkpoint",
+    "-M",
+    type=str,
+    default="ViT-B-32-quickgelu:openai",
+    help="OpenCLIP model and checkpoint name; default = ViT-B-32-quickgelu:openai",
   )
   parser.add_argument(
     "--no-indexing",
