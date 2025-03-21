@@ -245,7 +245,8 @@ def main():
 
   if args.list_pretrained:
       from open_clip import list_pretrained
-      print(list_pretrained())
+      print(list_pretrained(as_str=True))
+      sys.exit(0)
 
   current_directory = os.getcwd()
   if is_snap():
