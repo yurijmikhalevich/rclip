@@ -249,8 +249,8 @@ def main():
 
   rclip, _, db = init_rclip(
     current_directory,
-    args.model_name,
-    args.checkpoint_name,
+    args.model_checkpoint.split(",")[0],
+    args.model_checkpoint.split(",")[1],
     args.indexing_batch_size,
     vars(args).get("device", "cpu"),
     args.exclude_dir,

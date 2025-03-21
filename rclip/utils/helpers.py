@@ -152,18 +152,11 @@ def init_arg_parser() -> argparse.ArgumentParser:
     help="preview height in pixels; default: 400",
   )
   parser.add_argument(
-    "--model-name",
+    "--model-checkpoint",
     "-M",
     type=str,
-    default="ViT-B-32",
-    help="OpenCLIP model name",
-  )
-  parser.add_argument(
-    "--checkpoint-name",
-    "-C",
-    type=str,
-    default="datacomp_xl_s13b_b90k",
-    help="OpenCLIP checkpoint name",
+    default="ViT-B-32-quickgelu,openai",
+    help="OpenCLIP model and checkpoint name; default: ViT-B-32-quickgelu,openai",
   )
   parser.add_argument(
     "--no-indexing",
