@@ -243,6 +243,10 @@ def main():
   arg_parser = helpers.init_arg_parser()
   args = arg_parser.parse_args()
 
+  if args.list_pretrained:
+      from open_clip import list_pretrained
+      print(list_pretrained())
+
   current_directory = os.getcwd()
   if is_snap():
     check_snap_permissions(current_directory)
