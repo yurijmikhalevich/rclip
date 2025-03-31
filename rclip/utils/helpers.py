@@ -103,7 +103,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
   )
   version_str = f"rclip {version('rclip')}"
   parser.add_argument("--version", "-v", action="version", version=version_str, help=f'prints "{version_str}"')
-  parser.add_argument("query", help="a text query or a path/URL to an image file")
+  parser.add_argument("query", nargs='?', help="a text query or a path/URL to an image file")
   parser.add_argument(
     "--add",
     "-a",
@@ -181,6 +181,12 @@ def init_arg_parser() -> argparse.ArgumentParser:
     default=False,
     help="enables support for RAW images (only ARW and CR2 are supported)",
   )
+  parser.add_argument(
+    "--index-only",
+    action="store_true",
+    default=False,
+    help="run indexing only without executing a query", # TODO chatgpt a better help message
+  )
   if IS_MACOS:
     if is_mps_available():
       parser.add_argument(
@@ -188,6 +194,17 @@ def init_arg_parser() -> argparse.ArgumentParser:
       )
   return parser
 
+def parse_args(arg_parser):
+  args = arg_parser.parse_args()
+
+  if not args.query and not args.index_only:
+    arg_parser.error("query or --index-only required")
+  if args.query and args.index_only:
+    arg_parser.error("--index-only cannot be used with query")
+  if args.index_only:
+    if any(flag in sys.argv for flag in ['--index-batch-size', '--exclude_dir', '--device']):
+      arg_parser.error("--index-only cannot be used with --index-batch-size, --exclude_dir, or --device")
+  return args
 
 def is_mps_available() -> bool:
   if not IS_MACOS:

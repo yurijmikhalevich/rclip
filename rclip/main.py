@@ -239,7 +239,7 @@ def init_rclip(
 
 def main():
   arg_parser = helpers.init_arg_parser()
-  args = arg_parser.parse_args()
+  args = helpers.parse_args(arg_parser)
 
   current_directory = os.getcwd()
   if is_snap():
