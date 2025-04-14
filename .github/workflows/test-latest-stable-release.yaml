@@ -62,11 +62,12 @@ jobs:
           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
           echo >> /home/runner/.bashrc
           echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /home/runner/.bashrc
-        # uninstall azure and aws CLI to avoid conflicts with Python 3.12 on upgrade
+        # workaround for Python 3.12 linking issues on macos-13 due to conflicts
+        # with the Python 3.12 provided with the GHA image
         # https://github.com/actions/runner-images/issues/4020
       - run: |
-          brew uninstall --force azure-cli
-          brew uninstall --force aws-sam-cli
+          brew update
+          brew install python@3.12 || brew link --overwrite python@3.12
         if: matrix.os == 'macos-13'
       - run: brew update && brew upgrade
       - run: brew install yurijmikhalevich/tap/rclip
