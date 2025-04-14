@@ -62,6 +62,9 @@ jobs:
           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
           echo >> /home/runner/.bashrc
           echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /home/runner/.bashrc
+        # rm 2to3-3.12 symlink to avoid conflicts when upgrading Python in the macos-13 image
+      - run: rm /usr/local/bin/2to3-3.12
+        if: matrix.os == 'macos-13'
       - run: brew update && brew upgrade
       - run: brew install yurijmikhalevich/tap/rclip
         # overriding shell to ensure it reads `.bashrc`
