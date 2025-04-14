@@ -67,7 +67,7 @@ jobs:
         # https://github.com/actions/runner-images/issues/4020
       - run: |
           brew update
-          brew install python@3.12 || brew link --overwrite python@3.12
+          brew install python@3 || brew link --overwrite python@3
         if: matrix.os == 'macos-13'
       - run: brew update && brew upgrade
       - run: brew install yurijmikhalevich/tap/rclip
