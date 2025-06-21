@@ -190,6 +190,14 @@ def init_arg_parser() -> argparse.ArgumentParser:
     default=None,
     help="full path to the database file; default: platform-specific data dir + rclip/db.sqlite3",
   )
+  parser.add_argument(
+    "--search-dir",
+    metavar="SEARCH_DIR",
+    action="store",
+    type=str,
+    default=None,
+    help="directory to search for images; default: current directory",
+  )
   if IS_MACOS:
     if is_mps_available():
       parser.add_argument(

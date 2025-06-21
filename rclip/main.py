@@ -246,12 +246,18 @@ def main():
   arg_parser = helpers.init_arg_parser()
   args = arg_parser.parse_args()
 
-  current_directory = os.getcwd()
+  search_directory = args.search_dir if args.search_dir else os.getcwd()
+  search_directory = os.path.abspath(search_directory)
+  
+  if not os.path.isdir(search_directory):
+    print(f"Error: Search directory does not exist: {search_directory}", file=sys.stderr)
+    sys.exit(1)
+  
   if is_snap():
-    check_snap_permissions(current_directory)
+    check_snap_permissions(search_directory)
 
   rclip, _, db = init_rclip(
-    current_directory,
+    search_directory,
     args.indexing_batch_size,
     vars(args).get("device", "cpu"),
     args.exclude_dir,
@@ -261,7 +267,7 @@ def main():
   )
 
   try:
-    result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
+    result = rclip.search(args.query, search_directory, args.top, args.add, args.subtract)
     if args.filepath_only:
       for r in result:
         print(r.filepath)
