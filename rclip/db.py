@@ -27,16 +27,16 @@ class DB:
     # Ensure parent directory exists
     filepath = pathlib.Path(filename)
     os.makedirs(filepath.parent, exist_ok=True)
-    
+
     self._con = sqlite3.connect(filename)
     self._con.row_factory = sqlite3.Row
-    
+
     # Set cache size if specified
     if cache_size_mb is not None:
       # Negative value = size in KB, so convert MB to KB
       cache_kb = -1 * cache_size_mb * 1024
       self._con.execute(f"PRAGMA cache_size = {cache_kb}")
-    
+
     self.ensure_tables()
     self.ensure_version()
 

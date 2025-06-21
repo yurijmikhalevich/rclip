@@ -250,14 +250,14 @@ def main():
   if args.index_only and args.no_indexing:
     print("Error: --index-only and --no-indexing cannot be used together", file=sys.stderr)
     sys.exit(1)
-  
+
   search_directory = args.search_dir if args.search_dir else os.getcwd()
   search_directory = os.path.abspath(search_directory)
-  
+
   if not os.path.isdir(search_directory):
     print(f"Error: Search directory does not exist: {search_directory}", file=sys.stderr)
     sys.exit(1)
-  
+
   if is_snap():
     check_snap_permissions(search_directory)
 
