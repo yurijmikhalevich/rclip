@@ -103,7 +103,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
   )
   version_str = f"rclip {version('rclip')}"
   parser.add_argument("--version", "-v", action="version", version=version_str, help=f'prints "{version_str}"')
-  parser.add_argument("query", help="a text query or a path/URL to an image file")
+  parser.add_argument("query", nargs="?", help="a text query or a path/URL to an image file")
   parser.add_argument(
     "--add",
     "-a",
@@ -197,6 +197,12 @@ def init_arg_parser() -> argparse.ArgumentParser:
     type=str,
     default=None,
     help="directory to search for images; default: current directory",
+  )
+  parser.add_argument(
+    "--index-only",
+    action="store_true",
+    default=False,
+    help="only index images without performing a search",
   )
   if IS_MACOS:
     if is_mps_available():

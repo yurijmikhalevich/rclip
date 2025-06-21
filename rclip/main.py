@@ -246,6 +246,10 @@ def main():
   arg_parser = helpers.init_arg_parser()
   args = arg_parser.parse_args()
 
+  if args.index_only and args.no_indexing:
+    print("Error: --index-only and --no-indexing cannot be used together", file=sys.stderr)
+    sys.exit(1)
+  
   search_directory = args.search_dir if args.search_dir else os.getcwd()
   search_directory = os.path.abspath(search_directory)
   
@@ -265,6 +269,15 @@ def main():
     args.experimental_raw_support,
     args.db_path,
   )
+
+  if args.index_only:
+    print("Indexing completed successfully.", file=sys.stderr)
+    db.close()
+    return
+
+  if not args.query:
+    print("Error: Query is required unless using --index-only", file=sys.stderr)
+    sys.exit(1)
 
   try:
     result = rclip.search(args.query, search_directory, args.top, args.add, args.subtract)
