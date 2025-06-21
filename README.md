@@ -136,6 +136,73 @@ rclip -p kitty
   ```
 </details>
 
+### Advanced Options
+
+#### Custom Database Location
+
+By default, rclip stores its database in your system's application data directory. You can specify a custom location:
+
+```bash
+# Use a custom database file
+rclip --db-path /path/to/my/photos.db "sunset"
+
+# Store database on an external drive
+rclip --db-path /mnt/photos/rclip.db "vacation"
+```
+
+#### Search in Different Directories
+
+Search for images in a specific directory without changing your current directory:
+
+```bash
+# Search in a different directory
+rclip --search-dir /path/to/photos "cats"
+
+# Search external drive
+rclip --search-dir /mnt/backup/photos "birthday"
+```
+
+#### Index-Only Mode
+
+Index images without performing a search - useful for pre-building the database:
+
+```bash
+# Just index the current directory
+rclip --index-only
+
+# Index a specific directory
+rclip --index-only --search-dir /path/to/new/photos
+
+# Index to a custom database
+rclip --index-only --db-path /path/to/custom.db --search-dir /photos
+```
+
+#### Performance Tuning
+
+For large image collections, you can increase the SQLite cache size to improve performance, especially during indexing:
+
+```bash
+# Use 64MB cache for faster indexing (default is 2MB)
+rclip --index-only --db-cache-size 64
+
+# Use 128MB cache when indexing millions of images
+rclip --index-only --db-cache-size 128 --search-dir /massive/photo/library
+```
+
+Note: Increasing cache size primarily speeds up indexing operations. For searching, the default cache is usually sufficient unless you have millions of images in a single directory.
+
+#### Combining Options
+
+You can combine multiple options for complex workflows:
+
+```bash
+# Search photos on external drive with custom database
+rclip --db-path /mnt/photos/rclip.db --search-dir /mnt/photos "sunset" --top 20
+
+# Fast search with no indexing
+rclip --no-indexing "flowers"
+```
+
 ## Get help
 
 https://github.com/yurijmikhalevich/rclip/discussions/new/choose
