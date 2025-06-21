@@ -219,6 +219,7 @@ def init_rclip(
   no_indexing: bool = False,
   enable_raw_support: bool = False,
   db_path: Optional[str] = None,
+  db_cache_size: Optional[int] = None,
 ):
   if db_path:
     db_path = pathlib.Path(db_path)
@@ -226,7 +227,7 @@ def init_rclip(
     datadir = helpers.get_app_datadir()
     db_path = datadir / "db.sqlite3"
 
-  database = db.DB(db_path)
+  database = db.DB(db_path, cache_size_mb=db_cache_size)
   model_instance = model.Model(device=device or "cpu")
   rclip = RClip(
     model_instance=model_instance,
@@ -268,6 +269,7 @@ def main():
     args.no_indexing,
     args.experimental_raw_support,
     args.db_path,
+    args.db_cache_size,
   )
 
   if args.index_only:

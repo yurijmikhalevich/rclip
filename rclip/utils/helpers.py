@@ -204,6 +204,14 @@ def init_arg_parser() -> argparse.ArgumentParser:
     default=False,
     help="only index images without performing a search",
   )
+  parser.add_argument(
+    "--db-cache-size",
+    metavar="SIZE_MB",
+    action="store",
+    type=int,
+    default=None,
+    help="SQLite cache size in MB; default: 2MB",
+  )
   if IS_MACOS:
     if is_mps_available():
       parser.add_argument(
