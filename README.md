@@ -203,6 +203,52 @@ rclip --db-path /mnt/photos/rclip.db --search-dir /mnt/photos "sunset" --top 20
 rclip --no-indexing "flowers"
 ```
 
+### Database Management
+
+#### Merging Databases
+
+The `rclip-db-merge` tool allows you to combine multiple rclip databases into one. This is useful when:
+- You have indexed photos on different computers
+- You want to combine databases from different photo collections
+- You need to consolidate multiple partial indexes
+
+Basic usage:
+```bash
+rclip-db-merge db1.db db2.db merged.db
+```
+
+Options:
+- `-v, --verbose` - Show detailed progress information
+- `--force` - Overwrite output file if it exists
+- `--check-versions` - Check database compatibility without merging
+- `--batch-size` - Number of rows to process per batch (default: 10000)
+- `--commit-interval` - Number of rows between commits (default: 50000)
+- `--cache-size` - Database cache size in MB (default: 64)
+- `--mmap-size` - Memory-mapped I/O size in MB (default: 1024)
+
+Examples:
+```bash
+# Check if databases are compatible
+rclip-db-merge photo_db1.db photo_db2.db output.db --check-versions
+
+# Merge with progress information
+rclip-db-merge photo_db1.db photo_db2.db merged.db -v
+
+# Merge large databases with optimized settings
+rclip-db-merge large1.db large2.db output.db \
+  --batch-size 20000 \
+  --cache-size 256 \
+  --mmap-size 4096
+
+# Force overwrite existing output
+rclip-db-merge db1.db db2.db existing.db --force
+```
+
+The tool handles conflicts intelligently:
+- When the same image path exists in both databases, it keeps the newer version
+- Deleted images remain marked as deleted
+- The merge preserves all metadata including vectors
+
 ## Get help
 
 https://github.com/yurijmikhalevich/rclip/discussions/new/choose
