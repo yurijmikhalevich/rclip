@@ -1,3 +1,4 @@
+import os
 import os.path
 import pathlib
 import sqlite3
@@ -23,6 +24,10 @@ class DB:
   VERSION = 2
 
   def __init__(self, filename: Union[str, pathlib.Path]):
+    # Ensure parent directory exists
+    filepath = pathlib.Path(filename)
+    os.makedirs(filepath.parent, exist_ok=True)
+    
     self._con = sqlite3.connect(filename)
     self._con.row_factory = sqlite3.Row
     self.ensure_tables()

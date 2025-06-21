@@ -181,6 +181,15 @@ def init_arg_parser() -> argparse.ArgumentParser:
     default=False,
     help="enables support for RAW images (only ARW and CR2 are supported)",
   )
+  parser.add_argument(
+    "--db-path",
+    "--database",
+    metavar="DB_PATH",
+    action="store",
+    type=str,
+    default=None,
+    help="full path to the database file; default: platform-specific data dir + rclip/db.sqlite3",
+  )
   if IS_MACOS:
     if is_mps_available():
       parser.add_argument(

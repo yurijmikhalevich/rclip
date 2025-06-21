@@ -1,5 +1,6 @@
 import itertools
 import os
+import pathlib
 import re
 import sys
 import threading
@@ -217,9 +218,13 @@ def init_rclip(
   exclude_dir: Optional[List[str]] = None,
   no_indexing: bool = False,
   enable_raw_support: bool = False,
+  db_path: Optional[str] = None,
 ):
-  datadir = helpers.get_app_datadir()
-  db_path = datadir / "db.sqlite3"
+  if db_path:
+    db_path = pathlib.Path(db_path)
+  else:
+    datadir = helpers.get_app_datadir()
+    db_path = datadir / "db.sqlite3"
 
   database = db.DB(db_path)
   model_instance = model.Model(device=device or "cpu")
@@ -252,6 +257,7 @@ def main():
     args.exclude_dir,
     args.no_indexing,
     args.experimental_raw_support,
+    args.db_path,
   )
 
   try:
