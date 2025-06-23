@@ -103,7 +103,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
   )
   version_str = f"rclip {version('rclip')}"
   parser.add_argument("--version", "-v", action="version", version=version_str, help=f'prints "{version_str}"')
-  parser.add_argument("query", help="a text query or a path/URL to an image file")
+  parser.add_argument("query", nargs="?", help="a text query or a path/URL to an image file")
   parser.add_argument(
     "--add",
     "-a",
@@ -180,6 +180,37 @@ def init_arg_parser() -> argparse.ArgumentParser:
     action="store_true",
     default=False,
     help="enables support for RAW images (only ARW and CR2 are supported)",
+  )
+  parser.add_argument(
+    "--db-path",
+    "--database",
+    metavar="DB_PATH",
+    action="store",
+    type=str,
+    default=None,
+    help="full path to the database file; default: platform-specific data dir + rclip/db.sqlite3",
+  )
+  parser.add_argument(
+    "--search-dir",
+    metavar="SEARCH_DIR",
+    action="store",
+    type=str,
+    default=None,
+    help="directory to search for images; default: current directory",
+  )
+  parser.add_argument(
+    "--index-only",
+    action="store_true",
+    default=False,
+    help="only index images without performing a search",
+  )
+  parser.add_argument(
+    "--db-cache-size",
+    metavar="SIZE_MB",
+    action="store",
+    type=int,
+    default=None,
+    help="SQLite cache size in MB; default: 2MB",
   )
   if IS_MACOS:
     if is_mps_available():

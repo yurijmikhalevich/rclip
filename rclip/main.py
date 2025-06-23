@@ -1,5 +1,6 @@
 import itertools
 import os
+import pathlib
 import re
 import sys
 import threading
@@ -217,11 +218,16 @@ def init_rclip(
   exclude_dir: Optional[List[str]] = None,
   no_indexing: bool = False,
   enable_raw_support: bool = False,
+  db_path: Optional[str] = None,
+  db_cache_size: Optional[int] = None,
 ):
-  datadir = helpers.get_app_datadir()
-  db_path = datadir / "db.sqlite3"
+  if db_path:
+    db_path = pathlib.Path(db_path)
+  else:
+    datadir = helpers.get_app_datadir()
+    db_path = datadir / "db.sqlite3"
 
-  database = db.DB(db_path)
+  database = db.DB(db_path, cache_size_mb=db_cache_size)
   model_instance = model.Model(device=device or "cpu")
   rclip = RClip(
     model_instance=model_instance,
@@ -241,21 +247,42 @@ def main():
   arg_parser = helpers.init_arg_parser()
   args = arg_parser.parse_args()
 
-  current_directory = os.getcwd()
+  if args.index_only and args.no_indexing:
+    print("Error: --index-only and --no-indexing cannot be used together", file=sys.stderr)
+    sys.exit(1)
+
+  search_directory = args.search_dir if args.search_dir else os.getcwd()
+  search_directory = os.path.abspath(search_directory)
+
+  if not os.path.isdir(search_directory):
+    print(f"Error: Search directory does not exist: {search_directory}", file=sys.stderr)
+    sys.exit(1)
+
   if is_snap():
-    check_snap_permissions(current_directory)
+    check_snap_permissions(search_directory)
 
   rclip, _, db = init_rclip(
-    current_directory,
+    search_directory,
     args.indexing_batch_size,
     vars(args).get("device", "cpu"),
     args.exclude_dir,
     args.no_indexing,
     args.experimental_raw_support,
+    args.db_path,
+    args.db_cache_size,
   )
 
+  if args.index_only:
+    print("Indexing completed successfully.", file=sys.stderr)
+    db.close()
+    return
+
+  if not args.query:
+    print("Error: Query is required unless using --index-only", file=sys.stderr)
+    sys.exit(1)
+
   try:
-    result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
+    result = rclip.search(args.query, search_directory, args.top, args.add, args.subtract)
     if args.filepath_only:
       for r in result:
         print(r.filepath)
