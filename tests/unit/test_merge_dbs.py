@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from rclip.merge_dbs import RclipDBMerger
+from rclip.rclip_merge_dbs import RclipDBMerger
 
 
 class TestRclipDBMerger:

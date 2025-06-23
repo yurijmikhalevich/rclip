@@ -2,7 +2,7 @@
 """
 Merge two rclip SQLite databases with progress tracking and performance optimizations.
 
-Usage: python merge_rclip_dbs.py <db1.db> <db2.db> <output.db>
+Usage: python rclip_merge_dbs.py <db1.db> <db2.db> <output.db>
 """
 
 import argparse
