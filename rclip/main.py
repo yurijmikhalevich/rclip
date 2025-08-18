@@ -242,7 +242,7 @@ def init_rclip(
         print_snap_permission_error(realpath, is_current_directory=False)
         print()
         sys.exit(1)
-      raise e
+      raise
 
   return rclip, model_instance, database
 
