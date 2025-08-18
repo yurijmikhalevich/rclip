@@ -240,6 +240,7 @@ def init_rclip(
 
         print()
         print_snap_permission_error(realpath, is_current_directory=False)
+        print()
         sys.exit(1)
       raise e
 
