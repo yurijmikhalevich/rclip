@@ -13,7 +13,7 @@ from PIL import Image, ImageFile
 from rclip import db, fs, model
 from rclip.const import IMAGE_EXT, IMAGE_RAW_EXT
 from rclip.utils.preview import preview
-from rclip.utils.snap import check_snap_permissions, is_snap
+from rclip.utils.snap import check_snap_permissions, is_snap, print_snap_permission_error
 from rclip.utils import helpers
 
 
@@ -232,7 +232,13 @@ def init_rclip(
   )
 
   if not no_indexing:
-    rclip.ensure_index(working_directory)
+    try:
+      rclip.ensure_index(working_directory)
+    except PermissionError as e:
+      if is_snap():
+        print_snap_permission_error(e.filename, is_current_directory=False)
+        sys.exit(1)
+      raise e
 
   return rclip, model_instance, database
 
@@ -243,7 +249,7 @@ def main():
 
   current_directory = os.getcwd()
   if is_snap():
-    check_snap_permissions(current_directory)
+    check_snap_permissions(current_directory, is_current_directory=True)
 
   rclip, _, db = init_rclip(
     current_directory,
