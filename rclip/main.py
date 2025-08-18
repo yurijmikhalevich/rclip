@@ -235,9 +235,11 @@ def init_rclip(
     try:
       rclip.ensure_index(working_directory)
     except PermissionError as e:
-      if is_snap():
+      if is_snap() and os.path.islink(e.filename):
+        realpath = os.path.realpath(e.filename)
+
         print()
-        print_snap_permission_error(e.filename, is_current_directory=False)
+        print_snap_permission_error(realpath, is_current_directory=False)
         sys.exit(1)
       raise e
 
