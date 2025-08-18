@@ -13,7 +13,7 @@ from PIL import Image, ImageFile
 from rclip import db, fs, model
 from rclip.const import IMAGE_EXT, IMAGE_RAW_EXT
 from rclip.utils.preview import preview
-from rclip.utils.snap import check_snap_permissions, is_snap, print_snap_permission_error
+from rclip.utils.snap import check_snap_permissions, is_snap, get_snap_permission_error
 from rclip.utils import helpers
 
 
@@ -238,9 +238,7 @@ def init_rclip(
       if is_snap() and e.filename is not None and os.path.islink(e.filename):
         realpath = os.path.realpath(e.filename)
 
-        print()
-        print_snap_permission_error(realpath, is_current_directory=False)
-        print()
+        print(f"\n{get_snap_permission_error(realpath, is_current_directory=False)}\n")
         sys.exit(1)
       raise
 
