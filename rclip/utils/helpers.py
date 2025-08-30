@@ -4,6 +4,7 @@ import pathlib
 import textwrap
 from typing import IO, cast
 from PIL import Image, UnidentifiedImageError
+from PIL.Image import DecompressionBombError
 import re
 import numpy as np
 import rawpy
@@ -19,6 +20,8 @@ DOWNLOAD_TIMEOUT_SECONDS = 60
 WIN_ABSOLUTE_FILE_PATH_REGEX = re.compile(r"^[a-z]:\\", re.I)
 DEFAULT_TERMINAL_TEXT_WIDTH = 100
 
+MAX_IMAGE_PIXELS = 61_000_000
+Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 
 def __get_system_datadir() -> pathlib.Path:
   """
@@ -214,9 +217,15 @@ def download_image(url: str) -> Image.Image:
   if length := check_size.headers.get("Content-Length"):
     if int(length) > MAX_DOWNLOAD_SIZE_BYTES:
       raise ValueError(f"Avoiding download of large ({length} byte) file.")
-  img = Image.open(
-    cast(IO[bytes], requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS).raw)
-  )
+  try:
+    img = Image.open(
+      cast(IO[bytes], requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS).raw)
+    )
+  except DecompressionBombError:
+    raise DecompressionBombError(
+      f"Decompression bomb detected in file '{url}'. "
+      f"Image exceeds the maximum allowed pixels ({Image.MAX_IMAGE_PIXELS})."
+    )
   return img
 
 
@@ -238,6 +247,11 @@ def read_image(query: str) -> Image.Image:
       image = read_raw_image_file(path)
     else:
       image = Image.open(path)
+  except DecompressionBombError:
+    raise DecompressionBombError(
+      f"Decompression bomb detected in file '{path}'. "
+      f"Image exceeds the maximum allowed pixels ({Image.MAX_IMAGE_PIXELS})."
+    )
   except UnidentifiedImageError as e:
     # by default the filename on the UnidentifiedImageError is None
     e.filename = path

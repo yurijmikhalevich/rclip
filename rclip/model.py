@@ -5,6 +5,7 @@ import sys
 import numpy as np
 import numpy.typing as npt
 from PIL import Image, UnidentifiedImageError
+from PIL.Image import DecompressionBombError
 from rclip.utils import helpers
 from importlib.metadata import version
 import open_clip
@@ -183,11 +184,14 @@ class Model:
       url_multipliers, url_paths = cast(Tuple[Tuple[float], Tuple[str]], zip(*(urls))) if urls else ((), ())
       try:
         images = [helpers.download_image(q) for q in url_paths] + [helpers.read_image(q) for q in file_paths]
+      except DecompressionBombError as e:
+        print(e, file=sys.stderr)
+        sys.exit(1)
       except FileNotFoundError as e:
-        print(f'File "{e.filename}" not found. Check if you have typos in the filename.')
+        print(f'File "{e.filename}" not found. Check if you have typos in the filename.', file=sys.stderr)
         sys.exit(1)
       except UnidentifiedImageError as e:
-        print(f'File "{e.filename}" is not an image. You can only use image files or text as queries.')
+        print(f'File "{e.filename}" is not an image. You can only use image files or text as queries.', file=sys.stderr)
         sys.exit(1)
       image_multipliers = np.array(url_multipliers + file_multipliers)
       image_features = np.add.reduce(self.compute_image_features(images) * image_multipliers.reshape(-1, 1))

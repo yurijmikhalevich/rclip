@@ -9,6 +9,7 @@ import numpy as np
 from tqdm import tqdm
 import PIL
 from PIL import Image, ImageFile
+from PIL.Image import DecompressionBombError
 
 from rclip import db, fs, model
 from rclip.const import IMAGE_EXT, IMAGE_RAW_EXT
@@ -43,7 +44,6 @@ def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
 class RClip:
   EXCLUDE_DIRS_DEFAULT = ["@eaDir", "node_modules", ".git"]
   DB_IMAGES_BEFORE_COMMIT = 50_000
-  MAX_IMAGE_QUERY_SIZE_MB = 50
 
   class SearchResult(NamedTuple):
     filepath: str
@@ -78,6 +78,9 @@ class RClip:
         filtered_paths.append(path)
       except PIL.UnidentifiedImageError:
         pass
+      except DecompressionBombError:
+        print(f"warning: image '{path}' is too large, skipping", file=sys.stderr)
+        return
       except Exception as ex:
         print(f"error loading image {path}:", ex, file=sys.stderr)
 
@@ -182,24 +185,8 @@ class RClip:
   ) -> List[SearchResult]:
     filepaths, features = self._get_features(directory)
 
-    # check if a query image is too large
-    def is_query_too_large(q: str) -> bool:
-      if helpers.is_file_path(q):
-        path = str.removeprefix(q, "file://")
-        try:
-          size_bytes = os.path.getsize(path)
-          if size_bytes > self.MAX_IMAGE_QUERY_SIZE_MB * 1024 * 1024:
-            print(f"error: image query '{q}' is too large (>{self.MAX_IMAGE_QUERY_SIZE_MB} MB), skipping")
-            return True
-        except Exception as ex:
-          print(f"error checking file size for query '{q}': {ex}")
-      return False
-
-    # remove images that are too large from positive and negative queries
-    filtered_positive_queries = [q for q in [query] + positive_queries if not is_query_too_large(q)]
-    filtered_negative_queries = [q for q in negative_queries if not is_query_too_large(q)]
-
-    sorted_similarities = self._model.compute_similarities_to_text(features, filtered_positive_queries, filtered_negative_queries)
+    positive_queries = [query] + positive_queries
+    sorted_similarities = self._model.compute_similarities_to_text(features, positive_queries, negative_queries)
 
     # exclude images that were part of the query from the results
     exclude_files = [
