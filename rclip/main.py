@@ -9,6 +9,7 @@ import numpy as np
 from tqdm import tqdm
 import PIL
 from PIL import Image, ImageFile
+from PIL.Image import DecompressionBombError
 
 from rclip import db, fs, model
 from rclip.const import IMAGE_EXT, IMAGE_RAW_EXT
@@ -77,6 +78,9 @@ class RClip:
         filtered_paths.append(path)
       except PIL.UnidentifiedImageError:
         pass
+      except DecompressionBombError:
+        print(f"warning: image '{path}' is too large, skipping", file=sys.stderr)
+        return
       except Exception as ex:
         print(f"error loading image {path}:", ex, file=sys.stderr)
 
