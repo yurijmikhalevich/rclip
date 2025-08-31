@@ -223,8 +223,7 @@ def download_image(url: str) -> Image.Image:
     )
   except DecompressionBombError:
     raise DecompressionBombError(
-      f"Decompression bomb detected in file '{url}'. "
-      f"Image exceeds the maximum allowed pixels ({Image.MAX_IMAGE_PIXELS})."
+      f"error: image {url} exceeds the maximum allowed pixels ({Image.MAX_IMAGE_PIXELS})."
     )
   return img
 
@@ -249,8 +248,7 @@ def read_image(query: str) -> Image.Image:
       image = Image.open(path)
   except DecompressionBombError:
     raise DecompressionBombError(
-      f"Decompression bomb detected in file '{path}'. "
-      f"Image exceeds the maximum allowed pixels ({Image.MAX_IMAGE_PIXELS})."
+      f"error: image {path} exceeds the maximum allowed pixels ({Image.MAX_IMAGE_PIXELS})."
     )
   except UnidentifiedImageError as e:
     # by default the filename on the UnidentifiedImageError is None
