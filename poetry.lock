@@ -705,14 +705,14 @@ files = [
 
 [[package]]
 name = "open-clip-torch"
-version = "2.32.0"
+version = "3.1.0"
 description = "Open reproduction of consastive language-image pretraining (CLIP) and related."
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "open_clip_torch-2.32.0-py3-none-any.whl", hash = "sha256:80b35b43e37afc2b6173aa5ab0ad68744ab3a3211e624f72dfe743a162707637"},
-    {file = "open_clip_torch-2.32.0.tar.gz", hash = "sha256:0220bc111162527eb738c1fe20dbfd6ea45dfe44726b54a4de18d3945d8f2f00"},
+    {file = "open_clip_torch-3.1.0-py3-none-any.whl", hash = "sha256:c8bf8936fb26b65f6bda55b21925a0688e879bb4f7b82f8f6b87d45fe43afac9"},
+    {file = "open_clip_torch-3.1.0.tar.gz", hash = "sha256:08b94ee31cb7dc3aadd8334a72458d171353b1bd5b0e71b14e3072ade3f37805"},
 ]
 
 [package.dependencies]
@@ -720,14 +720,14 @@ ftfy = "*"
 huggingface-hub = "*"
 regex = "*"
 safetensors = "*"
-timm = "*"
-torch = ">=1.9.0"
+timm = ">=1.0.17"
+torch = ">=2.0"
 torchvision = "*"
 tqdm = "*"
 
 [package.extras]
 test = ["open_clip_torch[training]", "pytest", "pytest-split"]
-training = ["fsspec", "pandas", "timm (>=1.0.10)", "torch (>=2.0)", "transformers[sentencepiece]", "webdataset (>=0.2.5,<=0.2.86)"]
+training = ["fsspec", "pandas", "timm (>=1.0.17)", "torch (>=2.0)", "transformers[sentencepiece]", "webdataset (>=0.2.5,<=0.2.86)"]
 
 [[package]]
 name = "packaging"
@@ -1541,4 +1541,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10 <3.13"
-content-hash = "85f8a09cf3e95f870164fb196a75b773d75f84441f133fbd1e9074c028ca2981"
+content-hash = "e21f3243ab0686fdaa4af33110aaf45e9ae692624c68c28ea7037929b6c21d8e"
