@@ -16,7 +16,7 @@ jobs:
   test:
     strategy:
       matrix:
-        python: ['3.10', '3.11', '3.12']
+        python: ['3.10', '3.11', '3.12', '3.13']
         # macos-13 is amd64, macos-14 is arm64
         # skipping macos-13 here because newer versions of torch aren't being built for amd64 macOS anymore
         # the brew builds for amd64 macOS are being validated during brew release

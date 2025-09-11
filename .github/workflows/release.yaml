@@ -47,7 +47,7 @@ jobs:
     needs: pypi-build
     strategy:
       matrix:
-        python: ['3.10', '3.11', '3.12']
+        python: ['3.10', '3.11', '3.12', '3.13']
         # macos-13 is amd64, macos-15 is arm64
         # skipping macos-13 here because newer versions of torch aren't being built for amd64 macOS anymore
         # builds for amd64 macOS are being tested during brew release
