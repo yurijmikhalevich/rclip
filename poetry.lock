@@ -1198,7 +1198,7 @@ files = [
     {file = "setuptools-80.9.0-py3-none-any.whl", hash = "sha256:062d34222ad13e0cc312a4c02d73f059e86a4acbfbdea8f8f76b28c99f306922"},
     {file = "setuptools-80.9.0.tar.gz", hash = "sha256:f36b47402ecde768dbfafc46e8e4207b4360c654f1f3bb84475f0a28628fb19c"},
 ]
-markers = {main = "python_version == \"3.12\""}
+markers = {main = "python_version >= \"3.12\""}
 
 [package.extras]
 check = ["pytest-checkdocs (>=2.4)", "pytest-ruff (>=0.2.1) ; sys_platform != \"cygwin\"", "ruff (>=0.8.0) ; sys_platform != \"cygwin\""]
@@ -1479,7 +1479,7 @@ description = "A language and compiler for custom Deep Learning operations"
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "sys_platform != \"linux\" and platform_system == \"Linux\" and platform_machine == \"x86_64\""
+markers = "sys_platform != \"linux\" and platform_system == \"Linux\" and platform_machine == \"x86_64\" and python_version < \"3.13\""
 files = [
     {file = "triton-3.1.0-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:6b0dd10a925263abbe9fa37dcde67a5e9b2383fc269fdf59f5657cac38c5d1d8"},
     {file = "triton-3.1.0-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0f34f6e7885d1bf0eaaf7ba875a5f0ce6f3c13ba98f9503651c1e6dc6757ed5c"},
@@ -1540,5 +1540,5 @@ files = [
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.10 <3.13"
-content-hash = "e21f3243ab0686fdaa4af33110aaf45e9ae692624c68c28ea7037929b6c21d8e"
+python-versions = ">=3.10 <3.14"
+content-hash = "2edeb17de203f4233a2d3d9a91cd4e0f2258d781eb3393f781b5212e9cd5c9ee"
