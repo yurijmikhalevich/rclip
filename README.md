@@ -50,6 +50,8 @@ sudo snap install rclip
 brew install yurijmikhalevich/tap/rclip
 ```
 
+**Note:** we only support rclip and provide prebuilt binaries for Apple Silicon (arm64). You may still try building brew rclip for Intel-based Macs yourself or try an alternative installation option below.
+
 <details>
   <summary>Alternative option (<code>pip</code>)</summary>
 
