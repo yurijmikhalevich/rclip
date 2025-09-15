@@ -22,8 +22,6 @@ jobs:
     strategy:
       matrix:
         python: ['3.10', '3.11', '3.12']
-        # macos-13 is amd64, macos-14 is arm64
-        # skipping macos-13 here because newer versions of torch aren't being built for amd64 macOS anymore
         os: [ubuntu-22.04, macos-14, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
@@ -49,8 +47,8 @@ jobs:
         # FIXME: the test fails on linuxbrew because it rclip from linuxbrew
         # produces a slightly different output; maybe, because we built pytorch
         # slightly differently for linuxbrew
-        # os: [ubuntu-22.04, macos-13, macos-15]
-        os: [macos-13, macos-15]
+        # os: [ubuntu-22.04, macos-15]
+        os: [macos-15]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
