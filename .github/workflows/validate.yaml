@@ -17,9 +17,6 @@ jobs:
     strategy:
       matrix:
         python: ['3.10', '3.11', '3.12']
-        # macos-13 is amd64, macos-14 is arm64
-        # skipping macos-13 here because newer versions of torch aren't being built for amd64 macOS anymore
-        # the brew builds for amd64 macOS are being validated during brew release
         os: [ubuntu-22.04, macos-14, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
