@@ -16,7 +16,6 @@ from rclip.utils.preview import preview
 from rclip.utils.snap import check_snap_permissions, is_snap, get_snap_permission_error
 from rclip.utils import helpers
 
-sys.stdout = open(sys.stdout.fileno(), 'w', encoding='utf-8', closefd=False)
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
@@ -264,6 +263,8 @@ def main():
   )
 
   try:
+    if sys.stdout.isatty() is False:
+      sys.stdout = open(sys.stdout.fileno(), 'w', encoding='utf-8-sig', closefd=False)
     result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
     if args.filepath_only:
       for r in result:
