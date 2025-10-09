@@ -244,6 +244,18 @@ def init_rclip(
 
   return rclip, model_instance, database
 
+def print_results(rclip: RClip, args, current_directory: str):
+  result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
+  if args.filepath_only:
+    for r in result:
+      print(r.filepath)
+  else:
+    print("score\tfilepath")
+    for r in result:
+      print(f'{r.score:.3f}\t"{r.filepath}"')
+      if args.preview:
+        preview(r.filepath, args.preview_height)
+
 
 def main():
   arg_parser = helpers.init_arg_parser()
@@ -263,18 +275,13 @@ def main():
   )
 
   try:
-    if sys.stdout.isatty() is False:
+    print_results(rclip, args, current_directory)
+  except UnicodeEncodeError as e:
+    if not sys.stdout.isatty() and os.name == "nt":
       sys.stdout = open(sys.stdout.fileno(), 'w', encoding='utf-8-sig', closefd=False)
-    result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
-    if args.filepath_only:
-      for r in result:
-        print(r.filepath)
+      print_results(rclip, args, current_directory)
     else:
-      print("score\tfilepath")
-      for r in result:
-        print(f'{r.score:.3f}\t"{r.filepath}"')
-        if args.preview:
-          preview(r.filepath, args.preview_height)
+      raise e
   except Exception as e:
     raise e
   finally:
