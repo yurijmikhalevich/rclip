@@ -1,0 +1,2 @@
+score	filepath
+0.222	"<test_images_dir>鳥鳥.png"
