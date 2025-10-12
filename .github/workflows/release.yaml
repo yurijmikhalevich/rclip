@@ -246,7 +246,7 @@ jobs:
       - name: Sign MSI
         run: |
           mkdir signed
-          Invoke-WebRequest -URI https://ee2cc1f8.rocketcdn.me/wp-content/uploads/2023/11/CodeSignTool-v1.2.7-windows.zip -OutFile CodeSignTool.zip
+          Invoke-WebRequest -URI https://d1smxttentwwqu.cloudfront.net/wp-content/uploads/2023/11/CodeSignTool-v1.2.7-windows.zip -OutFile CodeSignTool.zip
           if ( ( Get-FileHash -Algorithm SHA256 CodeSignTool.zip ).Hash -ne 'AC9CDBFF6D482DBC1107ABC8789570F57ECF85773332BBA466CB3E00CE0BB841' ) { throw 'hash does not match' }
           Expand-Archive -Path CodeSignTool.zip -DestinationPath .
           cd CodeSignTool-v1.2.7-windows
