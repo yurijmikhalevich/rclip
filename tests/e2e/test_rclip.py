@@ -33,8 +33,12 @@ def test_dir_with_nested_directories():
 def test_dir_with_raw_images():
   return Path(__file__).parent / "images raw"
 
+@pytest.fixture
+def test_dir_with_unicode_filenames():
+  return Path(__file__).parent / "images unicode"
 
-def _assert_output_snapshot(images_dir: Path, request: pytest.FixtureRequest, capfd: pytest.CaptureFixture[str]):
+
+def _assert_output_snapshot(images_dir: Path, request: pytest.FixtureRequest, capfd: pytest.CaptureFixture[str], encoding: str | None = None):
   out, _ = capfd.readouterr()
   snapshot_path = Path(__file__).parent / "output_snapshots" / f"{request.node.name}.txt"
   snapshot = (
@@ -45,7 +49,7 @@ def _assert_output_snapshot(images_dir: Path, request: pytest.FixtureRequest, ca
   )
   if not snapshot_path.exists():
     snapshot_path.write_text(snapshot)
-  assert snapshot == snapshot_path.read_text()
+  assert snapshot == snapshot_path.read_text(encoding=encoding)
 
 
 @pytest.fixture
@@ -72,6 +76,15 @@ def assert_output_snapshot_raw_images(
 ):
   yield
   _assert_output_snapshot(test_dir_with_raw_images, request, capfd)
+
+@pytest.fixture
+def assert_output_snapshot_unicode_filepaths(
+  test_dir_with_unicode_filenames: Path,
+  request: pytest.FixtureRequest,
+  capfd: pytest.CaptureFixture[str]
+):
+  yield
+  _assert_output_snapshot(test_dir_with_unicode_filenames, request, capfd, "utf-8-sig")
 
 
 def execute_query(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, *args: str):
@@ -258,3 +271,10 @@ def test_can_read_cr2_images(
 ):
   # RAW_CANON_400D_ARGB.CR2 should be at the top of the results
   execute_query(test_dir_with_raw_images, monkeypatch, "--experimental-raw-support", "dragon in a cave")
+
+@pytest.mark.usefixtures("assert_output_snapshot_unicode_filepaths")
+def test_unicode_filepaths(
+  test_dir_with_unicode_filenames: Path,
+  monkeypatch: pytest.MonkeyPatch
+):
+  execute_query(test_dir_with_unicode_filenames, monkeypatch, "鳥")
