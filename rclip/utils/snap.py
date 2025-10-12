@@ -22,7 +22,7 @@ def get_snap_permission_error(
   directory_str = "the current directory" if is_current_directory else directory
   
   if symlink_path and symlink_path != directory:
-    path_info = f"symlink: {symlink_path} which points to realpath: {directory_str}"
+    path_info = f"symlink {symlink_path} which points to {directory_str}"
   else:
     path_info = directory_str
   
