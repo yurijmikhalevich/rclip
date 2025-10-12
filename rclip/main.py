@@ -244,8 +244,7 @@ def init_rclip(
 
   return rclip, model_instance, database
 
-def print_results(rclip: RClip, args, current_directory: str):
-  result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
+def print_results(result: List[RClip.SearchResult], args: helpers.argparse.Namespace):
   if args.filepath_only:
     for r in result:
       print(r.filepath)
@@ -275,11 +274,12 @@ def main():
   )
 
   try:
-    print_results(rclip, args, current_directory)
+    result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
+    print_results(result, args)
   except UnicodeEncodeError as e:
     if not sys.stdout.isatty() and os.name == "nt":
       sys.stdout = open(sys.stdout.fileno(), 'w', encoding='utf-8-sig', closefd=False)
-      print_results(rclip, args, current_directory)
+      print_results(result, args)
     else:
       raise e
   except Exception as e:
