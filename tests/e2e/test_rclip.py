@@ -46,6 +46,8 @@ def _assert_output_snapshot(images_dir: Path, request: pytest.FixtureRequest, ca
     .replace("." + os.path.sep, "<test_images_dir>")
     .replace(os.path.sep, "/")
     .replace("\r\n", "\n")
+  # Stripping the BOM marker we are adding on Windows systems when the output is being piped to a file.
+  # Otherwise, the output won't be encoded correctly.
   ).lstrip("\ufeff")
   if not snapshot_path.exists():
     snapshot_path.write_text(snapshot)
