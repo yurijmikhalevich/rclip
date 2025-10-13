@@ -46,7 +46,7 @@ def _assert_output_snapshot(images_dir: Path, request: pytest.FixtureRequest, ca
     .replace("." + os.path.sep, "<test_images_dir>")
     .replace(os.path.sep, "/")
     .replace("\r\n", "\n")
-  )
+  ).lstrip("\ufeff")
   if not snapshot_path.exists():
     snapshot_path.write_text(snapshot)
   assert snapshot == snapshot_path.read_text(encoding=encoding)
