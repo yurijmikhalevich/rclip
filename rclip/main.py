@@ -9,6 +9,7 @@ import numpy as np
 from tqdm import tqdm
 import PIL
 from PIL import Image, ImageFile
+from pillow_heif import register_heif_opener
 
 from rclip import db, fs, model
 from rclip.const import IMAGE_EXT, IMAGE_RAW_EXT
@@ -18,6 +19,7 @@ from rclip.utils import helpers
 
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
+register_heif_opener()
 
 
 class ImageMeta(TypedDict):
