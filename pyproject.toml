@@ -34,6 +34,7 @@ torchvision = [
 ]
 tqdm = "^4.65.0"
 rawpy = "^0.24.0"
+imagehash = "^4.3.1"
 
 [tool.poetry.group.dev.dependencies]
 pyright = {extras = ["nodejs"], version = "^1.1.394"}
