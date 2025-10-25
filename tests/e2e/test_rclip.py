@@ -33,21 +33,25 @@ def test_dir_with_nested_directories():
 def test_dir_with_raw_images():
   return Path(__file__).parent / "images raw"
 
+
 @pytest.fixture
 def test_dir_with_unicode_filenames():
   return Path(__file__).parent / "images unicode"
 
 
-def _assert_output_snapshot(images_dir: Path, request: pytest.FixtureRequest, capfd: pytest.CaptureFixture[str], encoding: str | None = None):
+def _assert_output_snapshot(
+  images_dir: Path, request: pytest.FixtureRequest, capfd: pytest.CaptureFixture[str], encoding: str | None = None
+):
   out, _ = capfd.readouterr()
   snapshot_path = Path(__file__).parent / "output_snapshots" / f"{request.node.name}.txt"
   snapshot = (
     out.replace(str(images_dir) + os.path.sep, "<test_images_dir>")
+    .replace("./", "<test_images_dir>")
     .replace("." + os.path.sep, "<test_images_dir>")
     .replace(os.path.sep, "/")
     .replace("\r\n", "\n")
-  # Stripping the BOM marker we are adding on Windows systems when the output is being piped to a file.
-  # Otherwise, the output won't be encoded correctly.
+    # Stripping the BOM marker we are adding on Windows systems when the output is being piped to a file.
+    # Otherwise, the output won't be encoded correctly.
   ).lstrip("\ufeff")
   if not snapshot_path.exists():
     snapshot_path.write_text(snapshot)
@@ -79,11 +83,10 @@ def assert_output_snapshot_raw_images(
   yield
   _assert_output_snapshot(test_dir_with_raw_images, request, capfd)
 
+
 @pytest.fixture
 def assert_output_snapshot_unicode_filepaths(
-  test_dir_with_unicode_filenames: Path,
-  request: pytest.FixtureRequest,
-  capfd: pytest.CaptureFixture[str]
+  test_dir_with_unicode_filenames: Path, request: pytest.FixtureRequest, capfd: pytest.CaptureFixture[str]
 ):
   yield
   _assert_output_snapshot(test_dir_with_unicode_filenames, request, capfd, "utf-8-sig")
@@ -124,6 +127,12 @@ def test_search_webp(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
 def test_search_png(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
   # this test result snapshot should contain a png image
   execute_query(test_images_dir, monkeypatch, "boats on a lake")
+
+
+@pytest.mark.usefixtures("assert_output_snapshot")
+def test_search_heic(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
+  # this test result snapshot should contain a heic image
+  execute_query(test_images_dir, monkeypatch, "bee")
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
@@ -274,9 +283,7 @@ def test_can_read_cr2_images(
   # RAW_CANON_400D_ARGB.CR2 should be at the top of the results
   execute_query(test_dir_with_raw_images, monkeypatch, "--experimental-raw-support", "dragon in a cave")
 
+
 @pytest.mark.usefixtures("assert_output_snapshot_unicode_filepaths")
-def test_unicode_filepaths(
-  test_dir_with_unicode_filenames: Path,
-  monkeypatch: pytest.MonkeyPatch
-):
+def test_unicode_filepaths(test_dir_with_unicode_filenames: Path, monkeypatch: pytest.MonkeyPatch):
   execute_query(test_dir_with_unicode_filenames, monkeypatch, "鳥")

@@ -7,5 +7,5 @@ score	filepath
 0.178	"<test_images_dir>camera.jpg"
 0.175	"<test_images_dir>cake.jpg"
 0.171	"<test_images_dir>chessboard with rocks.JPG"
+0.167	"<test_images_dir>bee.heic"
 0.165	"<test_images_dir>tree.webp"
-0.164	"<test_images_dir>boats on a lake.png"
