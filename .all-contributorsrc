@@ -49,6 +49,15 @@
       "contributions": [
         "code"
       ]
+    },
+    {
+      "login": "leoauri",
+      "name": "Leo Auri",
+      "avatar_url": "https://avatars.githubusercontent.com/u/10868855?v=4",
+      "profile": "http://leoauri.com",
+      "contributions": [
+        "code"
+      ]
     }
   ],
   "contributorsPerLine": 7,
