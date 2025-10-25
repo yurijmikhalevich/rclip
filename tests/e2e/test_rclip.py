@@ -46,6 +46,7 @@ def _assert_output_snapshot(
   snapshot_path = Path(__file__).parent / "output_snapshots" / f"{request.node.name}.txt"
   snapshot = (
     out.replace(str(images_dir) + os.path.sep, "<test_images_dir>")
+    .replace("./", "<test_images_dir>")
     .replace("." + os.path.sep, "<test_images_dir>")
     .replace(os.path.sep, "/")
     .replace("\r\n", "\n")
