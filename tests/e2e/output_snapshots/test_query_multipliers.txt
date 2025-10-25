@@ -8,4 +8,4 @@ score	filepath
 0.472	"<test_images_dir>camera.jpg"
 0.467	"<test_images_dir>cake.jpg"
 0.459	"<test_images_dir>tree.webp"
-0.436	"<test_images_dir>boats on a lake.png"
+0.443	"<test_images_dir>bee.heic"

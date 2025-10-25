@@ -7,7 +7,7 @@ def is_snap():
 
 
 def get_snap_permission_error(
-  directory: str, 
+  directory: str,
   symlink_path: str | None,
   is_current_directory: bool = False,
 ) -> str:
@@ -20,12 +20,12 @@ def get_snap_permission_error(
     )
 
   directory_str = "the current directory" if is_current_directory else directory
-  
+
   if symlink_path and symlink_path != directory:
     path_info = f"symlink {symlink_path} which points to {directory_str}"
   else:
     path_info = directory_str
-  
+
   if directory == homedir or directory.startswith(homedir + os.sep):
     return (
       f"rclip doesn't have access to {path_info}."
@@ -52,17 +52,15 @@ def get_snap_permission_error(
 
 
 def check_snap_permissions(directory: str, is_current_directory: bool = False):
-    
   try:
     any(os.scandir(directory))
   except PermissionError:
     symlink_path = None
     realpath = directory
-    
+
     if os.path.islink(directory):
       symlink_path = directory
       realpath = os.path.realpath(directory)
-        
+
     print(get_snap_permission_error(realpath, symlink_path, is_current_directory))
     sys.exit(1)
-  

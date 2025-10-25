@@ -247,6 +247,7 @@ def init_rclip(
 
   return rclip, model_instance, database
 
+
 def print_results(result: List[RClip.SearchResult], args: helpers.argparse.Namespace):
   # if we are not outputting to console on windows, ensure unicode encoding is correct
   if not sys.stdout.isatty() and os.name == "nt":

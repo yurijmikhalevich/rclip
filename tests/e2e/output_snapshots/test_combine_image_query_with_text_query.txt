@@ -1,4 +1,5 @@
 score	filepath
+0.102	"<test_images_dir>bee.heic"
 0.046	"<test_images_dir>bee.jpg"
 -0.032	"<test_images_dir>tree.webp"
 -0.045	"<test_images_dir>camera lens.jpg"
@@ -8,4 +9,3 @@ score	filepath
 -0.122	"<test_images_dir>chessboard with rocks.JPG"
 -0.123	"<test_images_dir>boats on a lake.png"
 -0.190	"<test_images_dir>black cat at night.jpg"
--0.202	"<test_images_dir>cautious cat.jpg"
