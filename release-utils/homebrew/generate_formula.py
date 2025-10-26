@@ -23,6 +23,7 @@ TEMPLATE = env.from_string("""class Rclip < Formula
 
   depends_on "rust" => :build # for safetensors
   depends_on "certifi"
+  depends_on "libheif"
   depends_on "libyaml"
   depends_on "numpy"
   depends_on "pillow"
