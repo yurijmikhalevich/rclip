@@ -54,7 +54,7 @@ def _assert_output_snapshot(
     # Otherwise, the output won't be encoded correctly.
   ).lstrip("\ufeff")
   if not snapshot_path.exists():
-    snapshot_path.write_text(snapshot)
+    snapshot_path.write_text(snapshot, encoding="utf-8")
   assert snapshot == snapshot_path.read_text(encoding=encoding)
 
 
@@ -287,3 +287,53 @@ def test_can_read_cr2_images(
 @pytest.mark.usefixtures("assert_output_snapshot_unicode_filepaths")
 def test_unicode_filepaths(test_dir_with_unicode_filenames: Path, monkeypatch: pytest.MonkeyPatch):
   execute_query(test_dir_with_unicode_filenames, monkeypatch, "鳥")
+
+
+def test_handles_renamed_images(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
+  """Test that renamed images are detected and don't require re-indexing."""
+  import shutil
+  import tempfile
+  from rclip.main import init_rclip
+
+  # Create a temporary directory with a copy of the cat image
+  with tempfile.TemporaryDirectory() as temp_dir:
+    temp_path = Path(temp_dir)
+    original_image = test_images_dir / "cat.jpg"
+    temp_image = temp_path / "cat.jpg"
+
+    # Copy the image to temp directory
+    shutil.copy2(original_image, temp_image)
+
+    # Index the image initially
+    rclip, _, db = init_rclip(str(temp_path), 8, "cpu", None, False, False)
+
+    # Get the initial image record
+    initial_image = db.get_image(filepath=str(temp_image))
+    assert initial_image is not None
+    initial_hash = initial_image["hash"]
+
+    # Close the initial database connection
+    db.close()
+
+    # Rename the image
+    renamed_image = temp_path / "renamed_cat.jpg"
+    temp_image.rename(renamed_image)
+
+    # Re-index (should detect the rename)
+    rclip, _, db = init_rclip(str(temp_path), 8, "cpu", None, False, False)
+
+    # Check that the renamed image exists with the same hash
+    renamed_db_image = db.get_image(filepath=str(renamed_image))
+    assert renamed_db_image is not None
+    assert renamed_db_image["hash"] == initial_hash
+
+    # Check that the old filepath no longer exists in the database
+    old_db_image = db.get_image(filepath=str(temp_image))
+    assert old_db_image is None
+
+    # Verify we can still search for the image
+    results = rclip.search("cat", str(temp_path), top_k=10)
+    assert len(results) == 1
+    assert results[0].filepath == str(renamed_image)
+
+    db.close()

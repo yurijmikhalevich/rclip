@@ -10,6 +10,7 @@ import rawpy
 import requests
 import sys
 from importlib.metadata import version
+import imagehash
 
 from rclip.const import IMAGE_RAW_EXT, IS_LINUX, IS_MACOS, IS_WINDOWS
 
@@ -101,7 +102,10 @@ def init_arg_parser() -> argparse.ArgumentParser:
     "get help:\n"
     "  https://github.com/yurijmikhalevich/rclip/discussions/new/choose\n\n",
   )
-  version_str = f"rclip {version('rclip')}"
+  try:
+    version_str = f"rclip {version('rclip')}"
+  except Exception:
+    version_str = "rclip (development)"
   parser.add_argument("--version", "-v", action="version", version=version_str, help=f'prints "{version_str}"')
   parser.add_argument("query", help="a text query or a path/URL to an image file")
   parser.add_argument(
@@ -228,6 +232,11 @@ def read_raw_image_file(path: str):
   raw = rawpy.imread(path)
   rgb = raw.postprocess()
   return Image.fromarray(np.array(rgb))
+
+
+def compute_image_hash(image: Image.Image) -> str:
+  """Compute perceptual hash for an image using pHash algorithm."""
+  return str(imagehash.phash(image))
 
 
 def read_image(query: str) -> Image.Image:
