@@ -138,6 +138,20 @@ rclip -p kitty
   ```
 </details>
 
+### How does **rclip** update the index?
+
+When you run **rclip** in a directory that has already been processed, it will
+only index the new images added since the last run and remove the deleted images
+from its index. This makes consecutive runs much faster.
+
+If you know that no new images were added or deleted since the last run, you can
+use the `--no-indexing` (or `-n`) argument to skip the indexing step altogether
+and speed up the search even more.
+
+```bash
+rclip -n cat
+```
+
 ## Get help
 
 https://github.com/yurijmikhalevich/rclip/discussions/new/choose
