@@ -6,9 +6,6 @@ import threading
 from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-  from rclip.model import FeatureVector
-
 import numpy as np
 from tqdm import tqdm
 import PIL
