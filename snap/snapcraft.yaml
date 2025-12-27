@@ -28,7 +28,7 @@ apps:
 parts:
   rclip:
     plugin: python
-    source: ./snap/local/rclip-2.1.0.tar.gz
+    source: ..
     build-packages:
       - python3-pip
     build-environment:
