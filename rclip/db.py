@@ -21,10 +21,13 @@ class Image(NewImage):
 
 
 class DB:
+  VERSION = 3
+
   def __init__(self, filename: Union[str, pathlib.Path]):
     self._con = sqlite3.connect(filename)
     self._con.row_factory = sqlite3.Row
     self.ensure_tables()
+    self.ensure_version()
 
   def close(self):
     self._con.commit()
@@ -38,20 +41,41 @@ class DB:
         filepath TEXT NOT NULL UNIQUE,
         modified_at DATETIME NOT NULL,
         size INTEGER NOT NULL,
-        vector BLOB NOT NULL,
-        hash TEXT
+        vector BLOB NOT NULL
       )
     """)
     # Query for images
     self._con.execute("CREATE UNIQUE INDEX IF NOT EXISTS existing_images ON images(filepath) WHERE deleted IS NULL")
-    self._con.execute("CREATE INDEX IF NOT EXISTS hash_index ON images(hash) WHERE deleted IS NULL")
+    self._con.execute("CREATE TABLE IF NOT EXISTS db_version (version INTEGER)")
+    self._con.commit()
 
-    # Add hash column to existing databases if it doesn't exist
-    columns = self._con.execute("PRAGMA table_info(images)").fetchall()
-    column_names = [col["name"] for col in columns]
-    if "hash" not in column_names:
-      self._con.execute("ALTER TABLE images ADD COLUMN hash TEXT")
-
+  def ensure_version(self):
+    db_version_entry = self._con.execute("SELECT version FROM db_version").fetchone()
+    db_version = db_version_entry["version"] if db_version_entry else 1
+    if db_version == self.VERSION:
+      return
+    if db_version > self.VERSION:
+      raise Exception(
+        "found index version newer than this version of rclip can support;"
+        " please, update rclip: https://github.com/yurijmikhalevich/rclip/blob/main/README.md#installation",
+      )
+    if db_version < 2:
+      self._con.execute("ALTER TABLE images ADD COLUMN indexing BOOLEAN")
+      db_version = 2
+    if db_version < 3:
+      # Check if hash column already exists (it might from old code)
+      columns = self._con.execute("PRAGMA table_info(images)").fetchall()
+      column_names = [col["name"] for col in columns]
+      if "hash" not in column_names:
+        self._con.execute("ALTER TABLE images ADD COLUMN hash TEXT")
+      self._con.execute("CREATE INDEX IF NOT EXISTS hash_index ON images(hash) WHERE deleted IS NULL")
+      db_version = 3
+    if db_version < self.VERSION:
+      raise Exception("migration to a newer index version isn't implemented")
+    if db_version_entry:
+      self._con.execute("UPDATE db_version SET version=?", (self.VERSION,))
+    else:
+      self._con.execute("INSERT INTO db_version(version) VALUES (?)", (self.VERSION,))
     self._con.commit()
 
 
@@ -61,16 +85,38 @@ class DB:
   def upsert_image(self, image: NewImage, commit: bool = True):
     self._con.execute(
       """
-      INSERT INTO images(deleted, filepath, modified_at, size, vector, hash)
-      VALUES (:deleted, :filepath, :modified_at, :size, :vector, :hash)
+      INSERT INTO images(deleted, indexing, filepath, modified_at, size, vector, hash)
+      VALUES (:deleted, :indexing, :filepath, :modified_at, :size, :vector, :hash)
       ON CONFLICT(filepath) DO UPDATE SET
-        deleted=:deleted, modified_at=:modified_at, size=:size, vector=:vector, hash=COALESCE(:hash, hash)
+        deleted=:deleted, modified_at=:modified_at, size=:size, vector=:vector, hash=:hash
     """,
-      {"deleted": None, **image},
+      {"deleted": None, "indexing": None, **image},
     )
     if commit:
       self._con.commit()
 
+
+  def remove_indexing_flag_from_all_images(self, commit: bool = True):
+    self._con.execute("UPDATE images SET indexing = NULL")
+    if commit:
+      self._con.commit()
+
+  def flag_images_in_a_dir_as_indexing(self, path: str, commit: bool = True):
+    self._con.execute("UPDATE images SET indexing = 1 WHERE filepath LIKE ?", (path + f"{os.path.sep}%",))
+    if commit:
+      self._con.commit()
+
+  def flag_indexing_images_in_a_dir_as_deleted(self, path: str):
+    self._con.execute(
+      "UPDATE images SET deleted = 1, indexing = NULL WHERE filepath LIKE ? AND indexing = 1",
+      (path + f"{os.path.sep}%",),
+    )
+    self._con.commit()
+
+  def remove_indexing_flag(self, filepath: str, commit: bool = True):
+    self._con.execute("UPDATE images SET indexing = NULL WHERE filepath = ?", (filepath,))
+    if commit:
+      self._con.commit()
 
   def get_image(self, **kwargs: Any) -> Optional[Image]:
     query_parts = [f"{key}=:{key}" for key in kwargs]
@@ -81,7 +127,7 @@ class DB:
 
   def get_images_by_hash(self, hash_value: str) -> list[Image]:
     cur = self._con.execute("SELECT * FROM images WHERE hash = ? AND deleted IS NULL", (hash_value,))
-    return cur.fetchall()
+    return [dict(row) for row in cur.fetchall()]
 
   def get_image_vectors_by_dir_path(self, path: str) -> sqlite3.Cursor:
     return self._con.execute(
