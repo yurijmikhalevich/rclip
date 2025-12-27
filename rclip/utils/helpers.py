@@ -104,7 +104,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
   )
   try:
     version_str = f"rclip {version('rclip')}"
-  except Exception:
+  except Exception:  # PackageNotFoundError when not installed via package manager
     version_str = "rclip (development)"
   parser.add_argument("--version", "-v", action="version", version=version_str, help=f'prints "{version_str}"')
   parser.add_argument("query", help="a text query or a path/URL to an image file")
@@ -235,7 +235,14 @@ def read_raw_image_file(path: str):
 
 
 def compute_image_hash(image: Image.Image) -> str:
-  """Compute perceptual hash for an image using pHash algorithm."""
+  """Compute a perceptual hash (pHash) for an image.
+  
+  The pHash algorithm generates a compact fingerprint of the image's visual
+  content, such that visually similar images (e.g. resized, recompressed or
+  slightly modified versions of the same picture) produce similar hashes.
+  This makes it suitable for detecting identical or near-duplicate images,
+  such as renamed files with the same underlying content.
+  """
   return str(imagehash.phash(image))
 
 
