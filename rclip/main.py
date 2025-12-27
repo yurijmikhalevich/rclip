@@ -81,7 +81,7 @@ class RClip:
         filtered_paths.append(path)
       except PIL.UnidentifiedImageError:
         pass
-      except (OSError, IOError, ValueError) as ex:
+      except (OSError, ValueError) as ex:
         print(f"error loading image {path}:", ex, file=sys.stderr)
 
     try:
@@ -118,8 +118,8 @@ class RClip:
       file=sys.stderr,
     )
 
-    # Initialize indexing workflow: reset all flags, then mark this directory for reindexing
-    self._db.remove_indexing_flag_from_all_images()
+    # Initialize indexing workflow: reset flags for this directory, then mark it for reindexing
+    self._db.remove_indexing_flag_from_dir(directory)
     self._db.flag_images_in_a_dir_as_indexing(directory)
 
     with tqdm(total=None, unit="images") as pbar:
@@ -165,7 +165,10 @@ class RClip:
           continue
 
         # Check if this might be a renamed image
-        if not image:
+        # Only attempt rename detection if there are potential deletions to match against
+        has_potential_deletions = self._db.has_indexing_images_in_dir(directory)
+        
+        if not image and has_potential_deletions:
           # Read the image to compute its hash
           try:
             img = helpers.read_image(filepath)
@@ -196,7 +199,7 @@ class RClip:
               )
               self._db.remove_indexing_flag(filepath, commit=False)
               continue
-          except (PIL.UnidentifiedImageError, OSError, IOError, ValueError):
+          except (PIL.UnidentifiedImageError, OSError, ValueError):
             # If we can't read the image, fall through to normal indexing
             pass
 

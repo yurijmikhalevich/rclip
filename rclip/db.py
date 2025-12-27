@@ -68,6 +68,7 @@ class DB:
       column_names = [col["name"] for col in columns]
       if "hash" not in column_names:
         self._con.execute("ALTER TABLE images ADD COLUMN hash TEXT")
+      # CREATE INDEX IF NOT EXISTS handles cases where hash_index may already exist from old code
       self._con.execute("CREATE INDEX IF NOT EXISTS hash_index ON images(hash) WHERE deleted IS NULL")
       db_version = 3
     if db_version < self.VERSION:
@@ -88,7 +89,7 @@ class DB:
       INSERT INTO images(deleted, indexing, filepath, modified_at, size, vector, hash)
       VALUES (:deleted, :indexing, :filepath, :modified_at, :size, :vector, :hash)
       ON CONFLICT(filepath) DO UPDATE SET
-        deleted=:deleted, modified_at=:modified_at, size=:size, vector=:vector, hash=:hash
+        deleted=:deleted, indexing=:indexing, modified_at=:modified_at, size=:size, vector=:vector, hash=:hash
     """,
       {"deleted": None, "indexing": None, **image},
     )
@@ -98,6 +99,12 @@ class DB:
 
   def remove_indexing_flag_from_all_images(self, commit: bool = True):
     self._con.execute("UPDATE images SET indexing = NULL")
+    if commit:
+      self._con.commit()
+
+  def remove_indexing_flag_from_dir(self, path: str, commit: bool = True):
+    """Remove indexing flag only from images within a specific directory."""
+    self._con.execute("UPDATE images SET indexing = NULL WHERE filepath LIKE ?", (path + f"{os.path.sep}%",))
     if commit:
       self._con.commit()
 
@@ -126,8 +133,23 @@ class DB:
     return cur.fetchone()
 
   def get_images_by_hash(self, hash_value: str) -> list[Image]:
-    cur = self._con.execute("SELECT * FROM images WHERE hash = ? AND deleted IS NULL", (hash_value,))
+    cur = self._con.execute(
+      "SELECT * FROM images WHERE hash = ? AND deleted IS NULL",
+      (hash_value,),
+    )
     return [dict(row) for row in cur.fetchall()]
+
+  def has_indexing_images_in_dir(self, path: str) -> bool:
+    """Check if there are any images with indexing=1 flag in this directory.
+    
+    Used to optimize rename detection: only compute hashes when there are
+    potential deletions to match against.
+    """
+    cur = self._con.execute(
+      "SELECT 1 FROM images WHERE filepath LIKE ? AND indexing = 1 LIMIT 1",
+      (path + f"{os.path.sep}%",)
+    )
+    return cur.fetchone() is not None
 
   def get_image_vectors_by_dir_path(self, path: str) -> sqlite3.Cursor:
     return self._con.execute(

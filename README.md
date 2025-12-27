@@ -83,6 +83,8 @@ cd photos && rclip "search query"
 
 When you run **rclip** for the first time in a particular directory, it will extract features from the photos, which takes time. How long it will take depends on your CPU and the number of pictures you will search through. It took about a day to process 73 thousand photos on my NAS, which runs an old-ish Intel Celeron J3455, 7 minutes to index 50 thousand images on my MacBook with an M1 Max CPU, and three hours to process 1.28 million images on the same MacBook.
 
+When you run **rclip** in a directory that has already been processed, it will only index the new images added since the last run and remove the deleted images from its index. Renamed images are also detected automatically using perceptual hashing, so you don't need to perform a full re-index when files are renamed. This makes consecutive runs much faster.
+
 For a detailed demonstration, watch the video: https://www.youtube.com/watch?v=tAJHXOkHidw.
 
 ### Similar image search
