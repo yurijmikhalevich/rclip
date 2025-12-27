@@ -81,7 +81,7 @@ class RClip:
         filtered_paths.append(path)
       except PIL.UnidentifiedImageError:
         pass
-      except Exception as ex:
+      except (OSError, IOError, ValueError) as ex:
         print(f"error loading image {path}:", ex, file=sys.stderr)
 
     try:
@@ -196,7 +196,7 @@ class RClip:
               )
               self._db.remove_indexing_flag(filepath, commit=False)
               continue
-          except PIL.UnidentifiedImageError:
+          except (PIL.UnidentifiedImageError, OSError, IOError, ValueError):
             # If we can't read the image, fall through to normal indexing
             pass
 
