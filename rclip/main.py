@@ -4,6 +4,7 @@ import re
 import sys
 import threading
 from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
+from typing import TYPE_CHECKING
 
 import numpy as np
 from tqdm import tqdm
@@ -79,7 +80,7 @@ class RClip:
         filtered_paths.append(path)
       except PIL.UnidentifiedImageError:
         pass
-      except Exception as ex:
+      except (OSError, ValueError) as ex:
         print(f"error loading image {path}:", ex, file=sys.stderr)
 
     try:
@@ -87,9 +88,13 @@ class RClip:
     except Exception as ex:
       print("error computing features:", ex, file=sys.stderr)
       return
-    for path, meta, vector in cast(Iterable[PathMetaVector], zip(filtered_paths, metas, features)):
+    for path, meta, vector, image in cast(
+        Iterable[Tuple[str, ImageMeta, 'FeatureVector', Image.Image]],
+        zip(filtered_paths, metas, features, images)
+    ):
+      hash_value = helpers.compute_image_hash(image)
       self._db.upsert_image(
-        db.NewImage(filepath=path, modified_at=meta["modified_at"], size=meta["size"], vector=vector.tobytes()),
+        db.NewImage(filepath=path, modified_at=meta["modified_at"], size=meta["size"], vector=vector.tobytes(), hash=hash_value),
         commit=False,
       )
 
@@ -112,8 +117,9 @@ class RClip:
       file=sys.stderr,
     )
 
-    self._db.remove_indexing_flag_from_all_images(commit=False)
-    self._db.flag_images_in_a_dir_as_indexing(directory, commit=True)
+    # Initialize indexing workflow: reset flags for this directory, then mark it for reindexing
+    self._db.remove_indexing_flag_from_dir(directory)
+    self._db.flag_images_in_a_dir_as_indexing(directory)
 
     with tqdm(total=None, unit="images") as pbar:
 
@@ -153,8 +159,48 @@ class RClip:
 
         image = self._db.get_image(filepath=filepath)
         if image and is_image_meta_equal(image, meta):
+          # Image hasn't changed, remove indexing flag to mark it as still present
           self._db.remove_indexing_flag(filepath, commit=False)
           continue
+
+        # Check if this might be a renamed image
+        # Only attempt rename detection if there are potential deletions to match against
+        has_potential_deletions = self._db.has_indexing_images_in_dir(directory)
+        
+        if not image and has_potential_deletions:
+          # Read the image to compute its hash
+          try:
+            img = helpers.read_image(filepath)
+            current_hash = helpers.compute_image_hash(img)
+            # Look for ALL existing images with the same hash
+            existing_images_with_hash = self._db.get_images_by_hash(current_hash)
+            
+            # Find an entry where the file no longer exists (true rename, not a copy)
+            existing_image_vector = None
+            for img_entry in existing_images_with_hash:
+              if not os.path.exists(img_entry["filepath"]):
+                existing_image_vector = img_entry["vector"]
+                break
+            
+            if existing_image_vector:
+              # This is a renamed file - reuse the existing vector
+              # DON'T remove the indexing flag from the old filepath - we want it to be marked as deleted
+              # Create a new entry for the new filepath
+              self._db.upsert_image(
+                db.NewImage(
+                  filepath=filepath,
+                  modified_at=meta["modified_at"],
+                  size=meta["size"],
+                  vector=existing_image_vector,
+                  hash=current_hash
+                ),
+                commit=False,
+              )
+              self._db.remove_indexing_flag(filepath, commit=False)
+              continue
+          except (PIL.UnidentifiedImageError, OSError, ValueError):
+            # If we can't read the image, fall through to normal indexing
+            pass
 
         batch.append(filepath)
         metas.append(meta)
@@ -167,10 +213,13 @@ class RClip:
       if len(batch) != 0:
         self._index_files(batch, metas)
 
+      # Finalize indexing workflow: mark any remaining indexing=1 entries as deleted
+      # These are files that no longer exist (e.g., old paths of renamed files)
+      self._db.flag_indexing_images_in_a_dir_as_deleted(directory)
+      
       self._db.commit()
       counter_thread.join()
 
-    self._db.flag_indexing_images_in_a_dir_as_deleted(directory)
     print("", file=sys.stderr)
 
   def search(

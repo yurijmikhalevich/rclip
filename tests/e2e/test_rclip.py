@@ -54,7 +54,7 @@ def _assert_output_snapshot(
     # Otherwise, the output won't be encoded correctly.
   ).lstrip("\ufeff")
   if not snapshot_path.exists():
-    snapshot_path.write_text(snapshot)
+    snapshot_path.write_text(snapshot, encoding="utf-8")
   assert snapshot == snapshot_path.read_text(encoding=encoding)
 
 
@@ -287,3 +287,94 @@ def test_can_read_cr2_images(
 @pytest.mark.usefixtures("assert_output_snapshot_unicode_filepaths")
 def test_unicode_filepaths(test_dir_with_unicode_filenames: Path, monkeypatch: pytest.MonkeyPatch):
   execute_query(test_dir_with_unicode_filenames, monkeypatch, "鳥")
+
+
+def test_handles_renamed_images(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch):
+  """Test that renamed images are detected and don't require re-indexing.
+  
+  Also validates:
+  - Multiple copies of same image are preserved (not collapsed)
+  - Different images are indexed separately with unique hashes
+  - All images are preserved after rename operations
+  """
+  import shutil
+  import tempfile
+  from rclip.main import init_rclip
+
+  with tempfile.TemporaryDirectory() as temp_dir:
+    temp_path = Path(temp_dir)
+    
+    # Setup: Create directory structure with multiple copies and different images
+    # - cat.jpg (original)
+    # - subfolder/cat_copy.jpg (same image, different path)
+    # - bee.jpg (different image with different hash)
+    subfolder = temp_path / "subfolder"
+    subfolder.mkdir()
+    
+    cat_image = temp_path / "cat.jpg"
+    cat_copy = subfolder / "cat_copy.jpg"
+    bee_image = temp_path / "bee.jpg"
+    
+    shutil.copy2(test_images_dir / "cat.jpg", cat_image)
+    shutil.copy2(test_images_dir / "cat.jpg", cat_copy)  # Same content as cat.jpg
+    shutil.copy2(test_images_dir / "bee.jpg", bee_image)  # Different image
+    
+    # Initial indexing
+    rclip, _, db = init_rclip(str(temp_path), 8, "cpu", None, False, False)
+    
+    # Verify initial state: all 3 images should be indexed
+    cat_record = db.get_image(filepath=str(cat_image))
+    cat_copy_record = db.get_image(filepath=str(cat_copy))
+    bee_record = db.get_image(filepath=str(bee_image))
+    
+    assert cat_record is not None, "cat.jpg should be indexed"
+    assert cat_copy_record is not None, "cat_copy.jpg should be indexed"
+    assert bee_record is not None, "bee.jpg should be indexed"
+    
+    # Verify: cat.jpg and cat_copy.jpg should have the same hash (same content)
+    cat_hash = cat_record["hash"]
+    cat_copy_hash = cat_copy_record["hash"]
+    bee_hash = bee_record["hash"]
+    
+    assert cat_hash == cat_copy_hash, "Same images should have identical hashes"
+    assert cat_hash != bee_hash, "Different images should have different hashes"
+    
+    db.close()
+    
+    # Rename cat.jpg to renamed_cat.jpg
+    renamed_cat = temp_path / "renamed_cat.jpg"
+    cat_image.rename(renamed_cat)
+    
+    # Re-index after rename
+    rclip, _, db = init_rclip(str(temp_path), 8, "cpu", None, False, False)
+    
+    # Verify: renamed image should exist with same hash
+    renamed_cat_record = db.get_image(filepath=str(renamed_cat))
+    assert renamed_cat_record is not None, "Renamed cat should be indexed"
+    assert renamed_cat_record["hash"] == cat_hash, "Renamed image should keep same hash"
+    
+    # Verify: old filepath should be marked as deleted (not visible via get_image)
+    old_cat_record = db.get_image(filepath=str(cat_image))
+    assert old_cat_record is None, "Old filepath should be deleted"
+    
+    # Verify: cat_copy.jpg should still exist (not affected by rename)
+    cat_copy_after = db.get_image(filepath=str(cat_copy))
+    assert cat_copy_after is not None, "Copy should still be preserved after rename"
+    assert cat_copy_after["hash"] == cat_copy_hash, "Copy hash should be unchanged"
+    
+    # Verify: bee.jpg should still exist (different image unaffected)
+    bee_after = db.get_image(filepath=str(bee_image))
+    assert bee_after is not None, "Different image should be preserved"
+    assert bee_after["hash"] == bee_hash, "Different image hash should be unchanged"
+    
+    # Verify search results return all 3 active images
+    results = rclip.search("animal", str(temp_path), top_k=10)
+    result_paths = {r.filepath for r in results}
+    
+    assert len(results) == 3, f"Should have 3 results, got {len(results)}"
+    assert str(renamed_cat) in result_paths, "Renamed cat should be in results"
+    assert str(cat_copy) in result_paths, "Cat copy should be in results"
+    assert str(bee_image) in result_paths, "Bee should be in results"
+    assert str(cat_image) not in result_paths, "Old filepath should NOT be in results"
+    
+    db.close()

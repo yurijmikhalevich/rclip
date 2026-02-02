@@ -13,6 +13,7 @@ class NewImage(ImageOmittable):
   modified_at: float
   size: int
   vector: bytes
+  hash: Optional[str] = None
 
 
 class Image(NewImage):
@@ -20,7 +21,7 @@ class Image(NewImage):
 
 
 class DB:
-  VERSION = 2
+  VERSION = 3
 
   def __init__(self, filename: Union[str, pathlib.Path]):
     self._con = sqlite3.connect(filename)
@@ -61,6 +62,15 @@ class DB:
     if db_version < 2:
       self._con.execute("ALTER TABLE images ADD COLUMN indexing BOOLEAN")
       db_version = 2
+    if db_version < 3:
+      # Check if hash column already exists (it might from old code)
+      columns = self._con.execute("PRAGMA table_info(images)").fetchall()
+      column_names = [col["name"] for col in columns]
+      if "hash" not in column_names:
+        self._con.execute("ALTER TABLE images ADD COLUMN hash TEXT")
+      # CREATE INDEX IF NOT EXISTS handles cases where hash_index may already exist from old code
+      self._con.execute("CREATE INDEX IF NOT EXISTS hash_index ON images(hash) WHERE deleted IS NULL")
+      db_version = 3
     if db_version < self.VERSION:
       raise Exception("migration to a newer index version isn't implemented")
     if db_version_entry:
@@ -69,24 +79,32 @@ class DB:
       self._con.execute("INSERT INTO db_version(version) VALUES (?)", (self.VERSION,))
     self._con.commit()
 
+
   def commit(self):
     self._con.commit()
 
   def upsert_image(self, image: NewImage, commit: bool = True):
     self._con.execute(
       """
-      INSERT INTO images(deleted, indexing, filepath, modified_at, size, vector)
-      VALUES (:deleted, :indexing, :filepath, :modified_at, :size, :vector)
+      INSERT INTO images(deleted, indexing, filepath, modified_at, size, vector, hash)
+      VALUES (:deleted, :indexing, :filepath, :modified_at, :size, :vector, :hash)
       ON CONFLICT(filepath) DO UPDATE SET
-        deleted=:deleted, indexing=:indexing, modified_at=:modified_at, size=:size, vector=:vector
+        deleted=:deleted, indexing=:indexing, modified_at=:modified_at, size=:size, vector=:vector, hash=:hash
     """,
       {"deleted": None, "indexing": None, **image},
     )
     if commit:
       self._con.commit()
 
+
   def remove_indexing_flag_from_all_images(self, commit: bool = True):
     self._con.execute("UPDATE images SET indexing = NULL")
+    if commit:
+      self._con.commit()
+
+  def remove_indexing_flag_from_dir(self, path: str, commit: bool = True):
+    """Remove indexing flag only from images within a specific directory."""
+    self._con.execute("UPDATE images SET indexing = NULL WHERE filepath LIKE ?", (path + f"{os.path.sep}%",))
     if commit:
       self._con.commit()
 
@@ -108,9 +126,30 @@ class DB:
       self._con.commit()
 
   def get_image(self, **kwargs: Any) -> Optional[Image]:
-    query = " AND ".join(f"{key}=:{key}" for key in kwargs)
+    query_parts = [f"{key}=:{key}" for key in kwargs]
+    query_parts.append("deleted IS NULL")
+    query = " AND ".join(query_parts)
     cur = self._con.execute(f"SELECT * FROM images WHERE {query} LIMIT 1", kwargs)
     return cur.fetchone()
+
+  def get_images_by_hash(self, hash_value: str) -> list[Image]:
+    cur = self._con.execute(
+      "SELECT * FROM images WHERE hash = ? AND deleted IS NULL",
+      (hash_value,),
+    )
+    return [dict(row) for row in cur.fetchall()]
+
+  def has_indexing_images_in_dir(self, path: str) -> bool:
+    """Check if there are any images with indexing=1 flag in this directory.
+    
+    Used to optimize rename detection: only compute hashes when there are
+    potential deletions to match against.
+    """
+    cur = self._con.execute(
+      "SELECT 1 FROM images WHERE filepath LIKE ? AND indexing = 1 LIMIT 1",
+      (path + f"{os.path.sep}%",)
+    )
+    return cur.fetchone() is not None
 
   def get_image_vectors_by_dir_path(self, path: str) -> sqlite3.Cursor:
     return self._con.execute(
