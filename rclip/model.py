@@ -138,7 +138,8 @@ class Model:
     import torch
 
     with torch.no_grad():
-      text_features = self._model_text.encode_text(self._tokenizer(text).to(self._device))
+      tokenized_text = self._tokenizer(text).to(self._device)
+      text_features = self._model_text.encode_text(tokenized_text)  # type: ignore
       text_features /= text_features.norm(dim=-1, keepdim=True)
     return text_features.cpu().numpy()
 
