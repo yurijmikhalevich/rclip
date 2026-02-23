@@ -1672,7 +1672,7 @@ files = [
     {file = "setuptools-82.0.0-py3-none-any.whl", hash = "sha256:70b18734b607bd1da571d097d236cfcfacaf01de45717d59e6e04b96877532e0"},
     {file = "setuptools-82.0.0.tar.gz", hash = "sha256:22e0a2d69474c6ae4feb01951cb69d515ed23728cf96d05513d36e42b62b37cb"},
 ]
-markers = {main = "python_version == \"3.12\""}
+markers = {main = "python_version >= \"3.12\""}
 
 [package.extras]
 check = ["pytest-checkdocs (>=2.4)", "pytest-ruff (>=0.2.1) ; sys_platform != \"cygwin\"", "ruff (>=0.13.0) ; sys_platform != \"cygwin\""]
@@ -2155,5 +2155,5 @@ files = [
 
 [metadata]
 lock-version = "2.1"
-python-versions = ">=3.10 <3.13"
-content-hash = "49cd14a0e869521fc6039716a19e51690e5244a0c12455e27b6cae7849d6de8e"
+python-versions = ">=3.10 <3.14"
+content-hash = "e711d40d1ce1acfb35233c031a5e3f5d860537c1d895d7cbf6e2f1c48a0630cd"
