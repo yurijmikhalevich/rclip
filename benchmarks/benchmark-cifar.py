@@ -5,14 +5,16 @@ import numpy as np
 from tqdm import tqdm
 from benchmarks.config import DATASET_DIR, BATCH_SIZE
 
+from rclip.const import IS_MACOS
 from rclip import model
+from rclip.utils.helpers import is_mps_available
 
 from torchvision.datasets import CIFAR100
 
 
 def main():
   cifar100 = CIFAR100(root=os.path.join(DATASET_DIR, "cifar100"), download=True, train=False)
-  model_instance = model.Model()
+  model_instance = model.Model(device="mps" if IS_MACOS and is_mps_available() else "cpu")
   class_description_vectors = model_instance.compute_text_features(cifar100.classes)
 
   processed = 0

@@ -7,7 +7,9 @@ from benchmarks.config import BATCH_SIZE, DATASET_DIR
 from benchmarks.datasets.imagenet_1k.classes import IMAGENET2012_CLASSES  # type: ignore
 
 from rclip import model, db
+from rclip.const import IS_MACOS
 from rclip.main import RClip
+from rclip.utils.helpers import is_mps_available
 
 
 # To run this benchmark, clone imagenet-1k dataset from hf to `DATASET_DIR/imagenet_1k`
@@ -21,7 +23,7 @@ from rclip.main import RClip
 def main(tmp_datadir: str):
   TEST_IMAGE_PREFIX = os.path.join(DATASET_DIR, "imagenet_1k", "data")
 
-  model_instance = model.Model()
+  model_instance = model.Model(device="mps" if IS_MACOS and is_mps_available() else "cpu")
   database = db.DB(os.path.join(tmp_datadir, "db.sqlite3"))
   rclip = RClip(model_instance, database, BATCH_SIZE, None)
 
