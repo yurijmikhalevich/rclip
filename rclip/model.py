@@ -107,7 +107,7 @@ class Model:
     if self._text_model_path.exists() and not self._should_update_text_model():
       import torch
 
-      self._model_text_var = torch.load(self._text_model_path, weights_only=False)
+      self._model_text_var = torch.load(self._text_model_path, weights_only=False, map_location=self._device)
       return self._model_text_var
 
     if not self._model_var:
