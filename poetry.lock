@@ -384,22 +384,6 @@ files = [
 tests = ["pytest"]
 
 [[package]]
-name = "homebrew-pypi-poet"
-version = "0.10.0"
-description = "Writes Homebrew stanzas for pypi packages"
-optional = false
-python-versions = "*"
-groups = ["dev"]
-files = [
-    {file = "homebrew-pypi-poet-0.10.0.tar.gz", hash = "sha256:e09e997e35a98f66445f9a39ccb33d6d93c5cd090302a59f231707eac0bf378e"},
-    {file = "homebrew_pypi_poet-0.10.0-py2.py3-none-any.whl", hash = "sha256:65824f97aea0e713c4ac18aa2ef4477aca69426554eac842eeaaddf97df3fc47"},
-]
-
-[package.dependencies]
-jinja2 = "*"
-setuptools = "*"
-
-[[package]]
 name = "httpcore"
 version = "1.0.9"
 description = "A minimal low-level HTTP client."
@@ -1666,7 +1650,8 @@ version = "82.0.0"
 description = "Easily download, build, install, upgrade, and uninstall Python packages"
 optional = false
 python-versions = ">=3.9"
-groups = ["main", "dev"]
+groups = ["main"]
+markers = "python_version >= \"3.12\""
 files = [
     {file = "setuptools-82.0.0-py3-none-any.whl", hash = "sha256:70b18734b607bd1da571d097d236cfcfacaf01de45717d59e6e04b96877532e0"},
     {file = "setuptools-82.0.0.tar.gz", hash = "sha256:22e0a2d69474c6ae4feb01951cb69d515ed23728cf96d05513d36e42b62b37cb"},
@@ -2154,4 +2139,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10 <3.15"
-content-hash = "0034bc62fe82cfaf38f1c4a25836a2e42fd0396fdd24fd29e6c74dd33e707e8b"
+content-hash = "58d03ab93a710c7aeaf4f6bcea7ef9e7b634028a51b5d4fdde2ada8b91df3e61"

@@ -39,9 +39,7 @@ rawpy = "^0.26.1"
 pyright = {extras = ["nodejs"], version = "^1.1.394"}
 pytest = ">=7.2.1,<8.0"
 ruff = "^0.9.7"
-homebrew-pypi-poet = "^0.10.0"
 jinja2 = "^3.1.5"
-setuptools = "*"
 
 [tool.poetry.scripts]
 rclip = "rclip.main:main"
