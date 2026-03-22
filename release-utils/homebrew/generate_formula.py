@@ -180,7 +180,7 @@ def main():
     deps[dep]["url"] = new_url
     deps[dep]["checksum"] = compute_checksum(new_url)
   for _, dep in deps.items():
-    dep["name"] = dep["name"].lower()
+    dep["name"] = dep["name"].lower().replace("_", "-")
 
   rclip_metadata = deps.pop("rclip")
   resources = "\n\n".join([RESOURCE_TEMPLATE.render(resource=dep) for dep in deps.values()])
