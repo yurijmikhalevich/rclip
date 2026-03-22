@@ -58,6 +58,8 @@ AppDir:
       PYTHONPATH: '${APPDIR}/usr/src:${APPDIR}/usr/lib/python3.10/site-packages'
       # SSL Certificates are placed in a different location for every system therefore we ship our own copy
       SSL_CERT_FILE: '${APPDIR}/usr/lib/python3.10/site-packages/certifi/cacert.pem'
+      # requests (used by huggingface_hub) checks REQUESTS_CA_BUNDLE before certifi.where()
+      REQUESTS_CA_BUNDLE: '${APPDIR}/usr/lib/python3.10/site-packages/certifi/cacert.pem'
 
   test:
     fedora:
