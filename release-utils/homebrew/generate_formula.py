@@ -112,7 +112,7 @@ RESOURCE_TEMPLATE = env.from_string(
   '  resource "{{ resource.name }}" do\n'
   '    url "{{ resource.url }}"\n'
   '    {{ resource.checksum_type }} "{{ resource.checksum }}"\n'
-  '  end'
+  "  end"
 )
 
 # These deps are being installed from brew
@@ -124,16 +124,16 @@ RESOURCE_URL_OVERRIDES = {
   ),
 }
 
-_MAKE_GRAPH_IGNORED = {'pip', 'setuptools', 'wheel', 'argparse', 'wsgiref'}
+_MAKE_GRAPH_IGNORED = {"pip", "setuptools", "wheel", "argparse", "wsgiref"}
 
 
-def make_graph(package_name):
+def make_graph(package_name: str):
   result = OrderedDict()
   queue = [package_name]
   visited = set()
   while queue:
     pkg = queue.pop(0)
-    key = pkg.lower().replace('-', '_')
+    key = pkg.lower().replace("-", "_")
     if key in visited:
       continue
     visited.add(key)
@@ -141,26 +141,26 @@ def make_graph(package_name):
       dist = importlib.metadata.distribution(pkg)
     except importlib.metadata.PackageNotFoundError:
       continue
-    actual_name = dist.metadata['Name']
-    version = dist.metadata['Version']
+    actual_name = dist.metadata["Name"]
+    version = dist.metadata["Version"]
     if actual_name.lower() in _MAKE_GRAPH_IGNORED:
       continue
-    resp = requests.get(f'https://pypi.org/pypi/{actual_name}/{version}/json')
+    resp = requests.get(f"https://pypi.org/pypi/{actual_name}/{version}/json")
     resp.raise_for_status()
     data = resp.json()
-    sdist = next((u for u in data['urls'] if u['packagetype'] == 'sdist'), None)
-    url_info = sdist or next(iter(data['urls']), None)
-    result[actual_name.lower().replace('_', '-')] = {
-      'name': actual_name,
-      'version': version,
-      'url': url_info['url'] if url_info else '',
-      'checksum': url_info['digests']['sha256'] if url_info else '',
-      'checksum_type': 'sha256',
-      'homepage': data['info']['home_page'] or '',
+    sdist = next((u for u in data["urls"] if u["packagetype"] == "sdist"), None)
+    url_info = sdist or next(iter(data["urls"]), None)
+    result[actual_name.lower().replace("_", "-")] = {
+      "name": actual_name,
+      "version": version,
+      "url": url_info["url"] if url_info else "",
+      "checksum": url_info["digests"]["sha256"] if url_info else "",
+      "checksum_type": "sha256",
+      "homepage": data["info"]["home_page"] or "",
     }
     for req_str in dist.requires or []:
       req = Requirement(req_str)
-      if 'extra' not in str(req.marker or '') and (req.marker is None or req.marker.evaluate({})):
+      if "extra" not in str(req.marker or "") and (req.marker is None or req.marker.evaluate({})):
         queue.append(req.name)
   return result
 
