@@ -21,45 +21,71 @@ TEMPLATE = env.from_string("""class Rclip < Formula
 
   if OS.linux?
     depends_on "patchelf" => :build # for rawpy
+    depends_on "zlib-ng-compat" # rawpy bundled libs link against libz
   end
-
   depends_on "rust" => :build # for safetensors
   depends_on "certifi"
   depends_on "libheif"
+  depends_on "libraw"
   depends_on "libyaml"
   depends_on "numpy"
   depends_on "pillow"
-  depends_on "python@3.12"
-  depends_on "pytorch-python312@2.5.1"
+  depends_on "python@3.14"
+  depends_on "pytorch"
   depends_on "sentencepiece"
-  depends_on "torchvision-python312@0.20.1"
+  depends_on "torchvision"
 
 {{ resources }}
 
   if OS.mac?
     if Hardware::CPU.arm?
       resource "rawpy" do
-        url "https://files.pythonhosted.org/packages/87/75/610a34caf048aa87248f8393e70073610146f379fdda8194a988ba286d5b/rawpy-0.24.0-cp312-cp312-macosx_11_0_arm64.whl", using: :nounzip
-        sha256 "1097b10eed4027e5b50006548190602e1adba9c824526b45f7a37781cfa01818"
+        url "{{ rawpy_wheels.mac_arm.url }}", using: :nounzip
+        sha256 "{{ rawpy_wheels.mac_arm.sha256 }}"
+      end
+    else
+      raise "Unknown CPU architecture, only arm64 is supported on macOS"
+    end
+  elsif OS.linux?
+    if Hardware::CPU.arm?
+      resource "rawpy" do
+        url "{{ rawpy_wheels.linux_arm.url }}", using: :nounzip
+        sha256 "{{ rawpy_wheels.linux_arm.sha256 }}"
       end
     elsif Hardware::CPU.intel?
       resource "rawpy" do
-        url "https://files.pythonhosted.org/packages/27/1c/59024e87c20b325e10b43e3b709929681a0ed23bda3885c7825927244fcc/rawpy-0.24.0-cp312-cp312-macosx_10_9_x86_64.whl", using: :nounzip
-        sha256 "ed639b0dc91c3e85d6c39303a1523b7e1edc4f4b0381c376ed0ff99febb306e4"
+        url "{{ rawpy_wheels.linux_x86.url }}", using: :nounzip
+        sha256 "{{ rawpy_wheels.linux_x86.sha256 }}"
+      end
+    else
+      raise "Unknown CPU architecture, only amd64 and arm64 are supported"
+    end
+  end
+
+  if OS.mac?
+    if Hardware::CPU.arm?
+      resource "hf-xet" do
+        url "{{ hf_xet_wheels.mac_arm.url }}", using: :nounzip
+        sha256 "{{ hf_xet_wheels.mac_arm.sha256 }}"
+      end
+    elsif Hardware::CPU.intel?
+      resource "hf-xet" do
+        url "{{ hf_xet_wheels.mac_intel.url }}", using: :nounzip
+        sha256 "{{ hf_xet_wheels.mac_intel.sha256 }}"
       end
     else
       raise "Unknown CPU architecture, only amd64 and arm64 are supported"
     end
   elsif OS.linux?
     if Hardware::CPU.arm?
-      resource "rawpy" do
-        url "https://files.pythonhosted.org/packages/9c/c4/576853c0eea14d62a2776f683dae23c994572dfc2dcb47fd1a1473b7b18a/rawpy-0.24.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", using: :nounzip
-        sha256 "17a970fd8cdece57929d6e99ce64503f21b51c00ab132bad53065bd523154892"
+      resource "hf-xet" do
+        url "{{ hf_xet_wheels.linux_arm.url }}", using: :nounzip
+        sha256 "{{ hf_xet_wheels.linux_arm.sha256 }}"
       end
     elsif Hardware::CPU.intel?
-      resource "rawpy" do
-        url "https://files.pythonhosted.org/packages/fe/35/5d6765359ce6e06fe0aee5a3e4e731cfe08c056df093d97c292bdc02132a/rawpy-0.24.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", using: :nounzip
-        sha256 "a12fc4e6c5879b88c6937abb9f3f6670dd34d126b4a770ad4566e9f747e306fb"
+      resource "hf-xet" do
+        url "{{ hf_xet_wheels.linux_x86.url }}", using: :nounzip
+        sha256 "{{ hf_xet_wheels.linux_x86.sha256 }}"
       end
     else
       raise "Unknown CPU architecture, only amd64 and arm64 are supported"
@@ -70,30 +96,39 @@ TEMPLATE = env.from_string("""class Rclip < Formula
     # Fix for ZIP timestamp issue with files having dates before 1980
     ENV["SOURCE_DATE_EPOCH"] = "315532800" # 1980-01-01
 
-    virtualenv_install_with_resources without: "rawpy"
+    virtualenv_install_with_resources without: %w[hf-xet rawpy]
 
     resource("rawpy").stage do
       wheel = Dir["*.whl"].first
       valid_wheel = wheel.sub(/^.*--/, "")
       File.rename(wheel, valid_wheel)
-      system "python3.12", "-m", "pip", "--python=#{libexec}/bin/python", "install", "--no-deps", valid_wheel
+      system "python3.14", "-m", "pip", "--python=#{libexec}/bin/python", "install", "--no-deps", valid_wheel
     end
 
+
     if OS.linux?
-      rawpy_so = Dir[libexec/"lib/python3.12/site-packages/rawpy/_rawpy*.so"].first
+      rawpy_so = Dir[libexec/"lib/python3.14/site-packages/rawpy/_rawpy*.so"].first
       raise "rawpy shared object not found" unless rawpy_so
 
       system "patchelf", "--set-rpath", "$ORIGIN/../rawpy.libs", rawpy_so
 
-      libraw_so = Dir[libexec/"lib/python3.12/site-packages/rawpy.libs/libraw*.so.*"].first
-      raise "libraw shared object not found" unless libraw_so
+      Dir[libexec/"lib/python3.14/site-packages/rawpy.libs/*.so*"].each do |lib|
+        next if File.symlink?(lib)
 
-      system "patchelf", "--set-rpath", "$ORIGIN", libraw_so
+        system "patchelf", "--set-rpath", "$ORIGIN", lib
+      end
+    end
+
+    resource("hf-xet").stage do
+      wheel = Dir["*.whl"].first
+      valid_wheel = wheel.sub(/^.*--/, "")
+      File.rename(wheel, valid_wheel)
+      system "python3.14", "-m", "pip", "--python=#{libexec}/bin/python", "install", "--no-deps", valid_wheel
     end
 
     # link dependent virtualenvs to this one
-    site_packages = Language::Python.site_packages("python3.12")
-    paths = %w[pytorch-python312@2.5.1 torchvision-python312@0.20.1].map do |package_name|
+    site_packages = Language::Python.site_packages("python3.14")
+    paths = %w[pytorch torchvision].map do |package_name|
       package = Formula[package_name].opt_libexec
       package/site_packages
     end
@@ -115,8 +150,8 @@ RESOURCE_TEMPLATE = env.from_string(
   "  end"
 )
 
-# These deps are being installed from brew
-DEPS_TO_IGNORE = ["numpy", "pillow", "certifi", "rawpy", "torch", "torchvision"]
+# These deps are handled separately (brew-managed or platform-specific wheels)
+WHEEL_DEPS = ["numpy", "pillow", "certifi", "rawpy", "torch", "torchvision", "hf-xet"]
 RESOURCE_URL_OVERRIDES = {
   # open-clip-torch publishes an incomplete tarball to pypi, so we will fetch one from GitHub
   "open-clip-torch": env.from_string(
@@ -165,6 +200,42 @@ def make_graph(package_name: str):
   return result
 
 
+def get_wheels(package_name: str, tag: str = None):
+  """Fetch platform-specific wheel URLs/SHA256 from PyPI, keyed by mac_arm/mac_intel/linux_arm/linux_x86."""
+  try:
+    dist = importlib.metadata.distribution(package_name)
+    version = dist.metadata["Version"]
+  except importlib.metadata.PackageNotFoundError:
+    resp = requests.get(f"https://pypi.org/pypi/{package_name}/json")
+    resp.raise_for_status()
+    version = resp.json()["info"]["version"]
+
+  resp = requests.get(f"https://pypi.org/pypi/{package_name}/{version}/json")
+  resp.raise_for_status()
+  data = resp.json()
+
+  result = {}
+  for url_info in data["urls"]:
+    if url_info["packagetype"] != "bdist_wheel":
+      continue
+    parts = url_info["filename"][:-4].split("-")  # strip .whl
+    if len(parts) < 5:
+      continue
+    py, abi, plat = parts[-3], parts[-2], parts[-1]
+    if tag and tag not in f"{py}-{abi}":
+      continue
+    info = {"url": url_info["url"], "sha256": url_info["digests"]["sha256"]}
+    if "macosx" in plat and "arm64" in plat:
+      result["mac_arm"] = info
+    elif "macosx" in plat and "x86_64" in plat:
+      result["mac_intel"] = info
+    elif "linux" in plat and "aarch64" in plat:
+      result["linux_arm"] = info
+    elif "linux" in plat and "x86_64" in plat:
+      result["linux_x86"] = info
+  return result
+
+
 def main():
   if len(sys.argv) != 2:
     print("Usage: generate_formula.py <version>")
@@ -173,7 +244,7 @@ def main():
   target_version = sys.argv[1]
   deps = get_deps_for_requested_rclip_version_or_die(target_version)
 
-  for dep in DEPS_TO_IGNORE:
+  for dep in WHEEL_DEPS:
     deps.pop(dep, None)
   for dep, url in RESOURCE_URL_OVERRIDES.items():
     new_url = url.render(version=deps[dep]["version"])
@@ -183,8 +254,10 @@ def main():
     dep["name"] = dep["name"].lower().replace("_", "-")
 
   rclip_metadata = deps.pop("rclip")
+  rawpy_wheels = get_wheels("rawpy", tag="cp314")
+  hf_xet_wheels = get_wheels("hf-xet", tag="abi3")
   resources = "\n\n".join([RESOURCE_TEMPLATE.render(resource=dep) for dep in deps.values()])
-  print(TEMPLATE.render(package=rclip_metadata, resources=resources))
+  print(TEMPLATE.render(package=rclip_metadata, resources=resources, rawpy_wheels=rawpy_wheels, hf_xet_wheels=hf_xet_wheels))
 
 
 def compute_checksum(url: str):
