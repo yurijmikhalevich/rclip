@@ -238,7 +238,7 @@ jobs:
       - name: Install Advinst
         uses: caphyon/advinst-github-action@main
         with:
-          advinst-version: '21.4'
+          advinst-version: '23.5.1'
           advinst-enable-automation: 'true'
       - run: |
           & ./release-utils/windows/build-msi.ps1 "${{ needs.parse_tag.outputs.version }}"
