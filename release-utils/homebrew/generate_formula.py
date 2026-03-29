@@ -230,11 +230,9 @@ def render_wheel_resource_block(name: str, wheels: dict[str, dict[str, str]]) ->
 
   if has_mac:
     lines.append("  if OS.mac?")
-    first = True
     if mac_arm:
       lines.append("    if Hardware::CPU.arm?")
       lines.extend(resource_block(mac_arm, "      "))
-      first = False
     lines.append("    else")
     lines.append('      raise "Unknown CPU architecture, only arm64 is supported on macOS"')
     lines.append("    end")
@@ -284,18 +282,16 @@ def main():
 
   rclip_metadata = deps.pop("rclip")
 
-  all_wheels = [
-    get_wheels(pkg["name"], tag=pkg.get("tag"), resolved_version=wheel_versions.get(pkg["name"]))
-    for pkg in WHEEL_PACKAGES
-  ]
-  for pkg, wheels in zip(WHEEL_PACKAGES, all_wheels):
+  all_wheels = []
+  for pkg in WHEEL_PACKAGES:
+    wheels = get_wheels(pkg["name"], tag=pkg.get("tag"), resolved_version=wheel_versions.get(pkg["name"]))
     if not wheels:
       print(f"No wheels found for {pkg['name']!r} (tag={pkg.get('tag')!r}). Exiting.", file=sys.stderr)
       sys.exit(1)
-  wheel_packages = list(WHEEL_PACKAGES)
+    all_wheels.append(wheels)
 
   wheel_resources = "\n\n".join(
-    [render_wheel_resource_block(pkg["name"], wheels) for pkg, wheels in zip(WHEEL_PACKAGES, all_wheels)]
+    render_wheel_resource_block(pkg["name"], wheels) for pkg, wheels in zip(WHEEL_PACKAGES, all_wheels)
   )
   wheel_names = " ".join(pkg["name"] for pkg in WHEEL_PACKAGES)
   resources = "\n\n".join([RESOURCE_TEMPLATE.render(resource=dep) for dep in deps.values()])
@@ -305,7 +301,7 @@ def main():
       resources=resources,
       wheel_resources=wheel_resources,
       wheel_names=wheel_names,
-      wheel_packages=wheel_packages,
+      wheel_packages=WHEEL_PACKAGES,
     )
   )
 
