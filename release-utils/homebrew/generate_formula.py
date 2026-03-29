@@ -10,6 +10,8 @@ import sys
 
 env = jinja2.Environment(trim_blocks=True, lstrip_blocks=True)
 
+REQUEST_TIMEOUT = 60  # seconds
+
 
 TEMPLATE = env.from_string("""class Rclip < Formula
   include Language::Python::Virtualenv
@@ -146,7 +148,7 @@ def make_graph(package_name: str):
     version = dist.metadata["Version"]
     if actual_name.lower() in _MAKE_GRAPH_IGNORED:
       continue
-    resp = requests.get(f"https://pypi.org/pypi/{actual_name}/{version}/json")
+    resp = requests.get(f"https://pypi.org/pypi/{actual_name}/{version}/json", timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()
     data = resp.json()
     sdist = next((u for u in data["urls"] if u["packagetype"] == "sdist"), None)
@@ -166,17 +168,21 @@ def make_graph(package_name: str):
   return result
 
 
-def get_wheels(package_name: str, tag: Optional[str] = None):
+def get_wheels(package_name: str, tag: Optional[str] = None, resolved_version: Optional[str] = None):
   """Fetch platform-specific wheel URLs/SHA256 from PyPI, keyed by mac_arm/linux_arm/linux_x86."""
-  try:
-    dist = importlib.metadata.distribution(package_name)
-    version = dist.metadata["Version"]
-  except importlib.metadata.PackageNotFoundError:
-    resp = requests.get(f"https://pypi.org/pypi/{package_name}/json")
-    resp.raise_for_status()
-    version = resp.json()["info"]["version"]
+  if resolved_version is not None:
+    version = resolved_version
+  else:
+    try:
+      dist = importlib.metadata.distribution(package_name)
+      version = dist.metadata["Version"]
+    except importlib.metadata.PackageNotFoundError as exc:
+      raise RuntimeError(
+        f"Package {package_name!r} is not installed and no resolved version was provided; "
+        f"install rclip and its dependencies before running the formula generator."
+      ) from exc
 
-  resp = requests.get(f"https://pypi.org/pypi/{package_name}/{version}/json")
+  resp = requests.get(f"https://pypi.org/pypi/{package_name}/{version}/json", timeout=REQUEST_TIMEOUT)
   resp.raise_for_status()
   data = resp.json()
 
@@ -262,6 +268,10 @@ def main():
   target_version = sys.argv[1]
   deps = get_deps_for_requested_rclip_version_or_die(target_version)
 
+  wheel_versions = {
+    pkg["name"]: deps[pkg["name"].lower()]["version"] for pkg in WHEEL_PACKAGES if pkg["name"].lower() in deps
+  }
+
   excluded_deps = BREW_DEPS + [pkg["name"] for pkg in WHEEL_PACKAGES]
   for dep in excluded_deps:
     deps.pop(dep, None)
@@ -274,8 +284,15 @@ def main():
 
   rclip_metadata = deps.pop("rclip")
 
-  all_wheels = [get_wheels(pkg["name"], tag=pkg.get("tag")) for pkg in WHEEL_PACKAGES]
-  wheel_packages = [{**pkg, "wheels": wheels} for pkg, wheels in zip(WHEEL_PACKAGES, all_wheels)]
+  all_wheels = [
+    get_wheels(pkg["name"], tag=pkg.get("tag"), resolved_version=wheel_versions.get(pkg["name"]))
+    for pkg in WHEEL_PACKAGES
+  ]
+  for pkg, wheels in zip(WHEEL_PACKAGES, all_wheels):
+    if not wheels:
+      print(f"No wheels found for {pkg['name']!r} (tag={pkg.get('tag')!r}). Exiting.", file=sys.stderr)
+      sys.exit(1)
+  wheel_packages = list(WHEEL_PACKAGES)
 
   wheel_resources = "\n\n".join(
     [render_wheel_resource_block(pkg["name"], wheels) for pkg, wheels in zip(WHEEL_PACKAGES, all_wheels)]
@@ -294,7 +311,7 @@ def main():
 
 
 def compute_checksum(url: str):
-  response = requests.get(url)
+  response = requests.get(url, timeout=REQUEST_TIMEOUT)
   return hashlib.sha256(response.content).hexdigest()
 
 
