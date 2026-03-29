@@ -145,7 +145,7 @@ RESOURCE_URL_OVERRIDES = {
 _MAKE_GRAPH_IGNORED = {"pip", "setuptools", "wheel", "argparse", "wsgiref"}
 
 
-def make_graph(package_name: str):
+def make_graph(package_name: str, skip_pypi_packages: set[str]):
   result = OrderedDict()
   queue = [package_name]
   visited = set()
@@ -163,19 +163,25 @@ def make_graph(package_name: str):
     version = dist.metadata["Version"]
     if actual_name.lower() in _MAKE_GRAPH_IGNORED:
       continue
-    resp = requests.get(f"https://pypi.org/pypi/{actual_name}/{version}/json", timeout=REQUEST_TIMEOUT)
-    resp.raise_for_status()
-    data = resp.json()
-    sdist = next((u for u in data["urls"] if u["packagetype"] == "sdist"), None)
-    url_info = sdist or next(iter(data["urls"]), None)
-    result[actual_name.lower().replace("_", "-")] = {
-      "name": actual_name,
-      "version": version,
-      "url": url_info["url"] if url_info else "",
-      "checksum": url_info["digests"]["sha256"] if url_info else "",
-      "checksum_type": "sha256",
-      "homepage": data["info"]["home_page"] or "",
-    }
+    if actual_name.lower() in skip_pypi_packages:
+      result[actual_name.lower().replace("_", "-")] = {
+        "name": actual_name,
+        "version": version,
+      }
+    else:
+      resp = requests.get(f"https://pypi.org/pypi/{actual_name}/{version}/json", timeout=REQUEST_TIMEOUT)
+      resp.raise_for_status()
+      data = resp.json()
+      sdist = next((u for u in data["urls"] if u["packagetype"] == "sdist"), None)
+      url_info = sdist or next(iter(data["urls"]), None)
+      result[actual_name.lower().replace("_", "-")] = {
+        "name": actual_name,
+        "version": version,
+        "url": url_info["url"] if url_info else "",
+        "checksum": url_info["digests"]["sha256"] if url_info else "",
+        "checksum_type": "sha256",
+        "homepage": data["info"]["home_page"] or "",
+      }
     for req_str in dist.requires or []:
       req = Requirement(req_str)
       if "extra" not in str(req.marker or "") and (req.marker is None or req.marker.evaluate({})):
@@ -261,7 +267,8 @@ def main():
     sys.exit(1)
 
   target_version = sys.argv[1]
-  deps = get_deps_for_requested_rclip_version_or_die(target_version)
+  skip_pypi_packages = {dep.lower() for dep in BREW_DEPS + [pkg["name"] for pkg in WHEEL_PACKAGES]}
+  deps = get_deps_for_requested_rclip_version_or_die(target_version, skip_pypi_packages)
 
   wheel_versions = {
     pkg["name"]: deps[pkg["name"].lower()]["version"] for pkg in WHEEL_PACKAGES if pkg["name"].lower() in deps
@@ -310,8 +317,8 @@ def compute_checksum(url: str):
     return sha256.hexdigest()
 
 
-def get_deps_for_requested_rclip_version_or_die(target_version: str):
-  deps = make_graph("rclip")
+def get_deps_for_requested_rclip_version_or_die(target_version: str, skip_pypi_packages: set[str]):
+  deps = make_graph("rclip", skip_pypi_packages)
   rclip_metadata = deps["rclip"]
   target_tarball = f"rclip-{target_version}.tar.gz"
 
@@ -328,7 +335,7 @@ def get_deps_for_requested_rclip_version_or_die(target_version: str):
     )
     # it takes a few seconds for a published wheel appear in PyPI
     sleep(10)
-    deps = make_graph("rclip")
+    deps = make_graph("rclip", skip_pypi_packages)
     rclip_metadata = deps["rclip"]
 
   return deps
