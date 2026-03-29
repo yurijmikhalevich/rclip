@@ -2,7 +2,7 @@ import hashlib
 import importlib.metadata
 from collections import OrderedDict
 from time import sleep
-from typing import Optional, TypedDict
+from typing import Optional, TypedDict, cast
 import jinja2
 from packaging.requirements import Requirement
 import requests
@@ -102,6 +102,17 @@ RESOURCE_TEMPLATE = env.from_string(
 BREW_DEPS = ["numpy", "pillow", "certifi", "torch", "torchvision"]
 
 
+class WheelInfo(TypedDict):
+  url: str
+  sha256: str
+
+
+class PlatformWheels(TypedDict):
+  mac_arm: WheelInfo
+  linux_arm: WheelInfo
+  linux_x86: WheelInfo
+
+
 class _WheelPackageRequired(TypedDict):
   name: str
   tag: str
@@ -172,7 +183,7 @@ def make_graph(package_name: str):
   return result
 
 
-def get_wheels(package_name: str, tag: Optional[str] = None, resolved_version: Optional[str] = None):
+def get_wheels(package_name: str, tag: Optional[str] = None, resolved_version: Optional[str] = None) -> PlatformWheels:
   """Fetch platform-specific wheel URLs/SHA256 from PyPI, keyed by mac_arm/linux_arm/linux_x86."""
   if resolved_version is not None:
     version = resolved_version
@@ -207,22 +218,16 @@ def get_wheels(package_name: str, tag: Optional[str] = None, resolved_version: O
       result["linux_arm"] = info
     elif "manylinux" in plat and "x86_64" in plat:
       result["linux_x86"] = info
-  return result
+  missing = {"mac_arm", "linux_arm", "linux_x86"} - result.keys()
+  if missing:
+    raise RuntimeError(f"Missing {package_name!r} wheels for platforms: {missing}")
+  return cast(PlatformWheels, result)
 
 
-def render_wheel_resource_block(name: str, wheels: dict[str, dict[str, str]]) -> str:
+def render_wheel_resource_block(name: str, wheels: PlatformWheels) -> str:
   """Generate Ruby conditional block for platform-specific wheel resources."""
-  mac_arm = wheels.get("mac_arm")
-  linux_arm = wheels.get("linux_arm")
-  linux_x86 = wheels.get("linux_x86")
 
-  has_mac = bool(mac_arm)
-  has_linux = bool(linux_arm or linux_x86)
-
-  if not has_mac and not has_linux:
-    return ""
-
-  def resource_block(wheel_info: dict[str, str], indent: str) -> list[str]:
+  def resource_block(wheel_info: WheelInfo, indent: str) -> list[str]:
     return [
       f'{indent}resource "{name}" do',
       f'{indent}  url "{wheel_info["url"]}", using: :nounzip',
@@ -230,33 +235,21 @@ def render_wheel_resource_block(name: str, wheels: dict[str, dict[str, str]]) ->
       f"{indent}end",
     ]
 
-  lines = []
-
-  if has_mac:
-    lines.append("  if OS.mac?")
-    if mac_arm:
-      lines.append("    if Hardware::CPU.arm?")
-      lines.extend(resource_block(mac_arm, "      "))
-    lines.append("    else")
-    lines.append('      raise "Unknown CPU architecture, only arm64 is supported on macOS"')
-    lines.append("    end")
-
-  if has_linux:
-    os_keyword = "  elsif" if has_mac else "  if"
-    lines.append(f"{os_keyword} OS.linux?")
-    first = True
-    if linux_arm:
-      lines.append("    if Hardware::CPU.arm?")
-      lines.extend(resource_block(linux_arm, "      "))
-      first = False
-    if linux_x86:
-      cpu_keyword = "    elsif" if not first else "    if"
-      lines.append(f"{cpu_keyword} Hardware::CPU.intel?")
-      lines.extend(resource_block(linux_x86, "      "))
-    lines.append("    else")
-    lines.append('      raise "Unknown CPU architecture, only amd64 and arm64 are supported"')
-    lines.append("    end")
-
+  lines: list[str] = []
+  lines.append("  if OS.mac?")
+  lines.append("    if Hardware::CPU.arm?")
+  lines.extend(resource_block(wheels["mac_arm"], "      "))
+  lines.append("    else")
+  lines.append('      raise "Unknown CPU architecture, only arm64 is supported on macOS"')
+  lines.append("    end")
+  lines.append("  elsif OS.linux?")
+  lines.append("    if Hardware::CPU.arm?")
+  lines.extend(resource_block(wheels["linux_arm"], "      "))
+  lines.append("    elsif Hardware::CPU.intel?")
+  lines.extend(resource_block(wheels["linux_x86"], "      "))
+  lines.append("    else")
+  lines.append('      raise "Unknown CPU architecture, only amd64 and arm64 are supported"')
+  lines.append("    end")
   lines.append("  end")
 
   return "\n".join(lines)
@@ -289,9 +282,6 @@ def main():
   all_wheels = []
   for pkg in WHEEL_PACKAGES:
     wheels = get_wheels(pkg["name"], tag=pkg.get("tag"), resolved_version=wheel_versions.get(pkg["name"]))
-    if not wheels:
-      print(f"No wheels found for {pkg['name']!r} (tag={pkg.get('tag')!r}). Exiting.", file=sys.stderr)
-      sys.exit(1)
     all_wheels.append(wheels)
 
   wheel_resources = "\n\n".join(
