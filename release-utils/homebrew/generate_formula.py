@@ -165,7 +165,7 @@ def make_graph(package_name: str):
 
 
 def get_wheels(package_name: str, tag: Optional[str] = None):
-  """Fetch platform-specific wheel URLs/SHA256 from PyPI, keyed by mac_arm/mac_intel/linux_arm/linux_x86."""
+  """Fetch platform-specific wheel URLs/SHA256 from PyPI, keyed by mac_arm/linux_arm/linux_x86."""
   try:
     dist = importlib.metadata.distribution(package_name)
     version = dist.metadata["Version"]
@@ -191,8 +191,6 @@ def get_wheels(package_name: str, tag: Optional[str] = None):
     info = {"url": url_info["url"], "sha256": url_info["digests"]["sha256"]}
     if "macosx" in plat and "arm64" in plat:
       result["mac_arm"] = info
-    elif "macosx" in plat and "x86_64" in plat:
-      result["mac_intel"] = info
     elif "linux" in plat and "aarch64" in plat:
       result["linux_arm"] = info
     elif "linux" in plat and "x86_64" in plat:
@@ -203,11 +201,10 @@ def get_wheels(package_name: str, tag: Optional[str] = None):
 def render_wheel_resource_block(name: str, wheels: dict[str, dict[str, str]]) -> str:
   """Generate Ruby conditional block for platform-specific wheel resources."""
   mac_arm = wheels.get("mac_arm")
-  mac_intel = wheels.get("mac_intel")
   linux_arm = wheels.get("linux_arm")
   linux_x86 = wheels.get("linux_x86")
 
-  has_mac = bool(mac_arm or mac_intel)
+  has_mac = bool(mac_arm)
   has_linux = bool(linux_arm or linux_x86)
 
   if not has_mac and not has_linux:
@@ -230,15 +227,8 @@ def render_wheel_resource_block(name: str, wheels: dict[str, dict[str, str]]) ->
       lines.append("    if Hardware::CPU.arm?")
       lines.extend(resource_block(mac_arm, "      "))
       first = False
-    if mac_intel:
-      cpu_keyword = "    elsif" if not first else "    if"
-      lines.append(f"{cpu_keyword} Hardware::CPU.intel?")
-      lines.extend(resource_block(mac_intel, "      "))
     lines.append("    else")
-    if mac_arm and not mac_intel:
-      lines.append('      raise "Unknown CPU architecture, only arm64 is supported on macOS"')
-    else:
-      lines.append('      raise "Unknown CPU architecture, only amd64 and arm64 are supported"')
+    lines.append('      raise "Unknown CPU architecture, only arm64 is supported on macOS"')
     lines.append("    end")
 
   if has_linux:
