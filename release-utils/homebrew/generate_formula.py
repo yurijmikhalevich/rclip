@@ -199,9 +199,9 @@ def get_wheels(package_name: str, tag: Optional[str] = None, resolved_version: O
     info = {"url": url_info["url"], "sha256": url_info["digests"]["sha256"]}
     if "macosx" in plat and "arm64" in plat:
       result["mac_arm"] = info
-    elif "linux" in plat and "aarch64" in plat:
+    elif "manylinux" in plat and "aarch64" in plat:
       result["linux_arm"] = info
-    elif "linux" in plat and "x86_64" in plat:
+    elif "manylinux" in plat and "x86_64" in plat:
       result["linux_x86"] = info
   return result
 
