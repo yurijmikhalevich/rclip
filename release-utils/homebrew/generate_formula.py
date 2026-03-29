@@ -301,8 +301,13 @@ def main():
 
 
 def compute_checksum(url: str):
-  response = requests.get(url, timeout=REQUEST_TIMEOUT)
-  return hashlib.sha256(response.content).hexdigest()
+  with requests.get(url, timeout=REQUEST_TIMEOUT, stream=True) as response:
+    response.raise_for_status()
+    sha256 = hashlib.sha256()
+    for chunk in response.iter_content(chunk_size=8192):
+      if chunk:
+        sha256.update(chunk)
+    return sha256.hexdigest()
 
 
 def get_deps_for_requested_rclip_version_or_die(target_version: str):
