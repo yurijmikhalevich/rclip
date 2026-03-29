@@ -60,9 +60,13 @@ TEMPLATE = env.from_string("""class Rclip < Formula
     if OS.linux?
 {% for path, rpath in pkg.patchelf.items() %}
       targets = Dir[libexec/"lib/python3.14/site-packages/{{ path }}"]
-      odie "Failed to find any files to patch with patchelf for pattern: #{libexec}/lib/python3.14/site-packages/{{ path }}" if targets.empty?
+      if targets.empty?
+        odie "Failed to find any files to patch with patchelf for pattern: " \\
+             "#{libexec}/lib/python3.14/site-packages/{{ path }}"
+      end
       targets.each do |so|
         next if File.symlink?(so)
+
         system "patchelf", "--set-rpath", "{{ rpath }}", so
       end
 {% endfor %}
