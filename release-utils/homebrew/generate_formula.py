@@ -198,7 +198,7 @@ def get_wheels(package_name: str, tag: Optional[str] = None, resolved_version: O
     if len(parts) < 5:
       continue
     py, abi, plat = parts[-3], parts[-2], parts[-1]
-    if tag and tag not in f"{py}-{abi}":
+    if tag and (tag not in py.split(".") and tag not in abi.split(".")):
       continue
     info = {"url": url_info["url"], "sha256": url_info["digests"]["sha256"]}
     if "macosx" in plat and "arm64" in plat:
