@@ -275,7 +275,7 @@ def main():
   rclip, _, db = init_rclip(
     current_directory,
     args.indexing_batch_size,
-    vars(args).get("device", "cpu"),
+    args.device,
     args.exclude_dir,
     args.no_indexing,
     args.experimental_raw_support,

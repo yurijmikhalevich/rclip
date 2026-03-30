@@ -4,144 +4,75 @@ import sys
 
 import numpy as np
 import numpy.typing as npt
+import onnxruntime as ort
+from huggingface_hub import hf_hub_download
 from PIL import Image, UnidentifiedImageError
 from rclip.utils import helpers
-from importlib.metadata import version
-import open_clip
+from rclip.utils.preprocess import preprocess
+from rclip.utils.tokenizer import SimpleTokenizer
 
 QUERY_WITH_MULTIPLIER_RE = re.compile(r"^(?P<multiplier>(\d+(\.\d+)?|\.\d+|\d+\.)):(?P<query>.+)$")
 QueryWithMultiplier = Tuple[float, str]
 FeatureVector = npt.NDArray[np.float32]
 
-TEXT_ONLY_SUPPORTED_MODELS = [
-  {
-    "model_name": "ViT-B-32-quickgelu",
-    "checkpoint_name": "openai",
-  }
-]
+_HF_REPO_ID = "Marqo/onnx-open_clip-ViT-B-32-quickgelu"
+_TEXTUAL_ONNX_FILE = "onnx32-open_clip-ViT-B-32-quickgelu-openai-textual.onnx"
+_VISUAL_ONNX_FILE = "onnx32-open_clip-ViT-B-32-quickgelu-openai-visual.onnx"
 
 
-def get_open_clip_version():
-  return version("open_clip_torch")
+def _get_providers(device: str) -> List[str]:
+  if device == "coreml":
+    return ["CoreMLExecutionProvider", "CPUExecutionProvider"]
+  return ["CPUExecutionProvider"]
+
+
+def _download_model(filename: str) -> str:
+  return hf_hub_download(repo_id=_HF_REPO_ID, filename=filename)
 
 
 class Model:
   VECTOR_SIZE = 512
-  _model_name = "ViT-B-32-quickgelu"
-  _checkpoint_name = "openai"
 
   def __init__(self, device: str = "cpu"):
-    self._device = device
+    self._providers = _get_providers(device)
 
-    self._model_var = None
-    self._model_text_var = None
-    self._preprocess_var = None
-    self._tokenizer_var = None
-
-    self._text_model_path = helpers.get_app_datadir() / f"{self._model_name}_{self._checkpoint_name}_text.pth"
-    self._text_model_version_path = (
-      helpers.get_app_datadir() / f"{self._model_name}_{self._checkpoint_name}_text.version"
-    )
+    self._session_text_var: Optional[ort.InferenceSession] = None
+    self._session_visual_var: Optional[ort.InferenceSession] = None
+    self._tokenizer_var: Optional[SimpleTokenizer] = None
 
   @property
-  def _tokenizer(self):
+  def _tokenizer(self) -> SimpleTokenizer:
     if not self._tokenizer_var:
-      self._tokenizer_var = open_clip.get_tokenizer(self._model_name)
+      self._tokenizer_var = SimpleTokenizer()
     return self._tokenizer_var
 
-  def _load_model(self):
-    self._model_var, _, self._preprocess_var = open_clip.create_model_and_transforms(
-      self._model_name,
-      pretrained=self._checkpoint_name,
-      device=self._device,
-    )
-    self._model_text_var = None
-
-    if {
-      "model_name": self._model_name,
-      "checkpoint_name": self._checkpoint_name,
-    } in TEXT_ONLY_SUPPORTED_MODELS and self._should_update_text_model():
-      import torch
-
-      model_text = self._get_text_model(cast(open_clip.CLIP, self._model_var))
-      torch.save(model_text, self._text_model_path)
-
-      with self._text_model_version_path.open("w") as f:
-        f.write(get_open_clip_version())
-
-  @staticmethod
-  def _get_text_model(model: open_clip.CLIP):
-    import copy
-
-    model_text = copy.deepcopy(model)
-    model_text.visual = None  # type: ignore
-    return model_text
-
-  def _should_update_text_model(self):
-    if not self._text_model_path.exists():
-      return True
-
-    if not self._text_model_version_path.exists():
-      return True
-
-    with self._text_model_version_path.open("r") as f:
-      text_model_version = f.read().strip()
-
-    # to be safe, update the text model on open_clip update (which could update the base model)
-    return get_open_clip_version() != text_model_version
+  @property
+  def _session_text(self) -> ort.InferenceSession:
+    if not self._session_text_var:
+      path = _download_model(_TEXTUAL_ONNX_FILE)
+      self._session_text_var = ort.InferenceSession(path, providers=self._providers)
+    return self._session_text_var
 
   @property
-  def _model(self):
-    if not self._model_var:
-      self._load_model()
-    return cast(open_clip.CLIP, self._model_var)
-
-  @property
-  def _model_text(self):
-    if self._model_var:
-      return self._model_var
-
-    if self._model_text_var:
-      return self._model_text_var
-
-    if self._text_model_path.exists() and not self._should_update_text_model():
-      import torch
-
-      self._model_text_var = torch.load(self._text_model_path, weights_only=False, map_location=self._device)
-      return self._model_text_var
-
-    if not self._model_var:
-      self._load_model()
-
-    return cast(open_clip.CLIP, self._model_var)
-
-  @property
-  def _preprocess(self):
-    from torchvision.transforms import Compose
-
-    if not self._preprocess_var:
-      self._load_model()
-    return cast(Compose, self._preprocess_var)
+  def _session_visual(self) -> ort.InferenceSession:
+    if not self._session_visual_var:
+      path = _download_model(_VISUAL_ONNX_FILE)
+      self._session_visual_var = ort.InferenceSession(path, providers=self._providers)
+    return self._session_visual_var
 
   def compute_image_features(self, images: List[Image.Image]) -> npt.NDArray[np.float32]:
-    import torch
-
-    images_preprocessed = torch.stack(cast(list[torch.Tensor], [self._preprocess(thumb) for thumb in images])).to(
-      self._device
-    )
-    with torch.no_grad():
-      image_features = self._model.encode_image(images_preprocessed)
-      image_features /= image_features.norm(dim=-1, keepdim=True)
-    return image_features.cpu().numpy()
+    batch = np.stack([preprocess(img) for img in images])
+    (image_features,) = self._session_visual.run(None, {"input": batch})
+    image_features = cast(npt.NDArray[np.float32], image_features)
+    image_features = image_features / np.linalg.norm(image_features, axis=-1, keepdims=True)
+    return image_features
 
   def compute_text_features(self, text: List[str]) -> npt.NDArray[np.float32]:
-    import torch
-
-    with torch.no_grad():
-      tokenized_text = self._tokenizer(text).to(self._device)
-      text_features = self._model_text.encode_text(tokenized_text)  # type: ignore
-      text_features /= text_features.norm(dim=-1, keepdim=True)
-    return text_features.cpu().numpy()
+    tokens = self._tokenizer(text)
+    (text_features,) = self._session_text.run(None, {"input": tokens})
+    text_features = cast(npt.NDArray[np.float32], text_features)
+    text_features = text_features / np.linalg.norm(text_features, axis=-1, keepdims=True)
+    return text_features
 
   @staticmethod
   def _extract_query_multiplier(query: str) -> QueryWithMultiplier:

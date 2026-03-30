@@ -181,29 +181,23 @@ def init_arg_parser() -> argparse.ArgumentParser:
     default=False,
     help="enables support for RAW images (only ARW and CR2 are supported)",
   )
-  if IS_MACOS:
-    if is_mps_available():
-      parser.add_argument(
-        "--device", "-d", default="mps", choices=["cpu", "mps"], help="device to run on; default: mps"
-      )
+  if IS_MACOS and is_coreml_available():
+    parser.add_argument(
+      "--device", "-d", default="coreml", choices=["cpu", "coreml"], help="device to run on; default: coreml"
+    )
+  else:
+    parser.add_argument("--device", "-d", default="cpu", choices=["cpu"], help="device to run on; default: cpu")
   return parser
 
 
-def is_mps_available() -> bool:
+def is_coreml_available() -> bool:
   if not IS_MACOS:
     return False
-  import torch.backends.mps
-
-  if not torch.backends.mps.is_available():
-    return False
   try:
-    import torch
+    import onnxruntime as _ort
 
-    # on some systems, specifically in GHA
-    # torch.backends.mps.is_available() returns True, but using the mps backend fails
-    torch.ones(1, device="mps")
-    return True
-  except RuntimeError:
+    return "CoreMLExecutionProvider" in _ort.get_available_providers()
+  except ImportError:
     return False
 
 

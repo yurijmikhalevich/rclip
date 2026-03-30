@@ -97,7 +97,7 @@ def execute_query(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, *args:
     run_system_rclip = os.getenv("RCLIP_TEST_RUN_SYSTEM_RCLIP")
     if run_system_rclip:
       completed_run = subprocess.run(
-        ["rclip", *args],
+        ["rclip", "--device", "cpu", *args],
         cwd=test_images_dir,
         env={**os.environ, "RCLIP_DATADIR": tmpdirname, "RCLIP_TEST_RUN_SYSTEM_RCLIP": ""},
       )
@@ -108,7 +108,7 @@ def execute_query(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, *args:
 
       monkeypatch.setenv("RCLIP_DATADIR", tmpdirname)
       monkeypatch.chdir(test_images_dir)
-      set_argv(*args)
+      set_argv("--device", "cpu", *args)
       main()
 
 
