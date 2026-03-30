@@ -9,7 +9,7 @@ jobs:
   lint:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/lint
 
   parse_tag:
@@ -27,8 +27,8 @@ jobs:
     needs: lint
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
       - name: Install dependencies
@@ -37,7 +37,7 @@ jobs:
           pip install --upgrade poetry
           poetry install
       - run: poetry build
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pypi
           path: dist/*
@@ -51,12 +51,12 @@ jobs:
         os: [ubuntu-22.04, macos-15, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install --upgrade pip
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: pypi
           path: dist/
@@ -77,7 +77,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: pypi
           path: dist/
@@ -89,8 +89,8 @@ jobs:
     if: needs.parse_tag.outputs.is_stable_version == 'true'
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
       - name: Install dependencies
@@ -117,10 +117,10 @@ jobs:
             runner: ubuntu-22.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: canonical/setup-lxd@main
       - name: Download built wheel
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: pypi
           path: dist/
@@ -130,7 +130,7 @@ jobs:
           cp -v dist/rclip-*.tar.gz snap/local
       - run: sudo snap install snapcraft --classic
       - run: snapcraft --use-lxd --build-for ${{ matrix.arch }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: snap-${{ matrix.arch }}
           path: rclip_*.snap
@@ -147,8 +147,8 @@ jobs:
             runner: ubuntu-22.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
         with:
           name: snap-${{ matrix.arch }}
       - run: sudo snap install rclip_*_${{ matrix.arch }}.snap --dangerous
@@ -159,7 +159,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - run: sudo snap install snapcraft --classic
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: snap-*
           merge-multiple: true
@@ -180,8 +180,8 @@ jobs:
     needs: [lint, parse_tag]
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
       - name: Install poetry
@@ -198,7 +198,7 @@ jobs:
         env:
           APP_VERSION: ${{ needs.parse_tag.outputs.version }}
         run: poetry run appimage-builder --skip-tests --recipe ./release-utils/appimage/appimage-builder.yml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: appimage
           path: rclip-*.AppImage
@@ -208,9 +208,9 @@ jobs:
     needs: appimage-build
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: sudo apt-get install -y fuse
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: appimage
       - name: Install AppImage
@@ -224,8 +224,8 @@ jobs:
     if: needs.parse_tag.outputs.is_stable_version == 'true'
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
       - name: Install dependencies
@@ -251,7 +251,7 @@ jobs:
           Expand-Archive -Path CodeSignTool.zip -DestinationPath .
           cd CodeSignTool-v1.2.7-windows
           & ./CodeSignTool.bat sign -input_file_path="${env:GITHUB_WORKSPACE}/build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi" -username=${{ secrets.WINDOWS_SIGNING_USERNAME }} -credential_id='${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }}' -password='${{ secrets.WINDOWS_SIGNING_PASSWORD }}' -totp_secret='${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}' -output_dir_path="${env:GITHUB_WORKSPACE}/signed"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: signed/rclip-*.msi
@@ -261,8 +261,8 @@ jobs:
     needs: [parse_tag, windows-build]
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
         with:
           name: windows
       - name: Install MSI
@@ -279,8 +279,8 @@ jobs:
       # this is needed because of `if: ${{ !cancelled() }}` above
       - if: ${{ contains(needs.*.result, 'failure') }}
         run: exit 1
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts/
       - name: Rename snaps for GitHub releases page
