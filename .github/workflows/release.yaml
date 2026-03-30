@@ -9,7 +9,7 @@ jobs:
   lint:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/lint
 
   parse_tag:
@@ -27,8 +27,8 @@ jobs:
     needs: lint
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
       - name: Install dependencies
@@ -51,8 +51,8 @@ jobs:
         os: [ubuntu-22.04, macos-15, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
       - run: python -m pip install --upgrade pip
@@ -89,8 +89,8 @@ jobs:
     if: needs.parse_tag.outputs.is_stable_version == 'true'
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
       - name: Install dependencies
@@ -117,7 +117,7 @@ jobs:
             runner: ubuntu-22.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: canonical/setup-lxd@main
       - name: Download built wheel
         uses: actions/download-artifact@v4
@@ -147,7 +147,7 @@ jobs:
             runner: ubuntu-22.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
         with:
           name: snap-${{ matrix.arch }}
@@ -180,8 +180,8 @@ jobs:
     needs: [lint, parse_tag]
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
       - name: Install poetry
@@ -208,7 +208,7 @@ jobs:
     needs: appimage-build
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: sudo apt-get install -y fuse
       - uses: actions/download-artifact@v4
         with:
@@ -224,8 +224,8 @@ jobs:
     if: needs.parse_tag.outputs.is_stable_version == 'true'
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.10'
       - name: Install dependencies
@@ -261,7 +261,7 @@ jobs:
     needs: [parse_tag, windows-build]
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
         with:
           name: windows
@@ -279,7 +279,7 @@ jobs:
       # this is needed because of `if: ${{ !cancelled() }}` above
       - if: ${{ contains(needs.*.result, 'failure') }}
         run: exit 1
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
         with:
           path: artifacts/

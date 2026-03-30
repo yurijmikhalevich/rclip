@@ -25,10 +25,10 @@ jobs:
         os: [ubuntu-22.04, macos-14, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.get_last_release_tag.outputs.tag }}
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
       - run: pip install --extra-index-url https://download.pytorch.org/whl/cpu --upgrade rclip
@@ -51,7 +51,7 @@ jobs:
         os: [macos-15]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.get_last_release_tag.outputs.tag }}
       - name: Install Linuxbrew (only on Ubuntu)
@@ -70,7 +70,7 @@ jobs:
     needs: get_last_release_tag
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.get_last_release_tag.outputs.tag }}
       - run: sudo apt-get install -y fuse
@@ -90,7 +90,7 @@ jobs:
         os: [ubuntu-22.04, ubuntu-22.04-arm]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.get_last_release_tag.outputs.tag }}
       - run: sudo snap install rclip
@@ -100,7 +100,7 @@ jobs:
     needs: get_last_release_tag
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ needs.get_last_release_tag.outputs.tag }}
       - name: Download & install rclip MSI
