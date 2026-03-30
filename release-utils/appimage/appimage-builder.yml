@@ -19,7 +19,7 @@ AppDir:
     icon: rclip
     version: !ENV ${APP_VERSION}
     # Set the python executable as entry point
-    exec: usr/bin/python3.10
+    exec: usr/bin/python3.11
     # Set the application main script path as argument. Use '$@' to forward CLI parameters
     exec_args: "${APPDIR}/usr/local/bin/rclip $@"
 
@@ -35,10 +35,10 @@ AppDir:
 
     include:
       - libffi7
-      - libpython3.10-minimal
-      - libpython3.10-stdlib
-      - python3.10
-      - python3.10-minimal
+      - libpython3.11-minimal
+      - libpython3.11-stdlib
+      - python3.11
+      - python3.11-minimal
       - python3-pip
       - python3-distutils
     exclude: []
@@ -55,11 +55,11 @@ AppDir:
       PYTHONHOME: '${APPDIR}/usr'
       # Path to the site-packages dir or other modules dirs
       # See https://docs.python.org/3/using/cmdline.html#envvar-PYTHONPATH
-      PYTHONPATH: '${APPDIR}/usr/src:${APPDIR}/usr/lib/python3.10/site-packages'
+      PYTHONPATH: '${APPDIR}/usr/src:${APPDIR}/usr/lib/python3.11/site-packages'
       # SSL Certificates are placed in a different location for every system therefore we ship our own copy
-      SSL_CERT_FILE: '${APPDIR}/usr/lib/python3.10/site-packages/certifi/cacert.pem'
+      SSL_CERT_FILE: '${APPDIR}/usr/lib/python3.11/site-packages/certifi/cacert.pem'
       # requests (used by huggingface_hub) checks REQUESTS_CA_BUNDLE before certifi.where()
-      REQUESTS_CA_BUNDLE: '${APPDIR}/usr/lib/python3.10/site-packages/certifi/cacert.pem'
+      REQUESTS_CA_BUNDLE: '${APPDIR}/usr/lib/python3.11/site-packages/certifi/cacert.pem'
 
   test:
     fedora:
