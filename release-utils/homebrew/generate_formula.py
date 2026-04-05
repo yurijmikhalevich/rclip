@@ -26,17 +26,13 @@ TEMPLATE = env.from_string("""class Rclip < Formula
     depends_on "patchelf" => :build # for rawpy
     depends_on "zlib-ng-compat" # rawpy bundled libs link against libz
   end
-  depends_on "rust" => :build # for safetensors
   depends_on "certifi"
   depends_on "libheif"
   depends_on "libraw"
   depends_on "libyaml"
   depends_on "numpy"
   depends_on "pillow"
-  depends_on "python@3.14"
-  depends_on "pytorch"
-  depends_on "sentencepiece"
-  depends_on "torchvision"
+  depends_on "python@3.13"
 
 {{ resources }}
 
@@ -53,16 +49,16 @@ TEMPLATE = env.from_string("""class Rclip < Formula
       wheel = Dir["*.whl"].first
       valid_wheel = wheel.sub(/^.*--/, "")
       File.rename(wheel, valid_wheel)
-      system "python3.14", "-m", "pip", "--python=#{libexec}/bin/python", "install", "--no-deps", valid_wheel
+      system "python3.13", "-m", "pip", "--python=#{libexec}/bin/python", "install", "--no-deps", valid_wheel
     end
 {% if pkg.patchelf %}
 
     if OS.linux?
 {% for path, rpath in pkg.patchelf.items() %}
-      targets = Dir[libexec/"lib/python3.14/site-packages/{{ path }}"]
+      targets = Dir[libexec/"lib/python3.13/site-packages/{{ path }}"]
       if targets.empty?
         odie "Failed to find any files to patch with patchelf for pattern: " \\
-             "#{libexec}/lib/python3.14/site-packages/{{ path }}"
+             "#{libexec}/lib/python3.13/site-packages/{{ path }}"
       end
       targets.each do |so|
         next if File.symlink?(so)
@@ -74,13 +70,6 @@ TEMPLATE = env.from_string("""class Rclip < Formula
 {% endif %}
 {% endfor %}
 
-    # link dependent virtualenvs to this one
-    site_packages = Language::Python.site_packages("python3.14")
-    paths = %w[pytorch torchvision].map do |package_name|
-      package = Formula[package_name].opt_libexec
-      package/site_packages
-    end
-    (libexec/site_packages/"homebrew-deps.pth").write paths.join("\\n")
   end
 
   test do
@@ -99,7 +88,7 @@ RESOURCE_TEMPLATE = env.from_string(
 )
 
 # These deps are handled by Homebrew formulas (excluded from virtualenv resources)
-BREW_DEPS = ["numpy", "pillow", "certifi", "torch", "torchvision"]
+BREW_DEPS = ["numpy", "pillow", "certifi"]
 
 
 class WheelInfo(TypedDict):
@@ -126,7 +115,7 @@ class WheelPackage(_WheelPackageRequired, total=False):
 WHEEL_PACKAGES: list[WheelPackage] = [
   {
     "name": "rawpy",
-    "tag": "cp314",
+    "tag": "cp313",
     "patchelf": {
       "rawpy/_rawpy*.so": "$ORIGIN/../rawpy.libs",
       "rawpy.libs/*.so*": "$ORIGIN",
@@ -135,12 +124,7 @@ WHEEL_PACKAGES: list[WheelPackage] = [
   {"name": "hf-xet", "tag": "abi3"},
 ]
 
-RESOURCE_URL_OVERRIDES = {
-  # open-clip-torch publishes an incomplete tarball to pypi, so we will fetch one from GitHub
-  "open-clip-torch": env.from_string(
-    "https://github.com/mlfoundations/open_clip/archive/refs/tags/v{{ version }}.tar.gz"
-  ),
-}
+RESOURCE_URL_OVERRIDES = {}
 
 _MAKE_GRAPH_IGNORED = {"pip", "setuptools", "wheel", "argparse", "wsgiref"}
 

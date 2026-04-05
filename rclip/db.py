@@ -20,7 +20,7 @@ class Image(NewImage):
 
 
 class DB:
-  VERSION = 2
+  VERSION = 3
 
   def __init__(self, filename: Union[str, pathlib.Path]):
     self._con = sqlite3.connect(filename)
@@ -61,6 +61,11 @@ class DB:
     if db_version < 2:
       self._con.execute("ALTER TABLE images ADD COLUMN indexing BOOLEAN")
       db_version = 2
+    if db_version < 3:
+      # Model changed from ViT-B-32-quickgelu/openai to ViT-B-32-256/datacomp_s34b_b86k;
+      # all embeddings must be recomputed.
+      self._con.execute("DELETE FROM images")
+      db_version = 3
     if db_version < self.VERSION:
       raise Exception("migration to a newer index version isn't implemented")
     if db_version_entry:

@@ -11,10 +11,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        *collect_data_files('timm', include_py_files=True),
-        *collect_data_files('open_clip'),
-        *collect_data_files('torch', include_py_files=True),
-        *collect_data_files('torchvision', include_py_files=True),
+        *collect_data_files('onnxruntime'),
     ],
     hiddenimports=[],
     hookspath=[],

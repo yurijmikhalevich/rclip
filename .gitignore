@@ -153,3 +153,7 @@ requirements.txt
 
 benchmarks/datasets/
 benchmarks/datasets
+
+# Model files for development/testing
+local-models/
+models/

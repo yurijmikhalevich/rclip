@@ -1,148 +1,331 @@
+from concurrent.futures import ThreadPoolExecutor
+import logging
+import os
 import re
-from typing import List, Tuple, Optional, cast
-import sys
+import shutil
+from typing import TYPE_CHECKING, Callable, List, Optional, Tuple, Union, cast
 
 import numpy as np
 import numpy.typing as npt
 from PIL import Image, UnidentifiedImageError
+
+from rclip.const import IS_MACOS
 from rclip.utils import helpers
-from importlib.metadata import version
-import open_clip
+from rclip.utils.preprocess import preprocess
+from rclip.utils.tokenizer import SimpleTokenizer
+
+logging.getLogger("coremltools").setLevel(logging.ERROR)
+logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
+
+if TYPE_CHECKING:
+  import coremltools as ct
+  import onnxruntime as ort
+
+  _SessionType = Union[ort.InferenceSession, ct.models.MLModel, ct.models.CompiledMLModel]
 
 QUERY_WITH_MULTIPLIER_RE = re.compile(r"^(?P<multiplier>(\d+(\.\d+)?|\.\d+|\d+\.)):(?P<query>.+)$")
 QueryWithMultiplier = Tuple[float, str]
 FeatureVector = npt.NDArray[np.float32]
 
-TEXT_ONLY_SUPPORTED_MODELS = [
-  {
-    "model_name": "ViT-B-32-quickgelu",
-    "checkpoint_name": "openai",
-  }
-]
+_HF_REPO_ID = "yurijmikhalevich/rclip-models"
+_MODEL_SUBDIR = "ViT-B-32-256-datacomp_s34b_b86k"
+_VISUAL_ONNX = "visual.onnx"
+_TEXTUAL_ONNX = "textual.onnx"
+_VISUAL_COREML = "visual.mlpackage"
+_TEXTUAL_COREML = "textual.mlpackage"
+_TOKENIZER_VOCAB = "tokenizer/bpe_simple_vocab_16e6.txt.gz"
+_USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR = "RCLIP_USE_ONNX_ON_MACOS"
+_RUNTIME_ONNX = "onnx"
+_RUNTIME_COREML = "coreml"
 
 
-def get_open_clip_version():
-  return version("open_clip_torch")
+def _get_model_dir() -> str:
+  return str(helpers.get_app_datadir())
+
+
+def _get_model_cache_dir() -> Optional[str]:
+  model_cache_dir = helpers.get_model_cache_dir()
+  return str(model_cache_dir) if model_cache_dir else None
+
+
+def _download_onnx_model(filename: str, tqdm_class: Optional[type] = None) -> str:
+  model_dir = _get_model_dir()
+  expected_path = os.path.join(model_dir, _MODEL_SUBDIR, filename)
+  if os.path.isfile(expected_path):
+    return expected_path
+
+  from huggingface_hub import snapshot_download
+
+  os.makedirs(model_dir, exist_ok=True)
+  kwargs = {}
+  if tqdm_class is not None:
+    kwargs["tqdm_class"] = tqdm_class
+
+  path = snapshot_download(
+    repo_id=_HF_REPO_ID,
+    allow_patterns=[f"{_MODEL_SUBDIR}/{filename}", f"{_MODEL_SUBDIR}/{filename}.data"],
+    cache_dir=_get_model_cache_dir(),
+    local_dir=model_dir,
+    **kwargs,
+  )
+  return os.path.join(path, _MODEL_SUBDIR, filename)
+
+
+def _download_tokenizer_vocab(tqdm_class: Optional[type] = None) -> str:
+  model_dir = _get_model_dir()
+  expected_path = os.path.join(model_dir, _TOKENIZER_VOCAB)
+  if os.path.isfile(expected_path):
+    return expected_path
+
+  from huggingface_hub import hf_hub_download
+
+  kwargs = {}
+  if tqdm_class is not None:
+    kwargs["tqdm_class"] = tqdm_class
+
+  return hf_hub_download(
+    repo_id=_HF_REPO_ID,
+    filename=_TOKENIZER_VOCAB,
+    cache_dir=_get_model_cache_dir(),
+    local_dir=model_dir,
+    **kwargs,
+  )
+
+
+def _download_coreml_model(dirname: str, tqdm_class: Optional[type] = None) -> str:
+  model_dir = _get_model_dir()
+  expected_path = os.path.join(model_dir, _MODEL_SUBDIR, dirname)
+  if os.path.isdir(expected_path):
+    return expected_path
+
+  from huggingface_hub import snapshot_download
+
+  # CoreML compilation fails on the symlinked Hugging Face snapshot cache, so
+  # materialize the package into the app data directory first.
+  os.makedirs(model_dir, exist_ok=True)
+  kwargs = {}
+  if tqdm_class is not None:
+    kwargs["tqdm_class"] = tqdm_class
+
+  path = snapshot_download(
+    repo_id=_HF_REPO_ID,
+    allow_patterns=f"{_MODEL_SUBDIR}/{dirname}/**",
+    cache_dir=_get_model_cache_dir(),
+    local_dir=model_dir,
+    **kwargs,
+  )
+  package_path = os.path.join(path, _MODEL_SUBDIR, dirname)
+  _ensure_compiled_coreml_model(package_path)
+  return package_path
+
+
+def _get_compiled_coreml_model_path(package_path: str) -> str:
+  base, _ = os.path.splitext(package_path)
+  return f"{base}.mlmodelc"
+
+
+def _compile_coreml_model(package_path: str, *, force: bool = False) -> str:
+  import coremltools as ct
+
+  compiled_path = _get_compiled_coreml_model_path(package_path)
+  if os.path.isdir(compiled_path):
+    if not force:
+      return compiled_path
+    shutil.rmtree(compiled_path)
+
+  return ct.models.utils.compile_model(package_path, compiled_path)
+
+
+def _ensure_compiled_coreml_model(package_path: str) -> str:
+  compiled_path = _get_compiled_coreml_model_path(package_path)
+  if os.path.isdir(compiled_path):
+    return compiled_path
+  return _compile_coreml_model(package_path)
+
+
+def _get_runtime(*, is_visual: bool, for_indexing: bool = False) -> str:
+  if not IS_MACOS:
+    return _RUNTIME_ONNX
+  if os.getenv(_USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR):
+    return _RUNTIME_ONNX
+  if is_visual and for_indexing:
+    return _RUNTIME_COREML
+  return _RUNTIME_ONNX
 
 
 class Model:
   VECTOR_SIZE = 512
-  _model_name = "ViT-B-32-quickgelu"
-  _checkpoint_name = "openai"
+  _COREML_VISUAL_BATCH_SIZE = 8
 
-  def __init__(self, device: str = "cpu"):
-    self._device = device
-    self._model_cache_dir = helpers.get_model_cache_dir()
+  def __init__(self):
+    self._session_text_var: Optional[_SessionType] = None
+    self._session_visual_var: Optional[_SessionType] = None
+    self._session_visual_index_var: Optional[_SessionType] = None
+    self._tokenizer_var: Optional[SimpleTokenizer] = None
+    self._preprocess_executor_var: Optional[ThreadPoolExecutor] = None
+    self._preprocess_workers = max(1, min(8, os.cpu_count() or 1))
 
-    self._model_var = None
-    self._model_text_var = None
-    self._preprocess_var = None
-    self._tokenizer_var = None
+  def ensure_downloaded(self, *, for_indexing: bool = False) -> None:
+    model_dir = _get_model_dir()
 
-    model_datadir = self._model_cache_dir or helpers.get_app_datadir()
-    self._text_model_path = model_datadir / f"{self._model_name}_{self._checkpoint_name}_text.pth"
-    self._text_model_version_path = model_datadir / f"{self._model_name}_{self._checkpoint_name}_text.version"
+    to_download: List[Tuple[str, str, Callable[[Optional[type]], str]]] = []
+    model_files = [
+      ("visual query model", _VISUAL_ONNX, _RUNTIME_ONNX),
+      ("textual model", _TEXTUAL_ONNX, _RUNTIME_ONNX),
+    ]
+    if _get_runtime(is_visual=True, for_indexing=for_indexing) == _RUNTIME_COREML:
+      model_files.append(("visual indexing model", _VISUAL_COREML, _RUNTIME_COREML))
+
+    for label, filename, runtime in model_files:
+      use_coreml = runtime == _RUNTIME_COREML
+      path_prefix_suffix = "/" if use_coreml else ""
+      path_exists = os.path.isdir if use_coreml else os.path.isfile
+      download_model = _download_coreml_model if use_coreml else _download_onnx_model
+      expected_path = os.path.join(model_dir, _MODEL_SUBDIR, filename)
+      if path_exists(expected_path):
+        if use_coreml:
+          _ensure_compiled_coreml_model(expected_path)
+        continue
+      to_download.append(
+        (
+          label,
+          f"{_MODEL_SUBDIR}/{filename}{path_prefix_suffix}",
+          lambda tc, filename=filename: download_model(filename, tqdm_class=tc),
+        )
+      )
+
+    if not os.path.isfile(os.path.join(model_dir, _TOKENIZER_VOCAB)):
+      to_download.append(
+        (
+          "tokenizer",
+          _TOKENIZER_VOCAB,
+          lambda tc: _download_tokenizer_vocab(tqdm_class=tc),
+        )
+      )
+
+    if not to_download:
+      return
+
+    from huggingface_hub import HfApi
+    from tqdm import tqdm as tqdm_cls
+
+    from rclip.utils.download_progress import AggregatedProgressBar
+
+    # Fetch file sizes so the progress bar total is known from the start.
+    repo_info = HfApi().repo_info(_HF_REPO_ID, files_metadata=True)
+    size_by_file = {f.rfilename: f.size or 0 for f in (repo_info.siblings or [])}
+    prefixes = [prefix for _, prefix, _ in to_download]
+    total_bytes = sum(size for path, size in size_by_file.items() if any(path.startswith(p) for p in prefixes))
+
+    shared_bar = tqdm_cls(total=total_bytes, desc="Downloading model", unit="B", unit_scale=True)
+    AggregatedProgressBar.shared_bar = shared_bar
+    shared_bar.set_description("Downloading the model")
+    try:
+      for _, _, download_fn in to_download:
+        download_fn(AggregatedProgressBar)
+    finally:
+      AggregatedProgressBar.shared_bar = None
+      shared_bar.close()
 
   @property
-  def _tokenizer(self):
+  def _tokenizer(self) -> SimpleTokenizer:
     if not self._tokenizer_var:
-      self._tokenizer_var = open_clip.get_tokenizer(self._model_name)
+      self._tokenizer_var = SimpleTokenizer(bpe_path=_download_tokenizer_vocab())
     return self._tokenizer_var
 
-  def _load_model(self):
-    self._model_var, _, self._preprocess_var = open_clip.create_model_and_transforms(
-      self._model_name,
-      pretrained=self._checkpoint_name,
-      device=self._device,
-      cache_dir=str(self._model_cache_dir) if self._model_cache_dir else None,
-    )
-    self._model_text_var = None
+  def _load_session(self, onnx_filename: str, coreml_dirname: str, *, runtime: str) -> "_SessionType":
+    if runtime == _RUNTIME_COREML:
+      import coremltools as ct
 
-    if {
-      "model_name": self._model_name,
-      "checkpoint_name": self._checkpoint_name,
-    } in TEXT_ONLY_SUPPORTED_MODELS and self._should_update_text_model():
-      import torch
+      package_path = _download_coreml_model(coreml_dirname)
+      compiled_path = _ensure_compiled_coreml_model(package_path)
+      try:
+        return ct.models.CompiledMLModel(compiled_path, compute_units=ct.ComputeUnit.ALL)
+      except Exception:
+        compiled_path = _compile_coreml_model(package_path, force=True)
+        return ct.models.CompiledMLModel(compiled_path, compute_units=ct.ComputeUnit.ALL)
 
-      model_text = self._get_text_model(cast(open_clip.CLIP, self._model_var))
-      torch.save(model_text, self._text_model_path)
+    import onnxruntime as ort
 
-      with self._text_model_version_path.open("w") as f:
-        f.write(get_open_clip_version())
+    path = _download_onnx_model(onnx_filename)
+    return ort.InferenceSession(path, providers=["CPUExecutionProvider"])
 
-  @staticmethod
-  def _get_text_model(model: open_clip.CLIP):
-    import copy
+  def _run_session(
+    self,
+    session: "_SessionType",
+    batch: npt.NDArray[np.generic],
+    *,
+    runtime: str,
+    coreml_input_dtype: npt.DTypeLike | None = None,
+    coreml_batch_size: int = 1,
+  ) -> npt.NDArray[np.float32]:
+    if runtime == _RUNTIME_COREML:
+      from coremltools.models import CompiledMLModel, MLModel
 
-    model_text = copy.deepcopy(model)
-    model_text.visual = None  # type: ignore
-    return model_text
+      assert isinstance(session, (MLModel, CompiledMLModel))
+      if coreml_input_dtype is not None:
+        batch = batch.astype(coreml_input_dtype)
+      outputs: list[npt.NDArray[np.float32]] = []
+      for start in range(0, batch.shape[0], coreml_batch_size):
+        chunk = batch[start : start + coreml_batch_size]
+        actual_size = chunk.shape[0]
+        if actual_size < coreml_batch_size:
+          chunk = np.concatenate([chunk, np.repeat(chunk[-1:], coreml_batch_size - actual_size, axis=0)], axis=0)
+        result = session.predict({"input": chunk})
+        outputs.append(np.array(result["output"], dtype=np.float32)[:actual_size])
+      return np.concatenate(outputs, axis=0)
 
-  def _should_update_text_model(self):
-    if not self._text_model_path.exists():
-      return True
+    from onnxruntime import InferenceSession
 
-    if not self._text_model_version_path.exists():
-      return True
-
-    with self._text_model_version_path.open("r") as f:
-      text_model_version = f.read().strip()
-
-    # to be safe, update the text model on open_clip update (which could update the base model)
-    return get_open_clip_version() != text_model_version
-
-  @property
-  def _model(self):
-    if not self._model_var:
-      self._load_model()
-    return cast(open_clip.CLIP, self._model_var)
-
-  @property
-  def _model_text(self):
-    if self._model_var:
-      return self._model_var
-
-    if self._model_text_var:
-      return self._model_text_var
-
-    if self._text_model_path.exists() and not self._should_update_text_model():
-      import torch
-
-      self._model_text_var = torch.load(self._text_model_path, weights_only=False, map_location=self._device)
-      return self._model_text_var
-
-    if not self._model_var:
-      self._load_model()
-
-    return cast(open_clip.CLIP, self._model_var)
+    assert isinstance(session, InferenceSession)
+    (features,) = session.run(None, {"input": batch})
+    return np.asarray(features, dtype=np.float32)
 
   @property
-  def _preprocess(self):
-    from torchvision.transforms import Compose
+  def _session_text(self):
+    if not self._session_text_var:
+      self._session_text_var = self._load_session(_TEXTUAL_ONNX, _TEXTUAL_COREML, runtime=_RUNTIME_ONNX)
+    return self._session_text_var
 
-    if not self._preprocess_var:
-      self._load_model()
-    return cast(Compose, self._preprocess_var)
+  @property
+  def _session_visual(self):
+    if not self._session_visual_var:
+      self._session_visual_var = self._load_session(_VISUAL_ONNX, _VISUAL_COREML, runtime=_RUNTIME_ONNX)
+    return self._session_visual_var
 
-  def compute_image_features(self, images: List[Image.Image]) -> npt.NDArray[np.float32]:
-    import torch
+  @property
+  def _session_visual_index(self):
+    runtime = _get_runtime(is_visual=True, for_indexing=True)
+    if runtime == _RUNTIME_ONNX:
+      return self._session_visual
+    if not self._session_visual_index_var:
+      self._session_visual_index_var = self._load_session(_VISUAL_ONNX, _VISUAL_COREML, runtime=runtime)
+    return self._session_visual_index_var
 
-    images_preprocessed = torch.stack(cast(list[torch.Tensor], [self._preprocess(thumb) for thumb in images])).to(
-      self._device
-    )
-    with torch.no_grad():
-      image_features = self._model.encode_image(images_preprocessed)
-      image_features /= image_features.norm(dim=-1, keepdim=True)
-    return image_features.cpu().numpy()
+  def _run_visual(self, batch: npt.NDArray[np.float32], *, for_indexing: bool = False) -> npt.NDArray[np.float32]:
+    runtime = _get_runtime(is_visual=True, for_indexing=for_indexing)
+    session = self._session_visual_index if for_indexing else self._session_visual
+    return self._run_session(session, batch, runtime=runtime, coreml_batch_size=self._COREML_VISUAL_BATCH_SIZE)
+
+  def _run_textual(self, tokens: npt.NDArray[np.int64]) -> npt.NDArray[np.float32]:
+    return self._run_session(self._session_text, tokens, runtime=_RUNTIME_ONNX, coreml_input_dtype=np.int32)
+
+  def compute_image_features(self, images: List[Image.Image], *, for_indexing: bool = False) -> npt.NDArray[np.float32]:
+    if len(images) < 2 or self._preprocess_workers == 1:
+      batch = np.stack([preprocess(img) for img in images])
+    else:
+      if self._preprocess_executor_var is None:
+        self._preprocess_executor_var = ThreadPoolExecutor(max_workers=self._preprocess_workers)
+      batch = np.stack(list(self._preprocess_executor_var.map(preprocess, images)))
+    image_features = self._run_visual(batch, for_indexing=for_indexing)
+    image_features = image_features / np.linalg.norm(image_features, axis=-1, keepdims=True)
+    return image_features
 
   def compute_text_features(self, text: List[str]) -> npt.NDArray[np.float32]:
-    import torch
-
-    with torch.no_grad():
-      tokenized_text = self._tokenizer(text).to(self._device)
-      text_features = self._model_text.encode_text(tokenized_text)  # type: ignore
-      text_features /= text_features.norm(dim=-1, keepdim=True)
-    return text_features.cpu().numpy()
+    tokens = self._tokenizer(text)
+    text_features = self._run_textual(tokens)
+    text_features = text_features / np.linalg.norm(text_features, axis=-1, keepdims=True)
+    return text_features
 
   @staticmethod
   def _extract_query_multiplier(query: str) -> QueryWithMultiplier:
@@ -175,11 +358,6 @@ class Model:
     image_features: Optional[FeatureVector] = None
     phrases, files, urls = self._group_queries_by_type(queries)
 
-    # process images first to avoid loading BOTH full and text-only models
-    # if we need to process images, we will load the full model, and the text processing logic will use it, too
-    # if we don't need to process images, we will skip loading the full model, and the text processing
-    # logic will load the text-only model
-
     if files or urls:
       file_multipliers, file_paths = cast(Tuple[Tuple[float], Tuple[str]], zip(*(files))) if files else ((), ())
       url_multipliers, url_paths = cast(Tuple[Tuple[float], Tuple[str]], zip(*(urls))) if urls else ((), ())
@@ -187,9 +365,13 @@ class Model:
         images = [helpers.download_image(q) for q in url_paths] + [helpers.read_image(q) for q in file_paths]
       except FileNotFoundError as e:
         print(f'File "{e.filename}" not found. Check if you have typos in the filename.')
+        import sys
+
         sys.exit(1)
       except UnidentifiedImageError as e:
         print(f'File "{e.filename}" is not an image. You can only use image files or text as queries.')
+        import sys
+
         sys.exit(1)
       image_multipliers = np.array(url_multipliers + file_multipliers)
       image_features = np.add.reduce(self.compute_image_features(images) * image_multipliers.reshape(-1, 1))
