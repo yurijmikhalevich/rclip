@@ -32,16 +32,16 @@ class Model:
 
   def __init__(self, device: str = "cpu"):
     self._device = device
+    self._model_cache_dir = helpers.get_model_cache_dir()
 
     self._model_var = None
     self._model_text_var = None
     self._preprocess_var = None
     self._tokenizer_var = None
 
-    self._text_model_path = helpers.get_app_datadir() / f"{self._model_name}_{self._checkpoint_name}_text.pth"
-    self._text_model_version_path = (
-      helpers.get_app_datadir() / f"{self._model_name}_{self._checkpoint_name}_text.version"
-    )
+    model_datadir = self._model_cache_dir or helpers.get_app_datadir()
+    self._text_model_path = model_datadir / f"{self._model_name}_{self._checkpoint_name}_text.pth"
+    self._text_model_version_path = model_datadir / f"{self._model_name}_{self._checkpoint_name}_text.version"
 
   @property
   def _tokenizer(self):
@@ -54,6 +54,7 @@ class Model:
       self._model_name,
       pretrained=self._checkpoint_name,
       device=self._device,
+      cache_dir=str(self._model_cache_dir) if self._model_cache_dir else None,
     )
     self._model_text_var = None
 

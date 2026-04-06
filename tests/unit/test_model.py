@@ -1,3 +1,4 @@
+from pathlib import Path
 import tempfile
 from typing import List, cast
 
@@ -97,3 +98,13 @@ def test_loads_full_model_when_text_processing_only_requested_and_checkpoint_doe
     assert model._model_var.transformer is not None  # type: ignore
     assert model._model_var.visual is not None  # type: ignore
     assert model._model_text_var is None  # type: ignore
+
+
+def test_uses_dedicated_model_cache_dir_when_configured(monkeypatch: pytest.MonkeyPatch):
+  with tempfile.TemporaryDirectory() as tmp_datadir, tempfile.TemporaryDirectory() as tmp_model_cache_dir:
+    monkeypatch.setenv("RCLIP_DATADIR", tmp_datadir)
+    monkeypatch.setenv("RCLIP_MODEL_CACHE_DIR", tmp_model_cache_dir)
+
+    model = Model()
+
+    assert model._text_model_path.parent == Path(tmp_model_cache_dir)  # type: ignore
