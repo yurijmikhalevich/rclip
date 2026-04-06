@@ -114,26 +114,29 @@ def test_load_session_uses_compiled_coreml_model(monkeypatch: pytest.MonkeyPatch
   session = getattr(model, "_load_session")("visual.onnx", "visual.mlpackage", runtime="coreml")
 
   assert isinstance(session, FakeCompiledMLModel)
-  assert compiled_model_calls == [("/models/visual.mlmodelc", "all")]
+  assert compiled_model_calls == [(str(Path("/models/visual.mlmodelc")), "all")]
 
 
-def test_ensure_downloaded_compiles_existing_coreml_packages(monkeypatch: pytest.MonkeyPatch):
+def test_ensure_downloaded_compiles_existing_coreml_packages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+  data_dir = tmp_path / "rclip-datadir"
+  model_dir = data_dir / "ViT-B-32-256-datacomp_s34b_b86k"
+
   def fake_get_app_datadir() -> Path:
-    return Path("/tmp/rclip-datadir")
+    return data_dir
 
   existing_paths = {
-    "/tmp/rclip-datadir/ViT-B-32-256-datacomp_s34b_b86k/visual.onnx",
-    "/tmp/rclip-datadir/ViT-B-32-256-datacomp_s34b_b86k/textual.onnx",
-    "/tmp/rclip-datadir/ViT-B-32-256-datacomp_s34b_b86k/visual.mlpackage",
-    "/tmp/rclip-datadir/tokenizer/bpe_simple_vocab_16e6.txt.gz",
+    model_dir / "visual.onnx",
+    model_dir / "textual.onnx",
+    model_dir / "visual.mlpackage",
+    data_dir / "tokenizer/bpe_simple_vocab_16e6.txt.gz",
   }
   compiled_paths: list[str] = []
 
   def fake_isdir(path: str) -> bool:
-    return path in existing_paths
+    return Path(path) in existing_paths
 
   def fake_isfile(path: str) -> bool:
-    return path in existing_paths
+    return Path(path) in existing_paths
 
   def fake_ensure_compiled_coreml_model(path: str) -> str:
     compiled_paths.append(path)
@@ -148,7 +151,7 @@ def test_ensure_downloaded_compiles_existing_coreml_packages(monkeypatch: pytest
 
   Model().ensure_downloaded(for_indexing=True)
 
-  assert compiled_paths == ["/tmp/rclip-datadir/ViT-B-32-256-datacomp_s34b_b86k/visual.mlpackage"]
+  assert compiled_paths == [str(model_dir / "visual.mlpackage")]
 
 
 def test_ensure_downloaded_uses_matching_downloader_for_each_runtime(monkeypatch: pytest.MonkeyPatch):
@@ -394,17 +397,20 @@ def test_compute_image_features_uses_separate_visual_session_for_indexing_on_mac
   assert query_features.shape == (1, Model.VECTOR_SIZE)
   assert indexing_features.shape == (1, Model.VECTOR_SIZE)
   assert [session.path for session in FakeInferenceSession.created] == ["/models/visual.onnx"]
-  assert created_sessions == [("/models/visual.mlmodelc", "all")]
+  assert created_sessions == [(str(Path("/models/visual.mlmodelc")), "all")]
 
 
-def test_ensure_downloaded_skips_coreml_without_indexing(monkeypatch: pytest.MonkeyPatch):
+def test_ensure_downloaded_skips_coreml_without_indexing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+  data_dir = tmp_path / "rclip-datadir"
+  model_dir = data_dir / "ViT-B-32-256-datacomp_s34b_b86k"
+
   def fake_get_app_datadir() -> Path:
-    return Path("/tmp/rclip-datadir")
+    return data_dir
 
   existing_paths = {
-    "/tmp/rclip-datadir/ViT-B-32-256-datacomp_s34b_b86k/visual.onnx",
-    "/tmp/rclip-datadir/ViT-B-32-256-datacomp_s34b_b86k/textual.onnx",
-    "/tmp/rclip-datadir/tokenizer/bpe_simple_vocab_16e6.txt.gz",
+    model_dir / "visual.onnx",
+    model_dir / "textual.onnx",
+    data_dir / "tokenizer/bpe_simple_vocab_16e6.txt.gz",
   }
   compiled_paths: list[str] = []
 
@@ -413,10 +419,10 @@ def test_ensure_downloaded_skips_coreml_without_indexing(monkeypatch: pytest.Mon
   monkeypatch.delenv("RCLIP_USE_ONNX_ON_MACOS", raising=False)
 
   def fake_isdir(path: str) -> bool:
-    return path in existing_paths
+    return Path(path) in existing_paths
 
   def fake_isfile(path: str) -> bool:
-    return path in existing_paths
+    return Path(path) in existing_paths
 
   def fake_ensure_compiled_coreml_model(path: str) -> str:
     compiled_paths.append(path)
