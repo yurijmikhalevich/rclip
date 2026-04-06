@@ -52,6 +52,16 @@ def get_app_datadir() -> pathlib.Path:
   return app_datadir
 
 
+def get_model_cache_dir() -> pathlib.Path | None:
+  model_cache_dir = os.getenv("RCLIP_MODEL_CACHE_DIR")
+  if not model_cache_dir:
+    return None
+
+  model_cache_path = pathlib.Path(model_cache_dir)
+  os.makedirs(model_cache_path, exist_ok=True)
+  return model_cache_path
+
+
 def positive_int_arg_type(arg: str) -> int:
   arg_int = int(arg)
   if arg_int < 1:
