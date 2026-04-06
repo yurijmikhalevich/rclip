@@ -190,7 +190,7 @@ class Model:
         (
           label,
           f"{_MODEL_SUBDIR}/{filename}{path_prefix_suffix}",
-          lambda tc, filename=filename: download_model(filename, tqdm_class=tc),
+          lambda tc, filename=filename, download_model=download_model: download_model(filename, tqdm_class=tc),
         )
       )
 

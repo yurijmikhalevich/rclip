@@ -151,6 +151,96 @@ def test_ensure_downloaded_compiles_existing_coreml_packages(monkeypatch: pytest
   assert compiled_paths == ["/tmp/rclip-datadir/ViT-B-32-256-datacomp_s34b_b86k/visual.mlpackage"]
 
 
+def test_ensure_downloaded_uses_matching_downloader_for_each_runtime(monkeypatch: pytest.MonkeyPatch):
+  def fake_get_app_datadir() -> Path:
+    return Path("/tmp/rclip-datadir")
+
+  downloaded: list[tuple[str, str]] = []
+
+  def fake_isdir(_path: str) -> bool:
+    return False
+
+  def fake_isfile(_path: str) -> bool:
+    return False
+
+  def fake_download_onnx_model(filename: str, tqdm_class: type | None = None) -> str:
+    downloaded.append(("onnx", filename))
+    return f"/models/{filename}"
+
+  def fake_download_coreml_model(dirname: str, tqdm_class: type | None = None) -> str:
+    downloaded.append(("coreml", dirname))
+    return f"/models/{dirname}"
+
+  class FakeRepoFile:
+    def __init__(self, path: str):
+      self.rfilename = path
+      self.size = 1
+
+  class FakeHfApi:
+    def repo_info(self, _repo_id: str, files_metadata: bool = False):
+      assert files_metadata is True
+      return types.SimpleNamespace(
+        siblings=[
+          FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/visual.onnx"),
+          FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/visual.onnx.data"),
+          FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/textual.onnx"),
+          FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/textual.onnx.data"),
+          FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/visual.mlpackage/Manifest.json"),
+          FakeRepoFile("tokenizer/bpe_simple_vocab_16e6.txt.gz"),
+        ]
+      )
+
+  class FakeTqdm:
+    def __init__(self, total: int, desc: str, unit: str, unit_scale: bool):
+      self.total = total
+      self.desc = desc
+      self.unit = unit
+      self.unit_scale = unit_scale
+
+    def set_description(self, desc: str) -> None:
+      self.desc = desc
+
+    def close(self) -> None:
+      pass
+
+  fake_huggingface_hub = types.ModuleType("huggingface_hub")
+  setattr(fake_huggingface_hub, "HfApi", FakeHfApi)
+  monkeypatch.setitem(sys.modules, "huggingface_hub", fake_huggingface_hub)
+
+  fake_tqdm_module = types.ModuleType("tqdm")
+  setattr(fake_tqdm_module, "tqdm", FakeTqdm)
+  monkeypatch.setitem(sys.modules, "tqdm", fake_tqdm_module)
+
+  fake_download_progress_module = types.ModuleType("rclip.utils.download_progress")
+
+  class FakeAggregatedProgressBar:
+    shared_bar = None
+
+  setattr(fake_download_progress_module, "AggregatedProgressBar", FakeAggregatedProgressBar)
+  monkeypatch.setitem(sys.modules, "rclip.utils.download_progress", fake_download_progress_module)
+
+  monkeypatch.setattr(model_module.helpers, "get_app_datadir", fake_get_app_datadir)
+  monkeypatch.setattr(model_module, "IS_MACOS", True)
+  monkeypatch.delenv("RCLIP_USE_ONNX_ON_MACOS", raising=False)
+  monkeypatch.setattr(model_module.os.path, "isdir", fake_isdir)
+  monkeypatch.setattr(model_module.os.path, "isfile", fake_isfile)
+  monkeypatch.setattr(model_module, "_download_onnx_model", fake_download_onnx_model)
+  monkeypatch.setattr(model_module, "_download_coreml_model", fake_download_coreml_model)
+
+  def fake_download_tokenizer_vocab(tqdm_class: type | None = None) -> str:
+    return "/models/tokenizer.gz"
+
+  monkeypatch.setattr(model_module, "_download_tokenizer_vocab", fake_download_tokenizer_vocab)
+
+  Model().ensure_downloaded(for_indexing=True)
+
+  assert downloaded == [
+    ("onnx", "visual.onnx"),
+    ("onnx", "textual.onnx"),
+    ("coreml", "visual.mlpackage"),
+  ]
+
+
 def _fake_preprocess(image: Image.Image) -> FeatureBatch:
   return np.full((3, 256, 256), fill_value=float(image.size[0]), dtype=np.float32)
 
