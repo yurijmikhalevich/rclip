@@ -28,6 +28,7 @@ IMAGE_SIZE = 256
 CONTEXT_LENGTH = 77
 EMBED_DIM = 512
 COREML_VISUAL_BATCH_SIZE = 8
+_MATMUL_OPS = ["MatMul", "Gemm"]
 
 
 @contextmanager
@@ -48,6 +49,16 @@ def _quiet_onnx_export():
     schema_logger.setLevel(original_level)
 
 
+@contextmanager
+def _disable_mha_fastpath():
+  original_state = torch.backends.mha.get_fastpath_enabled()
+  torch.backends.mha.set_fastpath_enabled(False)
+  try:
+    yield
+  finally:
+    torch.backends.mha.set_fastpath_enabled(original_state)
+
+
 class _VisualWrapper(torch.nn.Module):
   def __init__(self, visual_model: torch.nn.Module):
     super().__init__()
@@ -66,15 +77,12 @@ class _TextualWrapper(torch.nn.Module):
     return self.clip_model.encode_text(x)
 
 
-class _TextualWrapperInt32(torch.nn.Module):
-  """Wraps text encoder to accept int32 input (CoreML doesn't support int64)."""
-
-  def __init__(self, clip_model: open_clip.CLIP):
-    super().__init__()
-    self.clip_model = clip_model
-
-  def forward(self, x: torch.Tensor) -> torch.Tensor:
-    return self.clip_model.encode_text(x.long())
+def _clone_model_for_onnx_export(model: open_clip.CLIP, *, dtype: torch.dtype) -> open_clip.CLIP:
+  cloned = cast(open_clip.CLIP, open_clip.create_model(MODEL_NAME, pretrained=PRETRAINED))
+  cloned.load_state_dict(model.state_dict())
+  cloned = cloned.to(dtype=dtype)
+  cloned.eval()
+  return cloned
 
 
 def export_visual_onnx(model: open_clip.CLIP, output_path: Path):
@@ -83,7 +91,7 @@ def export_visual_onnx(model: open_clip.CLIP, output_path: Path):
   wrapper.eval()
 
   dummy_input = torch.randn(1, 3, IMAGE_SIZE, IMAGE_SIZE)
-  with _quiet_onnx_export():
+  with _quiet_onnx_export(), _disable_mha_fastpath():
     torch.onnx.export(
       wrapper,
       (dummy_input,),
@@ -97,13 +105,34 @@ def export_visual_onnx(model: open_clip.CLIP, output_path: Path):
   print(f"  Exported visual ONNX: {output_path}")
 
 
+def export_visual_onnx_fp16(model: open_clip.CLIP, output_path: Path):
+  """Export the visual encoder to ONNX with FP16 weights and activations."""
+  export_model = _clone_model_for_onnx_export(model, dtype=torch.float16)
+  wrapper = _VisualWrapper(export_model.visual)
+  wrapper.eval()
+
+  dummy_input = torch.randn(1, 3, IMAGE_SIZE, IMAGE_SIZE, dtype=torch.float16)
+  with _quiet_onnx_export(), _disable_mha_fastpath():
+    torch.onnx.export(
+      wrapper,
+      (dummy_input,),
+      str(output_path),
+      input_names=["input"],
+      output_names=["output"],
+      dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}},
+      opset_version=18,
+      dynamo=False,
+    )
+  print(f"  Exported visual ONNX FP16: {output_path}")
+
+
 def export_textual_onnx(model: open_clip.CLIP, output_path: Path):
   """Export the textual encoder to ONNX."""
   wrapper = _TextualWrapper(model)
   wrapper.eval()
 
   dummy_input = torch.zeros(1, CONTEXT_LENGTH, dtype=torch.long)
-  with _quiet_onnx_export():
+  with _quiet_onnx_export(), _disable_mha_fastpath():
     torch.onnx.export(
       wrapper,
       (dummy_input,),
@@ -115,6 +144,42 @@ def export_textual_onnx(model: open_clip.CLIP, output_path: Path):
       dynamo=False,
     )
   print(f"  Exported textual ONNX: {output_path}")
+
+
+def export_textual_onnx_fp16(model: open_clip.CLIP, output_path: Path):
+  """Export the textual encoder to ONNX with FP16 weights and activations."""
+  export_model = _clone_model_for_onnx_export(model, dtype=torch.float16)
+  wrapper = _TextualWrapper(export_model)
+  wrapper.eval()
+
+  dummy_input = torch.zeros(1, CONTEXT_LENGTH, dtype=torch.long)
+  with _quiet_onnx_export(), _disable_mha_fastpath():
+    torch.onnx.export(
+      wrapper,
+      (dummy_input,),
+      str(output_path),
+      input_names=["input"],
+      output_names=["output"],
+      dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}},
+      opset_version=18,
+      dynamo=False,
+    )
+  print(f"  Exported textual ONNX FP16: {output_path}")
+
+
+def quantize_visual_onnx_fp32_to_int8(input_path: Path, output_path: Path):
+  """Quantize the visual encoder for CPU inference with dynamic INT8 weights."""
+  from onnxruntime.quantization import quantize_dynamic, QuantType
+
+  quantize_dynamic(
+    str(input_path),
+    str(output_path),
+    weight_type=QuantType.QInt8,
+    op_types_to_quantize=_MATMUL_OPS,
+  )
+  orig_mb = input_path.stat().st_size / 1024 / 1024
+  quant_mb = output_path.stat().st_size / 1024 / 1024
+  print(f"  Quantized visual ONNX to INT8: {output_path} ({orig_mb:.1f} MB -> {quant_mb:.1f} MB)")
 
 
 def convert_visual_to_coreml(model: open_clip.CLIP, output_path: Path):
@@ -138,29 +203,6 @@ def convert_visual_to_coreml(model: open_clip.CLIP, output_path: Path):
   assert isinstance(ml_model, ct.models.MLModel)
   ml_model.save(str(output_path))
   print(f"  Converted visual to CoreML: {output_path}")
-
-
-def convert_textual_to_coreml(model: open_clip.CLIP, output_path: Path):
-  """Convert the textual encoder from PyTorch to CoreML FP32 via torch.export."""
-  import coremltools as ct
-
-  wrapper = _TextualWrapperInt32(model)
-  wrapper.eval()
-
-  dummy_input = torch.zeros(1, CONTEXT_LENGTH, dtype=torch.int32)
-  exported = torch.export.export(wrapper, (dummy_input,), strict=False)
-  exported = exported.run_decompositions({})
-
-  ml_model = ct.convert(
-    exported,
-    inputs=[ct.TensorType(name="input", shape=(1, CONTEXT_LENGTH), dtype=np.int32)],
-    outputs=[ct.TensorType(name="output")],
-    compute_precision=ct.precision.FLOAT32,
-    minimum_deployment_target=ct.target.macOS13,
-  )
-  assert isinstance(ml_model, ct.models.MLModel)
-  ml_model.save(str(output_path))
-  print(f"  Converted textual to CoreML: {output_path}")
 
 
 def verify_onnx(model: open_clip.CLIP, visual_onnx_path: Path, textual_onnx_path: Path):
@@ -202,8 +244,45 @@ def verify_onnx(model: open_clip.CLIP, visual_onnx_path: Path, textual_onnx_path
   print("  ONNX verification passed!")
 
 
-def verify_coreml(model: open_clip.CLIP, visual_coreml_path: Path, textual_coreml_path: Path):
-  """Verify CoreML models produce the same output as PyTorch."""
+def verify_onnx_fp16(model: open_clip.CLIP, visual_onnx_path: Path, textual_onnx_path: Path):
+  """Verify FP16 ONNX models produce close outputs to FP32 PyTorch."""
+  import onnxruntime as ort
+
+  model.eval()
+
+  dummy_image = torch.randn(2, 3, IMAGE_SIZE, IMAGE_SIZE)
+  with torch.no_grad():
+    pt_visual = model.visual(dummy_image).numpy()
+
+  session = ort.InferenceSession(str(visual_onnx_path), providers=["CPUExecutionProvider"])
+  (onnx_visual,) = session.run(None, {"input": dummy_image.numpy().astype(np.float16)})
+
+  visual_diff = np.max(np.abs(pt_visual - np.asarray(onnx_visual, dtype=np.float32)))
+  print(f"  Visual FP16 max abs diff: {visual_diff:.2e}")
+  assert visual_diff < 5e-2, f"Visual ONNX FP16 diverges too much: {visual_diff}"
+
+  dummy_text = torch.zeros(2, CONTEXT_LENGTH, dtype=torch.long)
+  dummy_text[0, 0] = 49406
+  dummy_text[0, 1] = 320
+  dummy_text[0, 2] = 49407
+  dummy_text[1, 0] = 49406
+  dummy_text[1, 1] = 539
+  dummy_text[1, 2] = 49407
+  with torch.no_grad():
+    pt_text = model.encode_text(dummy_text).numpy()
+
+  session = ort.InferenceSession(str(textual_onnx_path), providers=["CPUExecutionProvider"])
+  (onnx_text,) = session.run(None, {"input": dummy_text.numpy()})
+
+  text_diff = np.max(np.abs(pt_text - np.asarray(onnx_text, dtype=np.float32)))
+  print(f"  Textual FP16 max abs diff: {text_diff:.2e}")
+  assert text_diff < 5e-2, f"Textual ONNX FP16 diverges too much: {text_diff}"
+
+  print("  ONNX FP16 verification passed!")
+
+
+def verify_coreml(model: open_clip.CLIP, visual_coreml_path: Path):
+  """Verify the visual CoreML model produces the same output as PyTorch."""
   import coremltools as ct
 
   model.eval()
@@ -220,22 +299,6 @@ def verify_coreml(model: open_clip.CLIP, visual_coreml_path: Path, textual_corem
   visual_diff = np.max(np.abs(pt_visual - coreml_visual))
   print(f"  Visual max abs diff: {visual_diff:.2e}")
   assert visual_diff < 1e-3, f"Visual CoreML diverges too much: {visual_diff}"
-
-  # Verify textual
-  dummy_text = torch.zeros(1, CONTEXT_LENGTH, dtype=torch.long)
-  dummy_text[0, 0] = 49406
-  dummy_text[0, 1] = 320
-  dummy_text[0, 2] = 49407
-  with torch.no_grad():
-    pt_text = model.encode_text(dummy_text).numpy()
-
-  ml_model = ct.models.MLModel(str(textual_coreml_path), compute_units=ct.ComputeUnit.ALL)
-  result = ml_model.predict({"input": dummy_text.numpy().astype(np.int32)})
-  coreml_text = result["output"]
-
-  text_diff = np.max(np.abs(pt_text - coreml_text))
-  print(f"  Textual max abs diff: {text_diff:.2e}")
-  assert text_diff < 1e-3, f"Textual CoreML diverges too much: {text_diff}"
 
   print("  CoreML verification passed!")
 
@@ -277,32 +340,33 @@ def main():
   model = cast(open_clip.CLIP, clip_model)
   model.eval()
 
+  visual_onnx_fp32 = model_dir / "visual.fp32.onnx"
+  textual_onnx_fp32 = model_dir / "textual.fp32.onnx"
   visual_onnx = model_dir / "visual.onnx"
   textual_onnx = model_dir / "textual.onnx"
 
   print("Exporting to ONNX...")
-  export_visual_onnx(model, visual_onnx)
-  export_textual_onnx(model, textual_onnx)
+  export_visual_onnx(model, visual_onnx_fp32)
+  export_textual_onnx(model, textual_onnx_fp32)
+  quantize_visual_onnx_fp32_to_int8(visual_onnx_fp32, visual_onnx)
+  export_textual_onnx_fp16(model, textual_onnx)
 
   print("Verifying ONNX...")
-  verify_onnx(model, visual_onnx, textual_onnx)
+  verify_onnx(model, visual_onnx_fp32, textual_onnx_fp32)
+  verify_onnx_fp16(model, visual_onnx, textual_onnx)
 
   if not args.skip_coreml:
     visual_coreml = model_dir / "visual.mlpackage"
-    textual_coreml = model_dir / "textual.mlpackage"
 
     # Remove existing mlpackage dirs if they exist (they're directories)
     if visual_coreml.exists():
       shutil.rmtree(visual_coreml)
-    if textual_coreml.exists():
-      shutil.rmtree(textual_coreml)
 
     print("Converting to CoreML FP32...")
     convert_visual_to_coreml(model, visual_coreml)
-    convert_textual_to_coreml(model, textual_coreml)
 
     print("Verifying CoreML...")
-    verify_coreml(model, visual_coreml, textual_coreml)
+    verify_coreml(model, visual_coreml)
 
   # Copy tokenizer vocab from open_clip (dev dependency, identical to the vendored file)
   import open_clip as open_clip_module

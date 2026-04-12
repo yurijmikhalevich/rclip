@@ -38,6 +38,9 @@ class FakeInferenceSession:
     features = np.stack([base + offset + i for i in range(batch.shape[0])]).astype(np.float32)
     return (features,)
 
+  def get_inputs(self) -> list[object]:
+    return [types.SimpleNamespace(type="tensor(float)")]
+
 
 def _fake_download_onnx_model(filename: str) -> str:
   return f"/models/{filename}"
@@ -111,7 +114,7 @@ def test_load_session_uses_compiled_coreml_model(monkeypatch: pytest.MonkeyPatch
   monkeypatch.setattr(model_module, "_ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
 
   model = Model()
-  session = getattr(model, "_load_session")("visual.onnx", "visual.mlpackage", runtime="coreml")
+  session = getattr(model, "_load_session")("visual.onnx", runtime="coreml", coreml_dirname="visual.mlpackage")
 
   assert isinstance(session, FakeCompiledMLModel)
   assert compiled_model_calls == [(str(Path("/models/visual.mlmodelc")), "all")]
@@ -127,6 +130,8 @@ def test_ensure_downloaded_compiles_existing_coreml_packages(monkeypatch: pytest
   existing_paths = {
     model_dir / "visual.onnx",
     model_dir / "textual.onnx",
+    model_dir / "visual.fp32.onnx",
+    model_dir / "textual.fp32.onnx",
     model_dir / "visual.mlpackage",
     data_dir / "tokenizer/bpe_simple_vocab_16e6.txt.gz",
   }
@@ -185,9 +190,9 @@ def test_ensure_downloaded_uses_matching_downloader_for_each_runtime(monkeypatch
       return types.SimpleNamespace(
         siblings=[
           FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/visual.onnx"),
-          FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/visual.onnx.data"),
           FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/textual.onnx"),
-          FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/textual.onnx.data"),
+          FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/visual.fp32.onnx"),
+          FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/textual.fp32.onnx"),
           FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/visual.mlpackage/Manifest.json"),
           FakeRepoFile("tokenizer/bpe_simple_vocab_16e6.txt.gz"),
         ]
@@ -294,7 +299,7 @@ def test_uses_dedicated_model_cache_dir_when_configured(monkeypatch: pytest.Monk
     calls: list[dict[str, object]] = []
 
     def fake_snapshot_download(
-      *, allow_patterns: list[str], cache_dir: str | None = None, local_dir: str, **_kwargs: str
+      *, allow_patterns: str | list[str], cache_dir: str | None = None, local_dir: str, **_kwargs: str
     ) -> str:
       calls.append({"allow_patterns": allow_patterns, "cache_dir": cache_dir, "local_dir": local_dir})
       assert cache_dir == str(Path(tmp_model_cache_dir))
@@ -307,10 +312,7 @@ def test_uses_dedicated_model_cache_dir_when_configured(monkeypatch: pytest.Monk
     assert cache_dir.exists()
     assert calls == [
       {
-        "allow_patterns": [
-          "ViT-B-32-256-datacomp_s34b_b86k/visual.onnx",
-          "ViT-B-32-256-datacomp_s34b_b86k/visual.onnx.data",
-        ],
+        "allow_patterns": "ViT-B-32-256-datacomp_s34b_b86k/visual.onnx",
         "cache_dir": str(Path(tmp_model_cache_dir)),
         "local_dir": tmp_datadir,
       }
@@ -345,6 +347,31 @@ def test_compute_image_features_only_loads_visual_session(fake_runtime: list[Fak
   assert [session.path for session in fake_runtime] == ["/models/visual.onnx"]
   assert getattr(model, "_session_text_var") is None
   assert getattr(model, "_session_visual_var") is fake_runtime[0]
+
+
+def test_run_session_casts_float16_inputs_for_onnx(monkeypatch: pytest.MonkeyPatch):
+  captured_dtypes: list[np.dtype[np.generic]] = []
+
+  class FakeFp16InferenceSession(FakeInferenceSession):
+    def get_inputs(self) -> list[object]:
+      return [types.SimpleNamespace(type="tensor(float16)")]
+
+    def run(self, output_names: object, inputs: dict[str, npt.NDArray[np.generic]]) -> tuple[FeatureBatch]:
+      captured_dtypes.append(inputs["input"].dtype)
+      return super().run(output_names, inputs)
+
+  fake_onnxruntime = types.ModuleType("onnxruntime")
+  setattr(fake_onnxruntime, "InferenceSession", FakeFp16InferenceSession)
+  monkeypatch.setitem(sys.modules, "onnxruntime", fake_onnxruntime)
+
+  model = Model()
+  session = FakeFp16InferenceSession("/models/visual.onnx", providers=["CPUExecutionProvider"])
+  batch = np.ones((1, 3, 256, 256), dtype=np.float32)
+
+  features = getattr(model, "_run_session")(session, batch, runtime="onnx")
+
+  assert features.shape == (1, Model.VECTOR_SIZE)
+  assert captured_dtypes == [np.dtype(np.float16)]
 
 
 def test_compute_image_features_uses_separate_visual_session_for_indexing_on_macos(monkeypatch: pytest.MonkeyPatch):
@@ -410,6 +437,8 @@ def test_ensure_downloaded_skips_coreml_without_indexing(monkeypatch: pytest.Mon
   existing_paths = {
     model_dir / "visual.onnx",
     model_dir / "textual.onnx",
+    model_dir / "visual.fp32.onnx",
+    model_dir / "textual.fp32.onnx",
     data_dir / "tokenizer/bpe_simple_vocab_16e6.txt.gz",
   }
   compiled_paths: list[str] = []

@@ -32,7 +32,6 @@ _MODEL_SUBDIR = "ViT-B-32-256-datacomp_s34b_b86k"
 _VISUAL_ONNX = "visual.onnx"
 _TEXTUAL_ONNX = "textual.onnx"
 _VISUAL_COREML = "visual.mlpackage"
-_TEXTUAL_COREML = "textual.mlpackage"
 _TOKENIZER_VOCAB = "tokenizer/bpe_simple_vocab_16e6.txt.gz"
 _USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR = "RCLIP_USE_ONNX_ON_MACOS"
 _RUNTIME_ONNX = "onnx"
@@ -63,7 +62,7 @@ def _download_onnx_model(filename: str, tqdm_class: Optional[type] = None) -> st
 
   path = snapshot_download(
     repo_id=_HF_REPO_ID,
-    allow_patterns=[f"{_MODEL_SUBDIR}/{filename}", f"{_MODEL_SUBDIR}/{filename}.data"],
+    allow_patterns=f"{_MODEL_SUBDIR}/{filename}",
     cache_dir=_get_model_cache_dir(),
     local_dir=model_dir,
     **kwargs,
@@ -233,10 +232,11 @@ class Model:
       self._tokenizer_var = SimpleTokenizer(bpe_path=_download_tokenizer_vocab())
     return self._tokenizer_var
 
-  def _load_session(self, onnx_filename: str, coreml_dirname: str, *, runtime: str) -> "_SessionType":
+  def _load_session(self, onnx_filename: str, *, runtime: str, coreml_dirname: Optional[str] = None) -> "_SessionType":
     if runtime == _RUNTIME_COREML:
       import coremltools as ct
 
+      assert coreml_dirname is not None
       package_path = _download_coreml_model(coreml_dirname)
       compiled_path = _ensure_compiled_coreml_model(package_path)
       try:
@@ -278,19 +278,22 @@ class Model:
     from onnxruntime import InferenceSession
 
     assert isinstance(session, InferenceSession)
+    input_type = session.get_inputs()[0].type
+    if input_type == "tensor(float16)":
+      batch = batch.astype(np.float16)
     (features,) = session.run(None, {"input": batch})
     return np.asarray(features, dtype=np.float32)
 
   @property
   def _session_text(self):
     if not self._session_text_var:
-      self._session_text_var = self._load_session(_TEXTUAL_ONNX, _TEXTUAL_COREML, runtime=_RUNTIME_ONNX)
+      self._session_text_var = self._load_session(_TEXTUAL_ONNX, runtime=_RUNTIME_ONNX)
     return self._session_text_var
 
   @property
   def _session_visual(self):
     if not self._session_visual_var:
-      self._session_visual_var = self._load_session(_VISUAL_ONNX, _VISUAL_COREML, runtime=_RUNTIME_ONNX)
+      self._session_visual_var = self._load_session(_VISUAL_ONNX, runtime=_RUNTIME_ONNX)
     return self._session_visual_var
 
   @property
@@ -299,7 +302,7 @@ class Model:
     if runtime == _RUNTIME_ONNX:
       return self._session_visual
     if not self._session_visual_index_var:
-      self._session_visual_index_var = self._load_session(_VISUAL_ONNX, _VISUAL_COREML, runtime=runtime)
+      self._session_visual_index_var = self._load_session(_VISUAL_ONNX, runtime=runtime, coreml_dirname=_VISUAL_COREML)
     return self._session_visual_index_var
 
   def _run_visual(self, batch: npt.NDArray[np.float32], *, for_indexing: bool = False) -> npt.NDArray[np.float32]:
@@ -308,7 +311,7 @@ class Model:
     return self._run_session(session, batch, runtime=runtime, coreml_batch_size=self._COREML_VISUAL_BATCH_SIZE)
 
   def _run_textual(self, tokens: npt.NDArray[np.int64]) -> npt.NDArray[np.float32]:
-    return self._run_session(self._session_text, tokens, runtime=_RUNTIME_ONNX, coreml_input_dtype=np.int32)
+    return self._run_session(self._session_text, tokens, runtime=_RUNTIME_ONNX)
 
   def compute_image_features(self, images: List[Image.Image], *, for_indexing: bool = False) -> npt.NDArray[np.float32]:
     if len(images) < 2 or self._preprocess_workers == 1:
