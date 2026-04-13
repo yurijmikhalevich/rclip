@@ -83,7 +83,7 @@ class RClip:
         print(f"error loading image {path}:", ex, file=sys.stderr)
 
     try:
-      features = self._model.compute_image_features(images)
+      features = self._model.compute_image_features(images, for_indexing=True)
     except Exception as ex:
       print("error computing features:", ex, file=sys.stderr)
       return
@@ -215,7 +215,6 @@ class RClip:
 def init_rclip(
   working_directory: str,
   indexing_batch_size: int,
-  device: str = "cpu",
   exclude_dir: Optional[List[str]] = None,
   no_indexing: bool = False,
   enable_raw_support: bool = False,
@@ -224,7 +223,8 @@ def init_rclip(
   db_path = datadir / "db.sqlite3"
 
   database = db.DB(db_path)
-  model_instance = model.Model(device=device or "cpu")
+  model_instance = model.Model()
+  model_instance.ensure_downloaded()
   rclip = RClip(
     model_instance=model_instance,
     database=database,
@@ -254,14 +254,14 @@ def print_results(result: List[RClip.SearchResult], args: helpers.argparse.Names
     sys.stdout.reconfigure(encoding="utf-8-sig")
 
   if args.filepath_only:
-    for r in result:
-      print(r.filepath)
+    for search_result in result:
+      print(search_result.filepath)
   else:
     print("score\tfilepath")
-    for r in result:
-      print(f'{r.score:.3f}\t"{r.filepath}"')
+    for search_result in result:
+      print(f'{search_result.score:.3f}\t"{search_result.filepath}"')
       if args.preview:
-        preview(r.filepath, args.preview_height)
+        preview(search_result.filepath, args.preview_height)
 
 
 def main():
@@ -275,7 +275,6 @@ def main():
   rclip, _, db = init_rclip(
     current_directory,
     args.indexing_batch_size,
-    vars(args).get("device", "cpu"),
     args.exclude_dir,
     args.no_indexing,
     args.experimental_raw_support,
@@ -284,8 +283,6 @@ def main():
   try:
     result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
     print_results(result, args)
-  except Exception as e:
-    raise e
   finally:
     db.close()
 

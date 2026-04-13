@@ -1,9 +1,12 @@
 import hashlib
 import importlib.metadata
 from collections import OrderedDict
+from collections.abc import Mapping
 from time import sleep
-from typing import Optional, TypedDict, cast
+from typing import AbstractSet, Optional, TypedDict, cast
+
 import jinja2
+from packaging.markers import default_environment
 from packaging.requirements import Requirement
 import requests
 import sys
@@ -26,17 +29,13 @@ TEMPLATE = env.from_string("""class Rclip < Formula
     depends_on "patchelf" => :build # for rawpy
     depends_on "zlib-ng-compat" # rawpy bundled libs link against libz
   end
-  depends_on "rust" => :build # for safetensors
   depends_on "certifi"
   depends_on "libheif"
   depends_on "libraw"
   depends_on "libyaml"
   depends_on "numpy"
   depends_on "pillow"
-  depends_on "python@3.14"
-  depends_on "pytorch"
-  depends_on "sentencepiece"
-  depends_on "torchvision"
+  depends_on "python@3.13"
 
 {{ resources }}
 
@@ -53,16 +52,16 @@ TEMPLATE = env.from_string("""class Rclip < Formula
       wheel = Dir["*.whl"].first
       valid_wheel = wheel.sub(/^.*--/, "")
       File.rename(wheel, valid_wheel)
-      system "python3.14", "-m", "pip", "--python=#{libexec}/bin/python", "install", "--no-deps", valid_wheel
+      system "python3.13", "-m", "pip", "--python=#{libexec}/bin/python", "install", "--no-deps", valid_wheel
     end
 {% if pkg.patchelf %}
 
     if OS.linux?
 {% for path, rpath in pkg.patchelf.items() %}
-      targets = Dir[libexec/"lib/python3.14/site-packages/{{ path }}"]
+      targets = Dir[libexec/"lib/python3.13/site-packages/{{ path }}"]
       if targets.empty?
         odie "Failed to find any files to patch with patchelf for pattern: " \\
-             "#{libexec}/lib/python3.14/site-packages/{{ path }}"
+             "#{libexec}/lib/python3.13/site-packages/{{ path }}"
       end
       targets.each do |so|
         next if File.symlink?(so)
@@ -74,13 +73,6 @@ TEMPLATE = env.from_string("""class Rclip < Formula
 {% endif %}
 {% endfor %}
 
-    # link dependent virtualenvs to this one
-    site_packages = Language::Python.site_packages("python3.14")
-    paths = %w[pytorch torchvision].map do |package_name|
-      package = Formula[package_name].opt_libexec
-      package/site_packages
-    end
-    (libexec/site_packages/"homebrew-deps.pth").write paths.join("\\n")
   end
 
   test do
@@ -99,7 +91,7 @@ RESOURCE_TEMPLATE = env.from_string(
 )
 
 # These deps are handled by Homebrew formulas (excluded from virtualenv resources)
-BREW_DEPS = ["numpy", "pillow", "certifi", "torch", "torchvision"]
+BREW_DEPS = ["numpy", "pillow", "certifi"]
 
 
 class WheelInfo(TypedDict):
@@ -111,6 +103,15 @@ class PlatformWheels(TypedDict):
   mac_arm: WheelInfo
   linux_arm: WheelInfo
   linux_x86: WheelInfo
+
+
+class PackageResource(TypedDict):
+  name: str
+  version: str
+  url: str
+  checksum: str
+  checksum_type: str
+  homepage: str
 
 
 class _WheelPackageRequired(TypedDict):
@@ -126,26 +127,37 @@ class WheelPackage(_WheelPackageRequired, total=False):
 WHEEL_PACKAGES: list[WheelPackage] = [
   {
     "name": "rawpy",
-    "tag": "cp314",
+    "tag": "cp313",
     "patchelf": {
       "rawpy/_rawpy*.so": "$ORIGIN/../rawpy.libs",
       "rawpy.libs/*.so*": "$ORIGIN",
     },
   },
   {"name": "hf-xet", "tag": "abi3"},
+  {"name": "onnxruntime", "tag": "cp313"},
 ]
 
-RESOURCE_URL_OVERRIDES = {
-  # open-clip-torch publishes an incomplete tarball to pypi, so we will fetch one from GitHub
-  "open-clip-torch": env.from_string(
-    "https://github.com/mlfoundations/open_clip/archive/refs/tags/v{{ version }}.tar.gz"
-  ),
-}
+RESOURCE_URL_OVERRIDES = {}
 
-_MAKE_GRAPH_IGNORED = {"pip", "setuptools", "wheel", "argparse", "wsgiref"}
+MAKE_GRAPH_IGNORED = {"pip", "setuptools", "wheel", "argparse", "wsgiref"}
+
+EXTRA_MACOS_RESOURCES = ["coremltools"]
+EXTRA_MACOS_RESOURCE_KEYS = {name.lower().replace("-", "_") for name in EXTRA_MACOS_RESOURCES}
+
+MarkerEnvironment = dict[str, str | AbstractSet[str]]
+
+
+def get_marker_environment(overrides: Mapping[str, str]) -> MarkerEnvironment:
+  environment: MarkerEnvironment = {}
+  for key, value in default_environment().items():
+    if isinstance(value, str):
+      environment[key] = value
+  environment.update(overrides)
+  return environment
 
 
 def make_graph(package_name: str, skip_pypi_packages: set[str]):
+  marker_env = get_marker_environment({"sys_platform": "linux", "platform_system": "Linux"})
   result = OrderedDict()
   queue = [package_name]
   visited = set()
@@ -155,13 +167,15 @@ def make_graph(package_name: str, skip_pypi_packages: set[str]):
     if key in visited:
       continue
     visited.add(key)
+    if key in EXTRA_MACOS_RESOURCE_KEYS:
+      continue
     try:
       dist = importlib.metadata.distribution(pkg)
     except importlib.metadata.PackageNotFoundError:
       continue
     actual_name = dist.metadata["Name"]
     version = dist.metadata["Version"]
-    if actual_name.lower() in _MAKE_GRAPH_IGNORED:
+    if actual_name.lower() in MAKE_GRAPH_IGNORED:
       continue
     if actual_name.lower() in skip_pypi_packages:
       result[actual_name.lower().replace("_", "-")] = {
@@ -172,7 +186,7 @@ def make_graph(package_name: str, skip_pypi_packages: set[str]):
       resp = requests.get(f"https://pypi.org/pypi/{actual_name}/{version}/json", timeout=REQUEST_TIMEOUT)
       resp.raise_for_status()
       data = resp.json()
-      sdist = next((u for u in data["urls"] if u["packagetype"] == "sdist"), None)
+      sdist = next((url_entry for url_entry in data["urls"] if url_entry["packagetype"] == "sdist"), None)
       url_info = sdist or next(iter(data["urls"]), None)
       result[actual_name.lower().replace("_", "-")] = {
         "name": actual_name,
@@ -184,9 +198,57 @@ def make_graph(package_name: str, skip_pypi_packages: set[str]):
       }
     for req_str in dist.requires or []:
       req = Requirement(req_str)
-      if "extra" not in str(req.marker or "") and (req.marker is None or req.marker.evaluate({})):
+      if "extra" not in str(req.marker or "") and (req.marker is None or req.marker.evaluate(marker_env)):
         queue.append(req.name)
   return result
+
+
+def get_pypi_resource(package_name: str, version: str) -> PackageResource:
+  resp = requests.get(f"https://pypi.org/pypi/{package_name}/{version}/json", timeout=REQUEST_TIMEOUT)
+  resp.raise_for_status()
+  data = resp.json()
+  sdist = next((url_entry for url_entry in data["urls"] if url_entry["packagetype"] == "sdist"), None)
+  url_info = sdist or next(iter(data["urls"]), None)
+  if url_info is None:
+    raise RuntimeError(f"No downloadable files found on PyPI for {package_name!r} {version}")
+  return {
+    "name": package_name,
+    "version": version,
+    "url": url_info["url"],
+    "checksum": url_info["digests"]["sha256"],
+    "checksum_type": "sha256",
+    "homepage": data["info"]["home_page"] or "",
+  }
+
+
+def get_macos_only_resources() -> OrderedDict[str, PackageResource]:
+  marker_env = get_marker_environment({"sys_platform": "darwin", "platform_system": "Darwin"})
+  resources: dict[str, PackageResource] = {}
+  queue = list(EXTRA_MACOS_RESOURCES)
+  visited = set()
+  while queue:
+    package_name = queue.pop(0)
+    key = package_name.lower().replace("-", "_")
+    if key in visited:
+      continue
+    visited.add(key)
+
+    dist = importlib.metadata.distribution(package_name)
+    actual_name = dist.metadata["Name"]
+    normalized_name = actual_name.lower().replace("_", "-")
+    resources[normalized_name] = get_pypi_resource(actual_name, dist.metadata["Version"])
+
+    for req_str in dist.requires or []:
+      req = Requirement(req_str)
+      if req.name.lower() in BREW_DEPS:
+        continue
+      if "extra" in str(req.marker or ""):
+        continue
+      if req.marker is not None and not req.marker.evaluate(marker_env):
+        continue
+      queue.append(req.name)
+
+  return OrderedDict(sorted(resources.items()))
 
 
 def get_wheels(package_name: str, tag: Optional[str] = None, resolved_version: Optional[str] = None) -> PlatformWheels:
@@ -215,8 +277,16 @@ def get_wheels(package_name: str, tag: Optional[str] = None, resolved_version: O
     if len(parts) < 5:
       continue
     py, abi, plat = parts[-3], parts[-2], parts[-1]
-    if tag and (tag not in py.split(".") and tag not in abi.split(".")):
-      continue
+    py_tags = py.split(".")
+    abi_tags = abi.split(".")
+    if tag == "abi3":
+      if "abi3" not in abi_tags:
+        continue
+    elif tag:
+      if tag not in py_tags:
+        continue
+      if tag not in abi_tags and "abi3" not in abi_tags:
+        continue
     info = {"url": url_info["url"], "sha256": url_info["digests"]["sha256"]}
     if "macosx" in plat and "arm64" in plat:
       result["mac_arm"] = info
@@ -228,6 +298,19 @@ def get_wheels(package_name: str, tag: Optional[str] = None, resolved_version: O
   if missing:
     raise RuntimeError(f"Missing {package_name!r} wheels for platforms: {missing}")
   return cast(PlatformWheels, result)
+
+
+def render_macos_resource_blocks(resources: list[PackageResource]) -> str:
+  if not resources:
+    return ""
+  lines = ["  if OS.mac?"]
+  for resource in resources:
+    lines.extend(RESOURCE_TEMPLATE.render(resource=resource).splitlines())
+    lines.append("")
+  if lines[-1] == "":
+    lines.pop()
+  lines.append("  end")
+  return "\n".join(lines)
 
 
 def render_wheel_resource_block(name: str, wheels: PlatformWheels) -> str:
@@ -269,6 +352,7 @@ def main():
   target_version = sys.argv[1]
   skip_pypi_packages = {dep.lower() for dep in BREW_DEPS + [pkg["name"] for pkg in WHEEL_PACKAGES]}
   deps = get_deps_for_requested_rclip_version_or_die(target_version, skip_pypi_packages)
+  macos_only_resources = get_macos_only_resources()
 
   wheel_versions = {
     pkg["name"]: deps[pkg["name"].lower()]["version"] for pkg in WHEEL_PACKAGES if pkg["name"].lower() in deps
@@ -281,8 +365,13 @@ def main():
     new_url = url.render(version=deps[dep]["version"])
     deps[dep]["url"] = new_url
     deps[dep]["checksum"] = compute_checksum(new_url)
-  for _, dep in deps.items():
+  for dep in deps.values():
     dep["name"] = dep["name"].lower().replace("_", "-")
+  for dep in macos_only_resources.values():
+    dep["name"] = dep["name"].lower().replace("_", "-")
+  for dep in list(macos_only_resources):
+    if dep in deps or dep in skip_pypi_packages:
+      macos_only_resources.pop(dep)
 
   rclip_metadata = deps.pop("rclip")
 
@@ -295,7 +384,12 @@ def main():
     render_wheel_resource_block(pkg["name"], wheels) for pkg, wheels in zip(WHEEL_PACKAGES, all_wheels)
   )
   wheel_names = " ".join(pkg["name"] for pkg in WHEEL_PACKAGES)
-  resources = "\n\n".join([RESOURCE_TEMPLATE.render(resource=dep) for dep in deps.values()])
+  resources = "\n\n".join(
+    [
+      *[RESOURCE_TEMPLATE.render(resource=dep) for dep in deps.values()],
+      *([render_macos_resource_blocks(list(macos_only_resources.values()))] if macos_only_resources else []),
+    ]
+  )
   print(
     TEMPLATE.render(
       package=rclip_metadata,

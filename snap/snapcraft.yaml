@@ -10,7 +10,7 @@ description: |
   For a detailed demonstration, watch the video: https://www.youtube.com/watch?v=tAJHXOkHidw.
 
   You can use another image as a query by passing a file path or even an URL to the image file to **rclip** and combine multiple queries. Check out the project's README on GitHub for more usage examples: https://github.com/yurijmikhalevich/rclip#readme.
-version: 2.1.6
+version: 2.1.7a0
 website: https://github.com/yurijmikhalevich/rclip
 contact: yurij@mikhalevi.ch
 passthrough:
@@ -18,7 +18,7 @@ passthrough:
 
 grade: stable
 confinement: strict
-base: core22
+base: core24
 
 apps:
   rclip:
@@ -27,13 +27,5 @@ apps:
 
 parts:
   rclip:
-    plugin: python
-    source: ./snap/local/rclip-2.1.6.tar.gz
-    build-packages:
-      - python3-pip
-    build-environment:
-      - PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
-    override-build: |
-      pip3 install --user dephell[full]==0.8.3
-      PATH=$HOME/.local/bin:$PATH dephell deps convert --from-path pyproject.toml --from-format pyproject --to-path setup.py --to-format setuppy
-      snapcraftctl build
+    plugin: poetry
+    source: ./snap/local/rclip-2.1.7a0.tar.gz

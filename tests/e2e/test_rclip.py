@@ -115,10 +115,11 @@ def execute_query(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared
       if completed_run.returncode != 0:
         raise SystemExit(completed_run.returncode)
     else:
-      from rclip.main import main
-
       monkeypatch.setenv("RCLIP_DATADIR", tmpdirname)
       monkeypatch.setenv("RCLIP_MODEL_CACHE_DIR", shared_model_cache_dir)
+
+      from rclip.main import main
+
       monkeypatch.chdir(test_images_dir)
       set_argv(*args)
       main()
