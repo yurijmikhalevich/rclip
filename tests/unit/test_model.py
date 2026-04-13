@@ -56,7 +56,7 @@ def test_download_coreml_model_materializes_real_package(monkeypatch: pytest.Mon
 
   monkeypatch.setattr(model_module.helpers, "get_app_datadir", fake_get_app_datadir)
   compiled_paths: list[str] = []
-  monkeypatch.setattr(model_module, "_ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
+  monkeypatch.setattr(model_module, "ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
 
   calls: list[dict[str, str | None]] = []
 
@@ -111,7 +111,7 @@ def test_load_session_uses_compiled_coreml_model(monkeypatch: pytest.MonkeyPatch
   monkeypatch.setattr(model_module, "IS_MACOS", True)
   monkeypatch.delenv("RCLIP_USE_ONNX_ON_MACOS", raising=False)
   monkeypatch.setattr(model_module, "_download_coreml_model", fake_download_coreml_model)
-  monkeypatch.setattr(model_module, "_ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
+  monkeypatch.setattr(model_module, "ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
 
   model = Model()
   session = getattr(model, "_load_session")("visual.onnx", runtime="coreml", coreml_dirname="visual.mlpackage")
@@ -150,7 +150,7 @@ def test_ensure_downloaded_compiles_existing_coreml_packages(monkeypatch: pytest
   monkeypatch.delenv("RCLIP_USE_ONNX_ON_MACOS", raising=False)
   monkeypatch.setattr(model_module.os.path, "isdir", fake_isdir)
   monkeypatch.setattr(model_module.os.path, "isfile", fake_isfile)
-  monkeypatch.setattr(model_module, "_ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
+  monkeypatch.setattr(model_module, "ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
 
   Model().ensure_downloaded()
 
@@ -388,7 +388,7 @@ def test_compute_image_features_uses_separate_visual_session_for_indexing_on_mac
     return f"{Path(path).with_suffix('')}.mlmodelc"
 
   monkeypatch.setattr(model_module, "_download_coreml_model", fake_download_coreml_model)
-  monkeypatch.setattr(model_module, "_ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
+  monkeypatch.setattr(model_module, "ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
   monkeypatch.setattr(model_module, "preprocess", _fake_preprocess)
 
   model = Model()

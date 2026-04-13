@@ -40,14 +40,6 @@ COREML_VISUAL_BATCH_SIZE = 8
 
 
 def get_model_dir() -> str:
-  return _get_model_dir()
-
-
-def ensure_compiled_coreml_model(package_path: str) -> str:
-  return _ensure_compiled_coreml_model(package_path)
-
-
-def _get_model_dir() -> str:
   return str(helpers.get_app_datadir())
 
 
@@ -57,7 +49,7 @@ def _get_model_cache_dir() -> Optional[str]:
 
 
 def _download_onnx_model(filename: str, tqdm_class: Optional[type] = None) -> str:
-  model_dir = _get_model_dir()
+  model_dir = get_model_dir()
   expected_path = os.path.join(model_dir, MODEL_SUBDIR, filename)
   if os.path.isfile(expected_path):
     return expected_path
@@ -80,7 +72,7 @@ def _download_onnx_model(filename: str, tqdm_class: Optional[type] = None) -> st
 
 
 def _download_tokenizer_vocab(tqdm_class: Optional[type] = None) -> str:
-  model_dir = _get_model_dir()
+  model_dir = get_model_dir()
   expected_path = os.path.join(model_dir, TOKENIZER_VOCAB)
   if os.path.isfile(expected_path):
     return expected_path
@@ -101,7 +93,7 @@ def _download_tokenizer_vocab(tqdm_class: Optional[type] = None) -> str:
 
 
 def _download_coreml_model(dirname: str, tqdm_class: Optional[type] = None) -> str:
-  model_dir = _get_model_dir()
+  model_dir = get_model_dir()
   expected_path = os.path.join(model_dir, MODEL_SUBDIR, dirname)
   if os.path.isdir(expected_path):
     return expected_path
@@ -123,7 +115,7 @@ def _download_coreml_model(dirname: str, tqdm_class: Optional[type] = None) -> s
     **kwargs,
   )
   package_path = os.path.join(path, MODEL_SUBDIR, dirname)
-  _ensure_compiled_coreml_model(package_path)
+  ensure_compiled_coreml_model(package_path)
   return package_path
 
 
@@ -144,7 +136,7 @@ def _compile_coreml_model(package_path: str, *, force: bool = False) -> str:
   return ct.models.utils.compile_model(package_path, compiled_path)
 
 
-def _ensure_compiled_coreml_model(package_path: str) -> str:
+def ensure_compiled_coreml_model(package_path: str) -> str:
   compiled_path = _get_compiled_coreml_model_path(package_path)
   if os.path.isdir(compiled_path):
     return compiled_path
@@ -173,7 +165,7 @@ class Model:
     self._preprocess_workers = max(1, min(8, os.cpu_count() or 1))
 
   def ensure_downloaded(self) -> None:
-    model_dir = _get_model_dir()
+    model_dir = get_model_dir()
 
     to_download: List[Tuple[str, Tuple[str, ...], Callable[[Optional[type]], str]]] = []
     model_files = [
@@ -195,7 +187,7 @@ class Model:
         existing_path = candidate_path
       if existing_path is not None:
         if use_coreml:
-          _ensure_compiled_coreml_model(existing_path)
+          ensure_compiled_coreml_model(existing_path)
         continue
       to_download.append(
         (
@@ -263,7 +255,7 @@ class Model:
 
       assert coreml_dirname is not None
       package_path = _download_coreml_model(coreml_dirname)
-      compiled_path = _ensure_compiled_coreml_model(package_path)
+      compiled_path = ensure_compiled_coreml_model(package_path)
       try:
         return ct.models.CompiledMLModel(compiled_path, compute_units=ct.ComputeUnit.ALL)
       except Exception:
