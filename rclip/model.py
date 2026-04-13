@@ -27,15 +27,15 @@ QUERY_WITH_MULTIPLIER_RE = re.compile(r"^(?P<multiplier>(\d+(\.\d+)?|\.\d+|\d+\.
 QueryWithMultiplier = Tuple[float, str]
 FeatureVector = npt.NDArray[np.float32]
 
-_HF_REPO_ID = "yurijmikhalevich/rclip-models"
-_MODEL_SUBDIR = "ViT-B-32-256-datacomp_s34b_b86k"
-_VISUAL_ONNX = "visual.onnx"
-_TEXTUAL_ONNX = "textual.onnx"
-_VISUAL_COREML = "visual.mlpackage"
-_TOKENIZER_VOCAB = "tokenizer/bpe_simple_vocab_16e6.txt.gz"
-_USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR = "RCLIP_USE_ONNX_ON_MACOS"
-_RUNTIME_ONNX = "onnx"
-_RUNTIME_COREML = "coreml"
+HF_REPO_ID = "yurijmikhalevich/rclip-models"
+MODEL_SUBDIR = "ViT-B-32-256-datacomp_s34b_b86k"
+VISUAL_ONNX = "visual.onnx"
+TEXTUAL_ONNX = "textual.onnx"
+VISUAL_COREML = "visual.mlpackage"
+TOKENIZER_VOCAB = "tokenizer/bpe_simple_vocab_16e6.txt.gz"
+USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR = "RCLIP_USE_ONNX_ON_MACOS"
+RUNTIME_ONNX = "onnx"
+RUNTIME_COREML = "coreml"
 COREML_VISUAL_BATCH_SIZE = 8
 
 
@@ -58,7 +58,7 @@ def _get_model_cache_dir() -> Optional[str]:
 
 def _download_onnx_model(filename: str, tqdm_class: Optional[type] = None) -> str:
   model_dir = _get_model_dir()
-  expected_path = os.path.join(model_dir, _MODEL_SUBDIR, filename)
+  expected_path = os.path.join(model_dir, MODEL_SUBDIR, filename)
   if os.path.isfile(expected_path):
     return expected_path
 
@@ -70,18 +70,18 @@ def _download_onnx_model(filename: str, tqdm_class: Optional[type] = None) -> st
     kwargs["tqdm_class"] = tqdm_class
 
   path = snapshot_download(
-    repo_id=_HF_REPO_ID,
-    allow_patterns=f"{_MODEL_SUBDIR}/{filename}",
+    repo_id=HF_REPO_ID,
+    allow_patterns=f"{MODEL_SUBDIR}/{filename}",
     cache_dir=_get_model_cache_dir(),
     local_dir=model_dir,
     **kwargs,
   )
-  return os.path.join(path, _MODEL_SUBDIR, filename)
+  return os.path.join(path, MODEL_SUBDIR, filename)
 
 
 def _download_tokenizer_vocab(tqdm_class: Optional[type] = None) -> str:
   model_dir = _get_model_dir()
-  expected_path = os.path.join(model_dir, _TOKENIZER_VOCAB)
+  expected_path = os.path.join(model_dir, TOKENIZER_VOCAB)
   if os.path.isfile(expected_path):
     return expected_path
 
@@ -92,8 +92,8 @@ def _download_tokenizer_vocab(tqdm_class: Optional[type] = None) -> str:
     kwargs["tqdm_class"] = tqdm_class
 
   return hf_hub_download(
-    repo_id=_HF_REPO_ID,
-    filename=_TOKENIZER_VOCAB,
+    repo_id=HF_REPO_ID,
+    filename=TOKENIZER_VOCAB,
     cache_dir=_get_model_cache_dir(),
     local_dir=model_dir,
     **kwargs,
@@ -102,7 +102,7 @@ def _download_tokenizer_vocab(tqdm_class: Optional[type] = None) -> str:
 
 def _download_coreml_model(dirname: str, tqdm_class: Optional[type] = None) -> str:
   model_dir = _get_model_dir()
-  expected_path = os.path.join(model_dir, _MODEL_SUBDIR, dirname)
+  expected_path = os.path.join(model_dir, MODEL_SUBDIR, dirname)
   if os.path.isdir(expected_path):
     return expected_path
 
@@ -116,20 +116,20 @@ def _download_coreml_model(dirname: str, tqdm_class: Optional[type] = None) -> s
     kwargs["tqdm_class"] = tqdm_class
 
   path = snapshot_download(
-    repo_id=_HF_REPO_ID,
-    allow_patterns=f"{_MODEL_SUBDIR}/{dirname}/**",
+    repo_id=HF_REPO_ID,
+    allow_patterns=f"{MODEL_SUBDIR}/{dirname}/**",
     cache_dir=_get_model_cache_dir(),
     local_dir=model_dir,
     **kwargs,
   )
-  package_path = os.path.join(path, _MODEL_SUBDIR, dirname)
+  package_path = os.path.join(path, MODEL_SUBDIR, dirname)
   _ensure_compiled_coreml_model(package_path)
   return package_path
 
 
 def _get_compiled_coreml_model_path(package_path: str) -> str:
-  base, _ = os.path.splitext(package_path)
-  return f"{base}.mlmodelc"
+  base_path = os.path.splitext(package_path)[0]
+  return f"{base_path}.mlmodelc"
 
 
 def _compile_coreml_model(package_path: str, *, force: bool = False) -> str:
@@ -153,17 +153,16 @@ def _ensure_compiled_coreml_model(package_path: str) -> str:
 
 def _get_runtime(*, is_visual: bool, for_indexing: bool = False) -> str:
   if not IS_MACOS:
-    return _RUNTIME_ONNX
-  if os.getenv(_USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR):
-    return _RUNTIME_ONNX
+    return RUNTIME_ONNX
+  if os.getenv(USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR):
+    return RUNTIME_ONNX
   if is_visual and for_indexing:
-    return _RUNTIME_COREML
-  return _RUNTIME_ONNX
+    return RUNTIME_COREML
+  return RUNTIME_ONNX
 
 
 class Model:
   VECTOR_SIZE = 512
-  _COREML_VISUAL_BATCH_SIZE = COREML_VISUAL_BATCH_SIZE
 
   def __init__(self):
     self._session_text_var: Optional[_SessionType] = None
@@ -178,20 +177,20 @@ class Model:
 
     to_download: List[Tuple[str, Tuple[str, ...], Callable[[Optional[type]], str]]] = []
     model_files = [
-      ("visual query model", _VISUAL_ONNX, _RUNTIME_ONNX),
-      ("textual model", _TEXTUAL_ONNX, _RUNTIME_ONNX),
+      ("visual query model", VISUAL_ONNX, RUNTIME_ONNX),
+      ("textual model", TEXTUAL_ONNX, RUNTIME_ONNX),
     ]
-    if _get_runtime(is_visual=True, for_indexing=True) == _RUNTIME_COREML:
-      model_files.append(("visual indexing model", _VISUAL_COREML, _RUNTIME_COREML))
+    if _get_runtime(is_visual=True, for_indexing=True) == RUNTIME_COREML:
+      model_files.append(("visual indexing model", VISUAL_COREML, RUNTIME_COREML))
 
     for label, filename, runtime in model_files:
-      use_coreml = runtime == _RUNTIME_COREML
+      use_coreml = runtime == RUNTIME_COREML
       path_prefix_suffix = "/" if use_coreml else ""
       path_exists = os.path.isdir if use_coreml else os.path.isfile
       download_model = _download_coreml_model if use_coreml else _download_onnx_model
       candidate_filenames = (filename,)
       existing_path = None
-      candidate_path = os.path.join(model_dir, _MODEL_SUBDIR, filename)
+      candidate_path = os.path.join(model_dir, MODEL_SUBDIR, filename)
       if path_exists(candidate_path):
         existing_path = candidate_path
       if existing_path is not None:
@@ -201,17 +200,19 @@ class Model:
       to_download.append(
         (
           label,
-          tuple(f"{_MODEL_SUBDIR}/{candidate}{path_prefix_suffix}" for candidate in candidate_filenames),
-          lambda tc, filename=filename, download_model=download_model: download_model(filename, tqdm_class=tc),
+          tuple(f"{MODEL_SUBDIR}/{candidate}{path_prefix_suffix}" for candidate in candidate_filenames),
+          lambda tqdm_class, filename=filename, download_model=download_model: download_model(
+            filename, tqdm_class=tqdm_class
+          ),
         )
       )
 
-    if not os.path.isfile(os.path.join(model_dir, _TOKENIZER_VOCAB)):
+    if not os.path.isfile(os.path.join(model_dir, TOKENIZER_VOCAB)):
       to_download.append(
         (
           "tokenizer",
-          (_TOKENIZER_VOCAB,),
-          lambda tc: _download_tokenizer_vocab(tqdm_class=tc),
+          (TOKENIZER_VOCAB,),
+          lambda tqdm_class: _download_tokenizer_vocab(tqdm_class=tqdm_class),
         )
       )
 
@@ -224,11 +225,11 @@ class Model:
     from rclip.utils.download_progress import AggregatedProgressBar
 
     # Fetch file sizes so the progress bar total is known from the start.
-    repo_info = HfApi().repo_info(_HF_REPO_ID, files_metadata=True)
-    size_by_file = {f.rfilename: f.size or 0 for f in (repo_info.siblings or [])}
+    repo_info = HfApi().repo_info(HF_REPO_ID, files_metadata=True)
+    size_by_file = {repo_file.rfilename: repo_file.size or 0 for repo_file in (repo_info.siblings or [])}
 
     selected_prefixes = []
-    for _, prefix_group, _ in to_download:
+    for _download_label, prefix_group, _download_function in to_download:
       selected_prefix = prefix_group[0]
       for prefix in prefix_group:
         if any(path.startswith(prefix) for path in size_by_file):
@@ -236,14 +237,16 @@ class Model:
           break
       selected_prefixes.append(selected_prefix)
 
-    total_bytes = sum(size for path, size in size_by_file.items() if any(path.startswith(p) for p in selected_prefixes))
+    total_bytes = sum(
+      size for path, size in size_by_file.items() if any(path.startswith(prefix) for prefix in selected_prefixes)
+    )
 
     shared_bar = tqdm_cls(total=total_bytes, desc="Downloading model", unit="B", unit_scale=True)
     AggregatedProgressBar.shared_bar = shared_bar
     shared_bar.set_description("Downloading the model")
     try:
-      for _, _, download_fn in to_download:
-        download_fn(AggregatedProgressBar)
+      for _download_label, _prefix_group, download_function in to_download:
+        download_function(AggregatedProgressBar)
     finally:
       AggregatedProgressBar.shared_bar = None
       shared_bar.close()
@@ -255,7 +258,7 @@ class Model:
     return self._tokenizer_var
 
   def _load_session(self, onnx_filename: str, *, runtime: str, coreml_dirname: Optional[str] = None) -> "_SessionType":
-    if runtime == _RUNTIME_COREML:
+    if runtime == RUNTIME_COREML:
       import coremltools as ct
 
       assert coreml_dirname is not None
@@ -281,7 +284,7 @@ class Model:
     coreml_input_dtype: npt.DTypeLike | None = None,
     coreml_batch_size: int = 1,
   ) -> npt.NDArray[np.float32]:
-    if runtime == _RUNTIME_COREML:
+    if runtime == RUNTIME_COREML:
       from coremltools.models import CompiledMLModel, MLModel
 
       assert isinstance(session, (MLModel, CompiledMLModel))
@@ -309,31 +312,31 @@ class Model:
   @property
   def _session_text(self):
     if not self._session_text_var:
-      self._session_text_var = self._load_session(_TEXTUAL_ONNX, runtime=_RUNTIME_ONNX)
+      self._session_text_var = self._load_session(TEXTUAL_ONNX, runtime=RUNTIME_ONNX)
     return self._session_text_var
 
   @property
   def _session_visual(self):
     if not self._session_visual_var:
-      self._session_visual_var = self._load_session(_VISUAL_ONNX, runtime=_RUNTIME_ONNX)
+      self._session_visual_var = self._load_session(VISUAL_ONNX, runtime=RUNTIME_ONNX)
     return self._session_visual_var
 
   @property
   def _session_visual_index(self):
     runtime = _get_runtime(is_visual=True, for_indexing=True)
-    if runtime == _RUNTIME_ONNX:
+    if runtime == RUNTIME_ONNX:
       return self._session_visual
     if not self._session_visual_index_var:
-      self._session_visual_index_var = self._load_session(_VISUAL_ONNX, runtime=runtime, coreml_dirname=_VISUAL_COREML)
+      self._session_visual_index_var = self._load_session(VISUAL_ONNX, runtime=runtime, coreml_dirname=VISUAL_COREML)
     return self._session_visual_index_var
 
   def _run_visual(self, batch: npt.NDArray[np.float32], *, for_indexing: bool = False) -> npt.NDArray[np.float32]:
     runtime = _get_runtime(is_visual=True, for_indexing=for_indexing)
     session = self._session_visual_index if for_indexing else self._session_visual
-    return self._run_session(session, batch, runtime=runtime, coreml_batch_size=self._COREML_VISUAL_BATCH_SIZE)
+    return self._run_session(session, batch, runtime=runtime, coreml_batch_size=COREML_VISUAL_BATCH_SIZE)
 
   def _run_textual(self, tokens: npt.NDArray[np.int64]) -> npt.NDArray[np.float32]:
-    return self._run_session(self._session_text, tokens, runtime=_RUNTIME_ONNX)
+    return self._run_session(self._session_text, tokens, runtime=RUNTIME_ONNX)
 
   def compute_image_features(self, images: List[Image.Image], *, for_indexing: bool = False) -> npt.NDArray[np.float32]:
     if len(images) < 2 or self._preprocess_workers == 1:
@@ -387,14 +390,16 @@ class Model:
       file_multipliers, file_paths = cast(Tuple[Tuple[float], Tuple[str]], zip(*(files))) if files else ((), ())
       url_multipliers, url_paths = cast(Tuple[Tuple[float], Tuple[str]], zip(*(urls))) if urls else ((), ())
       try:
-        images = [helpers.download_image(q) for q in url_paths] + [helpers.read_image(q) for q in file_paths]
-      except FileNotFoundError as e:
-        print(f'File "{e.filename}" not found. Check if you have typos in the filename.')
+        images = [helpers.download_image(url_path) for url_path in url_paths] + [
+          helpers.read_image(file_path) for file_path in file_paths
+        ]
+      except FileNotFoundError as error:
+        print(f'File "{error.filename}" not found. Check if you have typos in the filename.')
         import sys
 
         sys.exit(1)
-      except UnidentifiedImageError as e:
-        print(f'File "{e.filename}" is not an image. You can only use image files or text as queries.')
+      except UnidentifiedImageError as error:
+        print(f'File "{error.filename}" is not an image. You can only use image files or text as queries.')
         import sys
 
         sys.exit(1)
@@ -424,6 +429,10 @@ class Model:
     features = positive_features - negative_features
 
     similarities = features @ item_features.T
-    sorted_similarities = sorted(zip(similarities, range(item_features.shape[0])), key=lambda x: x[0], reverse=True)
+    sorted_similarities = sorted(
+      zip(similarities, range(item_features.shape[0])),
+      key=lambda similarity_with_index: similarity_with_index[0],
+      reverse=True,
+    )
 
     return sorted_similarities

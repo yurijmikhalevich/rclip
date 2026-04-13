@@ -35,7 +35,7 @@ class FakeInferenceSession:
     batch = inputs["input"]
     offset = 0.0 if self.path.endswith("textual.onnx") else 1000.0
     base = np.arange(1, Model.VECTOR_SIZE + 1, dtype=np.float32)
-    features = np.stack([base + offset + i for i in range(batch.shape[0])]).astype(np.float32)
+    features = np.stack([base + offset + batch_index for batch_index in range(batch.shape[0])]).astype(np.float32)
     return (features,)
 
   def get_inputs(self) -> list[object]:
@@ -385,7 +385,7 @@ def test_compute_image_features_uses_separate_visual_session_for_indexing_on_mac
     def predict(self, inputs: dict[str, npt.NDArray[np.generic]]) -> dict[str, FeatureBatch]:
       batch = inputs["input"]
       base = np.arange(1, Model.VECTOR_SIZE + 1, dtype=np.float32)
-      features = np.stack([base + 1000.0 + i for i in range(batch.shape[0])]).astype(np.float32)
+      features = np.stack([base + 1000.0 + batch_index for batch_index in range(batch.shape[0])]).astype(np.float32)
       return {"output": features}
 
   fake_coremltools = types.ModuleType("coremltools")

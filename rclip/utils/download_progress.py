@@ -28,7 +28,7 @@ class AggregatedProgressBar(_Base):
     super().__init__(*args, **kwargs)  # type: ignore[arg-type]  # proxying tqdm's complex constructor
 
   def update(self, n: float | None = 1) -> bool | None:
-    ret = super().update(n)
+    updated = super().update(n)
     if self._is_bytes and self.shared_bar is not None:
       self.shared_bar.update(n)
-    return ret
+    return updated

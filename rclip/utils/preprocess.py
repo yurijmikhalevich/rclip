@@ -8,9 +8,9 @@ import numpy as np
 import numpy.typing as npt
 from PIL import Image
 
-_IMAGE_SIZE = 256
-_MEAN = np.array([0.48145466, 0.4578275, 0.40821073], dtype=np.float32)
-_STD = np.array([0.26862954, 0.26130258, 0.27577711], dtype=np.float32)
+IMAGE_SIZE = 256
+MEAN = np.array([0.48145466, 0.4578275, 0.40821073], dtype=np.float32)
+STD = np.array([0.26862954, 0.26130258, 0.27577711], dtype=np.float32)
 
 
 def preprocess(image: Image.Image) -> npt.NDArray[np.float32]:
@@ -18,27 +18,27 @@ def preprocess(image: Image.Image) -> npt.NDArray[np.float32]:
   image = image.convert("RGB")
 
   # Resize shortest side to 256. PIL.Image.resize expects (width, height).
-  w, h = image.size
-  if w < h:
-    new_w = _IMAGE_SIZE
-    new_h = int(h * _IMAGE_SIZE / w)
+  width, height = image.size
+  if width < height:
+    resized_width = IMAGE_SIZE
+    resized_height = int(height * IMAGE_SIZE / width)
   else:
-    new_h = _IMAGE_SIZE
-    new_w = int(w * _IMAGE_SIZE / h)
-  image = image.resize((new_w, new_h), Image.Resampling.BICUBIC)
+    resized_height = IMAGE_SIZE
+    resized_width = int(width * IMAGE_SIZE / height)
+  image = image.resize((resized_width, resized_height), Image.Resampling.BICUBIC)
 
   # Center crop 256x256
-  w, h = image.size
-  left = round((w - _IMAGE_SIZE) / 2.0)
-  top = round((h - _IMAGE_SIZE) / 2.0)
-  image = image.crop((left, top, left + _IMAGE_SIZE, top + _IMAGE_SIZE))
+  width, height = image.size
+  left = round((width - IMAGE_SIZE) / 2.0)
+  top = round((height - IMAGE_SIZE) / 2.0)
+  image = image.crop((left, top, left + IMAGE_SIZE, top + IMAGE_SIZE))
 
   # To float32 [0, 1], shape [H, W, 3]
-  arr = np.array(image, dtype=np.float32) / 255.0
+  pixel_array = np.array(image, dtype=np.float32) / 255.0
 
   # Normalize
-  arr = (arr - _MEAN) / _STD
+  pixel_array = (pixel_array - MEAN) / STD
 
   # HWC → CHW
-  arr = arr.transpose(2, 0, 1)
-  return arr
+  pixel_array = pixel_array.transpose(2, 0, 1)
+  return pixel_array

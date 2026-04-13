@@ -254,14 +254,14 @@ def print_results(result: List[RClip.SearchResult], args: helpers.argparse.Names
     sys.stdout.reconfigure(encoding="utf-8-sig")
 
   if args.filepath_only:
-    for r in result:
-      print(r.filepath)
+    for search_result in result:
+      print(search_result.filepath)
   else:
     print("score\tfilepath")
-    for r in result:
-      print(f'{r.score:.3f}\t"{r.filepath}"')
+    for search_result in result:
+      print(f'{search_result.score:.3f}\t"{search_result.filepath}"')
       if args.preview:
-        preview(r.filepath, args.preview_height)
+        preview(search_result.filepath, args.preview_height)
 
 
 def main():

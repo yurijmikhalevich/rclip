@@ -62,8 +62,8 @@ class _VisualWrapper(torch.nn.Module):
     super().__init__()
     self.visual = visual_model
 
-  def forward(self, x: torch.Tensor) -> torch.Tensor:
-    return self.visual(x)
+  def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+    return self.visual(inputs)
 
 
 class _TextualWrapper(torch.nn.Module):
@@ -71,8 +71,8 @@ class _TextualWrapper(torch.nn.Module):
     super().__init__()
     self.clip_model = clip_model
 
-  def forward(self, x: torch.Tensor) -> torch.Tensor:
-    return self.clip_model.encode_text(x)
+  def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+    return self.clip_model.encode_text(inputs)
 
 
 def _normalize_rows(features: FeatureBatch) -> FeatureBatch:
@@ -280,7 +280,9 @@ def main() -> None:
   model_dir.mkdir(parents=True, exist_ok=True)
 
   print(f"Loading {MODEL_NAME}/{PRETRAINED}...")
-  clip_model, _, _ = open_clip.create_model_and_transforms(MODEL_NAME, pretrained=PRETRAINED)
+  clip_model, _preprocess_train, _preprocess_eval = open_clip.create_model_and_transforms(
+    MODEL_NAME, pretrained=PRETRAINED
+  )
   assert isinstance(clip_model, open_clip.CLIP)
   model = clip_model
   model.eval()

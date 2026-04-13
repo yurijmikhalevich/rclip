@@ -139,7 +139,7 @@ WHEEL_PACKAGES: list[WheelPackage] = [
 
 RESOURCE_URL_OVERRIDES = {}
 
-_MAKE_GRAPH_IGNORED = {"pip", "setuptools", "wheel", "argparse", "wsgiref"}
+MAKE_GRAPH_IGNORED = {"pip", "setuptools", "wheel", "argparse", "wsgiref"}
 
 EXTRA_MACOS_RESOURCES = ["coremltools"]
 EXTRA_MACOS_RESOURCE_KEYS = {name.lower().replace("-", "_") for name in EXTRA_MACOS_RESOURCES}
@@ -175,7 +175,7 @@ def make_graph(package_name: str, skip_pypi_packages: set[str]):
       continue
     actual_name = dist.metadata["Name"]
     version = dist.metadata["Version"]
-    if actual_name.lower() in _MAKE_GRAPH_IGNORED:
+    if actual_name.lower() in MAKE_GRAPH_IGNORED:
       continue
     if actual_name.lower() in skip_pypi_packages:
       result[actual_name.lower().replace("_", "-")] = {
@@ -186,7 +186,7 @@ def make_graph(package_name: str, skip_pypi_packages: set[str]):
       resp = requests.get(f"https://pypi.org/pypi/{actual_name}/{version}/json", timeout=REQUEST_TIMEOUT)
       resp.raise_for_status()
       data = resp.json()
-      sdist = next((u for u in data["urls"] if u["packagetype"] == "sdist"), None)
+      sdist = next((url_entry for url_entry in data["urls"] if url_entry["packagetype"] == "sdist"), None)
       url_info = sdist or next(iter(data["urls"]), None)
       result[actual_name.lower().replace("_", "-")] = {
         "name": actual_name,
@@ -207,7 +207,7 @@ def get_pypi_resource(package_name: str, version: str) -> PackageResource:
   resp = requests.get(f"https://pypi.org/pypi/{package_name}/{version}/json", timeout=REQUEST_TIMEOUT)
   resp.raise_for_status()
   data = resp.json()
-  sdist = next((u for u in data["urls"] if u["packagetype"] == "sdist"), None)
+  sdist = next((url_entry for url_entry in data["urls"] if url_entry["packagetype"] == "sdist"), None)
   url_info = sdist or next(iter(data["urls"]), None)
   if url_info is None:
     raise RuntimeError(f"No downloadable files found on PyPI for {package_name!r} {version}")
@@ -365,9 +365,9 @@ def main():
     new_url = url.render(version=deps[dep]["version"])
     deps[dep]["url"] = new_url
     deps[dep]["checksum"] = compute_checksum(new_url)
-  for _, dep in deps.items():
+  for dep in deps.values():
     dep["name"] = dep["name"].lower().replace("_", "-")
-  for _, dep in macos_only_resources.items():
+  for dep in macos_only_resources.values():
     dep["name"] = dep["name"].lower().replace("_", "-")
   for dep in list(macos_only_resources):
     if dep in deps or dep in skip_pypi_packages:
