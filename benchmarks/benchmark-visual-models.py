@@ -13,14 +13,14 @@ import onnxruntime as ort
 from PIL import Image
 from tqdm import tqdm
 
-from rclip import db, model
+from rclip import db, model, model_download
 from rclip.utils.preprocess import preprocess
 
 FeatureBatch = npt.NDArray[np.float32]
 ClassIdBatch = npt.NDArray[np.str_]
 
 DEFAULT_DATASET_DIR = "/Users/yurij/datasets/imagenet_1k/sample5k"
-COREML_BATCH_SIZE = model.COREML_VISUAL_BATCH_SIZE
+COREML_BATCH_SIZE = model_download.COREML_VISUAL_BATCH_SIZE
 
 
 def _normalize(features: FeatureBatch) -> FeatureBatch:
@@ -73,9 +73,10 @@ def _compute_accuracy(
 
 
 def _compute_visual_features(image_files: list[Path]) -> tuple[dict[str, FeatureBatch], dict[str, float]]:
-  model_dir = Path(model.get_model_dir()) / "ViT-B-32-256-datacomp_s34b_b86k"
-  onnx_path = model_dir / "visual.onnx"
-  coreml_compiled_path = model.ensure_compiled_coreml_model(str(model_dir / "visual.mlpackage"))
+  onnx_path = Path(model_download.download_visual_query_model())
+  coreml_compiled_path = model_download.ensure_compiled_coreml_model(
+    model_download.download_visual_index_model_package()
+  )
 
   onnx_session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
   coreml_session = ct.models.CompiledMLModel(coreml_compiled_path, compute_units=ct.ComputeUnit.ALL)

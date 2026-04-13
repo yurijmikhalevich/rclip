@@ -9,10 +9,24 @@ import pytest
 from PIL import Image
 
 import rclip.model as model_module
+import rclip.model_download as model_download_module
 from rclip.model import Model
 
 FeatureBatch = npt.NDArray[np.float32]
 TokenBatch = npt.NDArray[np.int64]
+
+LEGACY_MODEL_EXPORTS = [
+  "HF_REPO_ID",
+  "MODEL_SUBDIR",
+  "VISUAL_ONNX",
+  "TEXTUAL_ONNX",
+  "VISUAL_COREML",
+  "TOKENIZER_VOCAB",
+  "USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR",
+  "RUNTIME_ONNX",
+  "RUNTIME_COREML",
+  "COREML_VISUAL_BATCH_SIZE",
+]
 
 
 class FakeTokenizer:
@@ -42,8 +56,12 @@ class FakeInferenceSession:
     return [types.SimpleNamespace(type="tensor(float)")]
 
 
-def _fake_download_onnx_model(filename: str) -> str:
-  return f"/models/{filename}"
+def test_model_module_reexports_legacy_download_api():
+  for name in LEGACY_MODEL_EXPORTS:
+    assert getattr(model_module, name) == getattr(model_download_module, name)
+
+  assert model_module.get_model_dir is model_download_module.get_model_dir
+  assert model_module.ensure_compiled_coreml_model is model_download_module.ensure_compiled_coreml_model
 
 
 def test_download_coreml_model_materializes_real_package(monkeypatch: pytest.MonkeyPatch):
@@ -54,9 +72,9 @@ def test_download_coreml_model_materializes_real_package(monkeypatch: pytest.Mon
     compiled_paths.append(path)
     return path
 
-  monkeypatch.setattr(model_module.helpers, "get_app_datadir", fake_get_app_datadir)
+  monkeypatch.setattr(model_download_module.helpers, "get_app_datadir", fake_get_app_datadir)
   compiled_paths: list[str] = []
-  monkeypatch.setattr(model_module, "ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
+  monkeypatch.setattr(model_download_module, "ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
 
   calls: list[dict[str, str | None]] = []
 
@@ -70,8 +88,7 @@ def test_download_coreml_model_materializes_real_package(monkeypatch: pytest.Mon
   setattr(fake_huggingface_hub, "snapshot_download", fake_snapshot_download)
   monkeypatch.setitem(sys.modules, "huggingface_hub", fake_huggingface_hub)
 
-  download_coreml_model = getattr(model_module, "_download_coreml_model")
-  path = download_coreml_model("visual.mlpackage")
+  path = model_download_module.download_visual_index_model_package()
 
   assert Path(path) == Path("/tmp/rclip-datadir/ViT-B-32-256-datacomp_s34b_b86k/visual.mlpackage")
   assert calls == [
@@ -87,9 +104,6 @@ def test_download_coreml_model_materializes_real_package(monkeypatch: pytest.Mon
 
 def test_load_session_uses_compiled_coreml_model(monkeypatch: pytest.MonkeyPatch):
   compiled_model_calls: list[tuple[str, object]] = []
-
-  def fake_download_coreml_model(dirname: str) -> str:
-    return f"/models/{dirname}"
 
   def fake_ensure_compiled_coreml_model(path: str) -> str:
     return f"{Path(path).with_suffix('')}.mlmodelc"
@@ -108,13 +122,12 @@ def test_load_session_uses_compiled_coreml_model(monkeypatch: pytest.MonkeyPatch
   )
 
   monkeypatch.setitem(sys.modules, "coremltools", fake_coremltools)
-  monkeypatch.setattr(model_module, "IS_MACOS", True)
+  monkeypatch.setattr(model_download_module, "IS_MACOS", True)
   monkeypatch.delenv("RCLIP_USE_ONNX_ON_MACOS", raising=False)
-  monkeypatch.setattr(model_module, "_download_coreml_model", fake_download_coreml_model)
-  monkeypatch.setattr(model_module, "ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
+  monkeypatch.setattr(model_download_module, "download_visual_index_model_package", lambda: "/models/visual.mlpackage")
+  monkeypatch.setattr(model_download_module, "ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
 
-  model = Model()
-  session = getattr(model, "_load_session")("visual.onnx", runtime="coreml", coreml_dirname="visual.mlpackage")
+  session = model_download_module.load_visual_index_session()
 
   assert isinstance(session, FakeCompiledMLModel)
   assert compiled_model_calls == [(str(Path("/models/visual.mlmodelc")), "all")]
@@ -145,12 +158,12 @@ def test_ensure_downloaded_compiles_existing_coreml_packages(monkeypatch: pytest
     compiled_paths.append(path)
     return f"{Path(path).with_suffix('')}.mlmodelc"
 
-  monkeypatch.setattr(model_module.helpers, "get_app_datadir", fake_get_app_datadir)
-  monkeypatch.setattr(model_module, "IS_MACOS", True)
+  monkeypatch.setattr(model_download_module.helpers, "get_app_datadir", fake_get_app_datadir)
+  monkeypatch.setattr(model_download_module, "IS_MACOS", True)
   monkeypatch.delenv("RCLIP_USE_ONNX_ON_MACOS", raising=False)
-  monkeypatch.setattr(model_module.os.path, "isdir", fake_isdir)
-  monkeypatch.setattr(model_module.os.path, "isfile", fake_isfile)
-  monkeypatch.setattr(model_module, "ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
+  monkeypatch.setattr(model_download_module.os.path, "isdir", fake_isdir)
+  monkeypatch.setattr(model_download_module.os.path, "isfile", fake_isfile)
+  monkeypatch.setattr(model_download_module, "ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
 
   Model().ensure_downloaded()
 
@@ -169,13 +182,17 @@ def test_ensure_downloaded_uses_matching_downloader_for_each_runtime(monkeypatch
   def fake_isfile(_path: str) -> bool:
     return False
 
-  def fake_download_onnx_model(filename: str, tqdm_class: type | None = None) -> str:
-    downloaded.append(("onnx", filename))
-    return f"/models/{filename}"
+  def fake_download_visual_query_model(tqdm_class: type | None = None) -> str:
+    downloaded.append(("onnx", "visual.onnx"))
+    return "/models/visual.onnx"
 
-  def fake_download_coreml_model(dirname: str, tqdm_class: type | None = None) -> str:
-    downloaded.append(("coreml", dirname))
-    return f"/models/{dirname}"
+  def fake_download_textual_model(tqdm_class: type | None = None) -> str:
+    downloaded.append(("onnx", "textual.onnx"))
+    return "/models/textual.onnx"
+
+  def fake_download_coreml_model(tqdm_class: type | None = None) -> str:
+    downloaded.append(("coreml", "visual.mlpackage"))
+    return "/models/visual.mlpackage"
 
   class FakeRepoFile:
     def __init__(self, path: str):
@@ -223,18 +240,19 @@ def test_ensure_downloaded_uses_matching_downloader_for_each_runtime(monkeypatch
   setattr(fake_download_progress_module, "AggregatedProgressBar", FakeAggregatedProgressBar)
   monkeypatch.setitem(sys.modules, "rclip.utils.download_progress", fake_download_progress_module)
 
-  monkeypatch.setattr(model_module.helpers, "get_app_datadir", fake_get_app_datadir)
-  monkeypatch.setattr(model_module, "IS_MACOS", True)
+  monkeypatch.setattr(model_download_module.helpers, "get_app_datadir", fake_get_app_datadir)
+  monkeypatch.setattr(model_download_module, "IS_MACOS", True)
   monkeypatch.delenv("RCLIP_USE_ONNX_ON_MACOS", raising=False)
-  monkeypatch.setattr(model_module.os.path, "isdir", fake_isdir)
-  monkeypatch.setattr(model_module.os.path, "isfile", fake_isfile)
-  monkeypatch.setattr(model_module, "_download_onnx_model", fake_download_onnx_model)
-  monkeypatch.setattr(model_module, "_download_coreml_model", fake_download_coreml_model)
+  monkeypatch.setattr(model_download_module.os.path, "isdir", fake_isdir)
+  monkeypatch.setattr(model_download_module.os.path, "isfile", fake_isfile)
+  monkeypatch.setattr(model_download_module, "download_visual_query_model", fake_download_visual_query_model)
+  monkeypatch.setattr(model_download_module, "download_textual_model", fake_download_textual_model)
+  monkeypatch.setattr(model_download_module, "download_visual_index_model_package", fake_download_coreml_model)
 
   def fake_download_tokenizer_vocab(tqdm_class: type | None = None) -> str:
     return "/models/tokenizer.gz"
 
-  monkeypatch.setattr(model_module, "_download_tokenizer_vocab", fake_download_tokenizer_vocab)
+  monkeypatch.setattr(model_download_module, "download_tokenizer_vocab", fake_download_tokenizer_vocab)
 
   Model().ensure_downloaded()
 
@@ -261,10 +279,10 @@ def fake_runtime(monkeypatch: pytest.MonkeyPatch) -> list[FakeInferenceSession]:
   setattr(fake_onnxruntime, "InferenceSession", FakeInferenceSession)
 
   monkeypatch.setitem(sys.modules, "onnxruntime", fake_onnxruntime)
-  monkeypatch.setattr(model_module, "IS_MACOS", False)
   monkeypatch.setattr(model_module, "SimpleTokenizer", FakeTokenizer)
-  monkeypatch.setattr(model_module, "_download_tokenizer_vocab", lambda: "/models/tokenizer.gz")
-  monkeypatch.setattr(model_module, "_download_onnx_model", _fake_download_onnx_model)
+  monkeypatch.setattr(model_download_module, "download_tokenizer_vocab", lambda: "/models/tokenizer.gz")
+  monkeypatch.setattr(model_download_module, "download_textual_model", lambda: "/models/textual.onnx")
+  monkeypatch.setattr(model_download_module, "download_visual_query_model", lambda: "/models/visual.onnx")
   monkeypatch.setattr(model_module, "preprocess", _fake_preprocess)
 
   return FakeInferenceSession.created
@@ -307,8 +325,9 @@ def test_uses_dedicated_model_cache_dir_when_configured(monkeypatch: pytest.Monk
 
     monkeypatch.setattr("huggingface_hub.snapshot_download", fake_snapshot_download)
 
-    download_onnx_model = getattr(model_module, "_download_onnx_model")
-    assert download_onnx_model("visual.onnx") == str(Path(tmp_datadir) / "ViT-B-32-256-datacomp_s34b_b86k/visual.onnx")
+    assert model_download_module.download_visual_query_model() == str(
+      Path(tmp_datadir) / "ViT-B-32-256-datacomp_s34b_b86k/visual.onnx"
+    )
     assert cache_dir.exists()
     assert calls == [
       {
@@ -377,18 +396,15 @@ def test_compute_image_features_uses_separate_visual_session_for_indexing_on_mac
   monkeypatch.setitem(sys.modules, "onnxruntime", fake_onnxruntime)
   monkeypatch.setitem(sys.modules, "coremltools", fake_coremltools)
   monkeypatch.setitem(sys.modules, "coremltools.models", fake_coremltools_models)
-  monkeypatch.setattr(model_module, "IS_MACOS", True)
+  monkeypatch.setattr(model_download_module, "IS_MACOS", True)
   monkeypatch.delenv("RCLIP_USE_ONNX_ON_MACOS", raising=False)
-  monkeypatch.setattr(model_module, "_download_onnx_model", _fake_download_onnx_model)
-
-  def fake_download_coreml_model(dirname: str) -> str:
-    return f"/models/{dirname}"
+  monkeypatch.setattr(model_download_module, "download_visual_query_model", lambda: "/models/visual.onnx")
 
   def fake_ensure_compiled_coreml_model(path: str) -> str:
     return f"{Path(path).with_suffix('')}.mlmodelc"
 
-  monkeypatch.setattr(model_module, "_download_coreml_model", fake_download_coreml_model)
-  monkeypatch.setattr(model_module, "ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
+  monkeypatch.setattr(model_download_module, "download_visual_index_model_package", lambda: "/models/visual.mlpackage")
+  monkeypatch.setattr(model_download_module, "ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
   monkeypatch.setattr(model_module, "preprocess", _fake_preprocess)
 
   model = Model()

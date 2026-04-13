@@ -2,155 +2,41 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 import os
 import re
-import shutil
-from typing import TYPE_CHECKING, Callable, List, Optional, Tuple, Union, cast
+from typing import TYPE_CHECKING, List, Optional, Tuple, cast
 
 import numpy as np
 import numpy.typing as npt
 from PIL import Image, UnidentifiedImageError
 
-from rclip.const import IS_MACOS
+from rclip import model_download
 from rclip.utils import helpers
 from rclip.utils.preprocess import preprocess
 from rclip.utils.tokenizer import SimpleTokenizer
 
 logging.getLogger("coremltools").setLevel(logging.ERROR)
-logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
 
 if TYPE_CHECKING:
   import coremltools as ct
   import onnxruntime as ort
 
-  _SessionType = Union[ort.InferenceSession, ct.models.MLModel, ct.models.CompiledMLModel]
+  _SessionType = ort.InferenceSession | ct.models.MLModel | ct.models.CompiledMLModel
 
 QUERY_WITH_MULTIPLIER_RE = re.compile(r"^(?P<multiplier>(\d+(\.\d+)?|\.\d+|\d+\.)):(?P<query>.+)$")
 QueryWithMultiplier = Tuple[float, str]
 FeatureVector = npt.NDArray[np.float32]
 
-HF_REPO_ID = "yurijmikhalevich/rclip-models"
-MODEL_SUBDIR = "ViT-B-32-256-datacomp_s34b_b86k"
-VISUAL_ONNX = "visual.onnx"
-TEXTUAL_ONNX = "textual.onnx"
-VISUAL_COREML = "visual.mlpackage"
-TOKENIZER_VOCAB = "tokenizer/bpe_simple_vocab_16e6.txt.gz"
-USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR = "RCLIP_USE_ONNX_ON_MACOS"
-RUNTIME_ONNX = "onnx"
-RUNTIME_COREML = "coreml"
-COREML_VISUAL_BATCH_SIZE = 8
-
-
-def get_model_dir() -> str:
-  return str(helpers.get_app_datadir())
-
-
-def _get_model_cache_dir() -> Optional[str]:
-  model_cache_dir = helpers.get_model_cache_dir()
-  return str(model_cache_dir) if model_cache_dir else None
-
-
-def _download_onnx_model(filename: str, tqdm_class: Optional[type] = None) -> str:
-  model_dir = get_model_dir()
-  expected_path = os.path.join(model_dir, MODEL_SUBDIR, filename)
-  if os.path.isfile(expected_path):
-    return expected_path
-
-  from huggingface_hub import snapshot_download
-
-  os.makedirs(model_dir, exist_ok=True)
-  kwargs = {}
-  if tqdm_class is not None:
-    kwargs["tqdm_class"] = tqdm_class
-
-  path = snapshot_download(
-    repo_id=HF_REPO_ID,
-    allow_patterns=f"{MODEL_SUBDIR}/{filename}",
-    cache_dir=_get_model_cache_dir(),
-    local_dir=model_dir,
-    **kwargs,
-  )
-  return os.path.join(path, MODEL_SUBDIR, filename)
-
-
-def _download_tokenizer_vocab(tqdm_class: Optional[type] = None) -> str:
-  model_dir = get_model_dir()
-  expected_path = os.path.join(model_dir, TOKENIZER_VOCAB)
-  if os.path.isfile(expected_path):
-    return expected_path
-
-  from huggingface_hub import hf_hub_download
-
-  kwargs = {}
-  if tqdm_class is not None:
-    kwargs["tqdm_class"] = tqdm_class
-
-  return hf_hub_download(
-    repo_id=HF_REPO_ID,
-    filename=TOKENIZER_VOCAB,
-    cache_dir=_get_model_cache_dir(),
-    local_dir=model_dir,
-    **kwargs,
-  )
-
-
-def _download_coreml_model(dirname: str, tqdm_class: Optional[type] = None) -> str:
-  model_dir = get_model_dir()
-  expected_path = os.path.join(model_dir, MODEL_SUBDIR, dirname)
-  if os.path.isdir(expected_path):
-    return expected_path
-
-  from huggingface_hub import snapshot_download
-
-  # CoreML compilation fails on the symlinked Hugging Face snapshot cache, so
-  # materialize the package into the app data directory first.
-  os.makedirs(model_dir, exist_ok=True)
-  kwargs = {}
-  if tqdm_class is not None:
-    kwargs["tqdm_class"] = tqdm_class
-
-  path = snapshot_download(
-    repo_id=HF_REPO_ID,
-    allow_patterns=f"{MODEL_SUBDIR}/{dirname}/**",
-    cache_dir=_get_model_cache_dir(),
-    local_dir=model_dir,
-    **kwargs,
-  )
-  package_path = os.path.join(path, MODEL_SUBDIR, dirname)
-  ensure_compiled_coreml_model(package_path)
-  return package_path
-
-
-def _get_compiled_coreml_model_path(package_path: str) -> str:
-  base_path = os.path.splitext(package_path)[0]
-  return f"{base_path}.mlmodelc"
-
-
-def _compile_coreml_model(package_path: str, *, force: bool = False) -> str:
-  import coremltools as ct
-
-  compiled_path = _get_compiled_coreml_model_path(package_path)
-  if os.path.isdir(compiled_path):
-    if not force:
-      return compiled_path
-    shutil.rmtree(compiled_path)
-
-  return ct.models.utils.compile_model(package_path, compiled_path)
-
-
-def ensure_compiled_coreml_model(package_path: str) -> str:
-  compiled_path = _get_compiled_coreml_model_path(package_path)
-  if os.path.isdir(compiled_path):
-    return compiled_path
-  return _compile_coreml_model(package_path)
-
-
-def _get_runtime(*, is_visual: bool, for_indexing: bool = False) -> str:
-  if not IS_MACOS:
-    return RUNTIME_ONNX
-  if os.getenv(USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR):
-    return RUNTIME_ONNX
-  if is_visual and for_indexing:
-    return RUNTIME_COREML
-  return RUNTIME_ONNX
+HF_REPO_ID = model_download.HF_REPO_ID
+MODEL_SUBDIR = model_download.MODEL_SUBDIR
+VISUAL_ONNX = model_download.VISUAL_ONNX
+TEXTUAL_ONNX = model_download.TEXTUAL_ONNX
+VISUAL_COREML = model_download.VISUAL_COREML
+TOKENIZER_VOCAB = model_download.TOKENIZER_VOCAB
+USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR = model_download.USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR
+RUNTIME_ONNX = model_download.RUNTIME_ONNX
+RUNTIME_COREML = model_download.RUNTIME_COREML
+COREML_VISUAL_BATCH_SIZE = model_download.COREML_VISUAL_BATCH_SIZE
+get_model_dir = model_download.get_model_dir
+ensure_compiled_coreml_model = model_download.ensure_compiled_coreml_model
 
 
 class Model:
@@ -165,118 +51,23 @@ class Model:
     self._preprocess_workers = max(1, min(8, os.cpu_count() or 1))
 
   def ensure_downloaded(self) -> None:
-    model_dir = get_model_dir()
-
-    to_download: List[Tuple[str, Tuple[str, ...], Callable[[Optional[type]], str]]] = []
-    model_files = [
-      ("visual query model", VISUAL_ONNX, RUNTIME_ONNX),
-      ("textual model", TEXTUAL_ONNX, RUNTIME_ONNX),
-    ]
-    if _get_runtime(is_visual=True, for_indexing=True) == RUNTIME_COREML:
-      model_files.append(("visual indexing model", VISUAL_COREML, RUNTIME_COREML))
-
-    for label, filename, runtime in model_files:
-      use_coreml = runtime == RUNTIME_COREML
-      path_prefix_suffix = "/" if use_coreml else ""
-      path_exists = os.path.isdir if use_coreml else os.path.isfile
-      download_model = _download_coreml_model if use_coreml else _download_onnx_model
-      candidate_filenames = (filename,)
-      existing_path = None
-      candidate_path = os.path.join(model_dir, MODEL_SUBDIR, filename)
-      if path_exists(candidate_path):
-        existing_path = candidate_path
-      if existing_path is not None:
-        if use_coreml:
-          ensure_compiled_coreml_model(existing_path)
-        continue
-      to_download.append(
-        (
-          label,
-          tuple(f"{MODEL_SUBDIR}/{candidate}{path_prefix_suffix}" for candidate in candidate_filenames),
-          lambda tqdm_class, filename=filename, download_model=download_model: download_model(
-            filename, tqdm_class=tqdm_class
-          ),
-        )
-      )
-
-    if not os.path.isfile(os.path.join(model_dir, TOKENIZER_VOCAB)):
-      to_download.append(
-        (
-          "tokenizer",
-          (TOKENIZER_VOCAB,),
-          lambda tqdm_class: _download_tokenizer_vocab(tqdm_class=tqdm_class),
-        )
-      )
-
-    if not to_download:
-      return
-
-    from huggingface_hub import HfApi
-    from tqdm import tqdm as tqdm_cls
-
-    from rclip.utils.download_progress import AggregatedProgressBar
-
-    # Fetch file sizes so the progress bar total is known from the start.
-    repo_info = HfApi().repo_info(HF_REPO_ID, files_metadata=True)
-    size_by_file = {repo_file.rfilename: repo_file.size or 0 for repo_file in (repo_info.siblings or [])}
-
-    selected_prefixes = []
-    for _download_label, prefix_group, _download_function in to_download:
-      selected_prefix = prefix_group[0]
-      for prefix in prefix_group:
-        if any(path.startswith(prefix) for path in size_by_file):
-          selected_prefix = prefix
-          break
-      selected_prefixes.append(selected_prefix)
-
-    total_bytes = sum(
-      size for path, size in size_by_file.items() if any(path.startswith(prefix) for prefix in selected_prefixes)
-    )
-
-    shared_bar = tqdm_cls(total=total_bytes, desc="Downloading model", unit="B", unit_scale=True)
-    AggregatedProgressBar.shared_bar = shared_bar
-    shared_bar.set_description("Downloading the model")
-    try:
-      for _download_label, _prefix_group, download_function in to_download:
-        download_function(AggregatedProgressBar)
-    finally:
-      AggregatedProgressBar.shared_bar = None
-      shared_bar.close()
+    model_download.ensure_downloaded()
 
   @property
   def _tokenizer(self) -> SimpleTokenizer:
     if not self._tokenizer_var:
-      self._tokenizer_var = SimpleTokenizer(bpe_path=_download_tokenizer_vocab())
+      self._tokenizer_var = SimpleTokenizer(bpe_path=model_download.download_tokenizer_vocab())
     return self._tokenizer_var
-
-  def _load_session(self, onnx_filename: str, *, runtime: str, coreml_dirname: Optional[str] = None) -> "_SessionType":
-    if runtime == RUNTIME_COREML:
-      import coremltools as ct
-
-      assert coreml_dirname is not None
-      package_path = _download_coreml_model(coreml_dirname)
-      compiled_path = ensure_compiled_coreml_model(package_path)
-      try:
-        return ct.models.CompiledMLModel(compiled_path, compute_units=ct.ComputeUnit.ALL)
-      except Exception:
-        compiled_path = _compile_coreml_model(package_path, force=True)
-        return ct.models.CompiledMLModel(compiled_path, compute_units=ct.ComputeUnit.ALL)
-
-    import onnxruntime as ort
-
-    path = _download_onnx_model(onnx_filename)
-    return ort.InferenceSession(path, providers=["CPUExecutionProvider"])
 
   def _run_session(
     self,
     session: "_SessionType",
     batch: npt.NDArray[np.generic],
     *,
-    runtime: str,
     coreml_input_dtype: npt.DTypeLike | None = None,
     coreml_batch_size: int = 1,
   ) -> npt.NDArray[np.float32]:
-    if runtime == RUNTIME_COREML:
+    if hasattr(session, "predict"):
       from coremltools.models import CompiledMLModel, MLModel
 
       assert isinstance(session, (MLModel, CompiledMLModel))
@@ -304,31 +95,29 @@ class Model:
   @property
   def _session_text(self):
     if not self._session_text_var:
-      self._session_text_var = self._load_session(TEXTUAL_ONNX, runtime=RUNTIME_ONNX)
+      self._session_text_var = model_download.load_text_session()
     return self._session_text_var
 
   @property
   def _session_visual(self):
     if not self._session_visual_var:
-      self._session_visual_var = self._load_session(VISUAL_ONNX, runtime=RUNTIME_ONNX)
+      self._session_visual_var = model_download.load_visual_query_session()
     return self._session_visual_var
 
   @property
   def _session_visual_index(self):
-    runtime = _get_runtime(is_visual=True, for_indexing=True)
-    if runtime == RUNTIME_ONNX:
+    if not model_download.use_coreml_for_visual_index():
       return self._session_visual
     if not self._session_visual_index_var:
-      self._session_visual_index_var = self._load_session(VISUAL_ONNX, runtime=runtime, coreml_dirname=VISUAL_COREML)
+      self._session_visual_index_var = model_download.load_visual_index_session()
     return self._session_visual_index_var
 
   def _run_visual(self, batch: npt.NDArray[np.float32], *, for_indexing: bool = False) -> npt.NDArray[np.float32]:
-    runtime = _get_runtime(is_visual=True, for_indexing=for_indexing)
     session = self._session_visual_index if for_indexing else self._session_visual
-    return self._run_session(session, batch, runtime=runtime, coreml_batch_size=COREML_VISUAL_BATCH_SIZE)
+    return self._run_session(session, batch, coreml_batch_size=model_download.COREML_VISUAL_BATCH_SIZE)
 
   def _run_textual(self, tokens: npt.NDArray[np.int64]) -> npt.NDArray[np.float32]:
-    return self._run_session(self._session_text, tokens, runtime=RUNTIME_ONNX)
+    return self._run_session(self._session_text, tokens)
 
   def compute_image_features(self, images: List[Image.Image], *, for_indexing: bool = False) -> npt.NDArray[np.float32]:
     if len(images) < 2 or self._preprocess_workers == 1:
