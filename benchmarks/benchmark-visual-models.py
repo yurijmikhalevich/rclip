@@ -17,9 +17,10 @@ from rclip import db, model
 from rclip.utils.preprocess import preprocess
 
 FeatureBatch = npt.NDArray[np.float32]
+ClassIdBatch = npt.NDArray[np.str_]
 
 DEFAULT_DATASET_DIR = "/Users/yurij/datasets/imagenet_1k/sample5k"
-COREML_BATCH_SIZE = model.Model._COREML_VISUAL_BATCH_SIZE
+COREML_BATCH_SIZE = model.COREML_VISUAL_BATCH_SIZE
 
 
 def _normalize(features: FeatureBatch) -> FeatureBatch:
@@ -53,15 +54,15 @@ def _run_coreml_visual(session: ct.models.CompiledMLModel, batch: FeatureBatch) 
   return np.asarray(result["output"], dtype=np.float32)[:actual_size]
 
 
-def _compute_text_features(class_map: dict[str, str]) -> tuple[np.ndarray, FeatureBatch]:
+def _compute_text_features(class_map: dict[str, str]) -> tuple[ClassIdBatch, FeatureBatch]:
   model_instance = model.Model()
   ids, descriptions = zip(*class_map.items())
   text_features = model_instance.compute_text_features([f"photo of {description}" for description in descriptions])
-  return np.array(ids), text_features
+  return np.asarray(ids, dtype=np.str_), text_features
 
 
 def _compute_accuracy(
-  image_features: FeatureBatch, image_files: list[Path], class_ids: np.ndarray, text_features: FeatureBatch
+  image_features: FeatureBatch, image_files: list[Path], class_ids: ClassIdBatch, text_features: FeatureBatch
 ) -> tuple[float, float]:
   similarities = image_features @ text_features.T
   ordered_predicted_classes = np.argsort(similarities, axis=1)
@@ -72,9 +73,9 @@ def _compute_accuracy(
 
 
 def _compute_visual_features(image_files: list[Path]) -> tuple[dict[str, FeatureBatch], dict[str, float]]:
-  model_dir = Path(model._get_model_dir()) / "ViT-B-32-256-datacomp_s34b_b86k"
+  model_dir = Path(model.get_model_dir()) / "ViT-B-32-256-datacomp_s34b_b86k"
   onnx_path = model_dir / "visual.onnx"
-  coreml_compiled_path = model._ensure_compiled_coreml_model(str(model_dir / "visual.mlpackage"))
+  coreml_compiled_path = model.ensure_compiled_coreml_model(str(model_dir / "visual.mlpackage"))
 
   onnx_session = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
   coreml_session = ct.models.CompiledMLModel(coreml_compiled_path, compute_units=ct.ComputeUnit.ALL)

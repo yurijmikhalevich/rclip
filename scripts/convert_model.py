@@ -16,9 +16,9 @@ import shutil
 import warnings
 from contextlib import contextmanager
 from pathlib import Path
-from typing import cast
 
 import numpy as np
+import numpy.typing as npt
 import open_clip
 import torch
 
@@ -27,6 +27,7 @@ PRETRAINED = "datacomp_s34b_b86k"
 IMAGE_SIZE = 256
 CONTEXT_LENGTH = 77
 COREML_VISUAL_BATCH_SIZE = 8
+FeatureBatch = npt.NDArray[np.float32]
 
 
 @contextmanager
@@ -74,13 +75,13 @@ class _TextualWrapper(torch.nn.Module):
     return self.clip_model.encode_text(x)
 
 
-def _normalize_rows(features: np.ndarray) -> np.ndarray:
+def _normalize_rows(features: FeatureBatch) -> FeatureBatch:
   return features / np.linalg.norm(features, axis=-1, keepdims=True)
 
 
 def _assert_normalized_features_close(
-  reference: np.ndarray,
-  candidate: np.ndarray,
+  reference: FeatureBatch,
+  candidate: FeatureBatch,
   *,
   label: str,
   cosine_threshold: float,
@@ -164,10 +165,11 @@ def verify_onnx(model: open_clip.CLIP, visual_onnx_path: Path, textual_onnx_path
 
   dummy_image = torch.randn(2, 3, IMAGE_SIZE, IMAGE_SIZE)
   with torch.no_grad():
-    pt_visual = model.visual(dummy_image).numpy()
+    pt_visual = np.asarray(model.visual(dummy_image).numpy(), dtype=np.float32)
 
   visual_session = ort.InferenceSession(str(visual_onnx_path), providers=["CPUExecutionProvider"])
-  (onnx_visual,) = visual_session.run(None, {"input": dummy_image.numpy()})
+  (onnx_visual_raw,) = visual_session.run(None, {"input": dummy_image.numpy()})
+  onnx_visual = np.asarray(onnx_visual_raw, dtype=np.float32)
   visual_diff = np.max(np.abs(pt_visual - onnx_visual))
   print(f"  Visual max abs diff: {visual_diff:.2e}")
   assert visual_diff < 1e-4, f"Visual ONNX diverges too much: {visual_diff}"
@@ -180,10 +182,11 @@ def verify_onnx(model: open_clip.CLIP, visual_onnx_path: Path, textual_onnx_path
   dummy_text[1, 1] = 539
   dummy_text[1, 2] = 49407
   with torch.no_grad():
-    pt_text = model.encode_text(dummy_text).numpy()
+    pt_text = np.asarray(model.encode_text(dummy_text).numpy(), dtype=np.float32)
 
   textual_session = ort.InferenceSession(str(textual_onnx_path), providers=["CPUExecutionProvider"])
-  (onnx_text,) = textual_session.run(None, {"input": dummy_text.numpy()})
+  (onnx_text_raw,) = textual_session.run(None, {"input": dummy_text.numpy()})
+  onnx_text = np.asarray(onnx_text_raw, dtype=np.float32)
   text_diff = np.max(np.abs(pt_text - onnx_text))
   print(f"  Textual max abs diff: {text_diff:.2e}")
   assert text_diff < 1e-4, f"Textual ONNX diverges too much: {text_diff}"
@@ -205,7 +208,7 @@ def verify_coreml(
   rng = np.random.default_rng(0)
   dummy_image = rng.standard_normal((COREML_VISUAL_BATCH_SIZE, 3, IMAGE_SIZE, IMAGE_SIZE), dtype=np.float32)
   with torch.no_grad():
-    pt_visual = model.visual(torch.from_numpy(dummy_image)).numpy()
+    pt_visual = np.asarray(model.visual(torch.from_numpy(dummy_image)).numpy(), dtype=np.float32)
 
   ml_model = ct.models.MLModel(str(visual_coreml_path), compute_units=ct.ComputeUnit.ALL)
   result = ml_model.predict({"input": dummy_image})
@@ -229,7 +232,8 @@ def verify_coreml_matches_visual_onnx(visual_onnx_path: Path, visual_coreml_path
   dummy_image = rng.standard_normal((COREML_VISUAL_BATCH_SIZE, 3, IMAGE_SIZE, IMAGE_SIZE), dtype=np.float32)
 
   onnx_session = ort.InferenceSession(str(visual_onnx_path), providers=["CPUExecutionProvider"])
-  (onnx_visual,) = onnx_session.run(None, {"input": dummy_image})
+  (onnx_visual_raw,) = onnx_session.run(None, {"input": dummy_image})
+  onnx_visual = np.asarray(onnx_visual_raw, dtype=np.float32)
 
   ml_model = ct.models.MLModel(str(visual_coreml_path), compute_units=ct.ComputeUnit.ALL)
   result = ml_model.predict({"input": dummy_image})
@@ -277,7 +281,8 @@ def main() -> None:
 
   print(f"Loading {MODEL_NAME}/{PRETRAINED}...")
   clip_model, _, _ = open_clip.create_model_and_transforms(MODEL_NAME, pretrained=PRETRAINED)
-  model = cast(open_clip.CLIP, clip_model)
+  assert isinstance(clip_model, open_clip.CLIP)
+  model = clip_model
   model.eval()
 
   visual_onnx = model_dir / "visual.onnx"

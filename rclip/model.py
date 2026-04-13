@@ -36,6 +36,15 @@ _TOKENIZER_VOCAB = "tokenizer/bpe_simple_vocab_16e6.txt.gz"
 _USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR = "RCLIP_USE_ONNX_ON_MACOS"
 _RUNTIME_ONNX = "onnx"
 _RUNTIME_COREML = "coreml"
+COREML_VISUAL_BATCH_SIZE = 8
+
+
+def get_model_dir() -> str:
+  return _get_model_dir()
+
+
+def ensure_compiled_coreml_model(package_path: str) -> str:
+  return _ensure_compiled_coreml_model(package_path)
 
 
 def _get_model_dir() -> str:
@@ -154,7 +163,7 @@ def _get_runtime(*, is_visual: bool, for_indexing: bool = False) -> str:
 
 class Model:
   VECTOR_SIZE = 512
-  _COREML_VISUAL_BATCH_SIZE = 8
+  _COREML_VISUAL_BATCH_SIZE = COREML_VISUAL_BATCH_SIZE
 
   def __init__(self):
     self._session_text_var: Optional[_SessionType] = None
