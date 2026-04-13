@@ -25,19 +25,6 @@ QUERY_WITH_MULTIPLIER_RE = re.compile(r"^(?P<multiplier>(\d+(\.\d+)?|\.\d+|\d+\.
 QueryWithMultiplier = Tuple[float, str]
 FeatureVector = npt.NDArray[np.float32]
 
-HF_REPO_ID = model_download.HF_REPO_ID
-MODEL_SUBDIR = model_download.MODEL_SUBDIR
-VISUAL_ONNX = model_download.VISUAL_ONNX
-TEXTUAL_ONNX = model_download.TEXTUAL_ONNX
-VISUAL_COREML = model_download.VISUAL_COREML
-TOKENIZER_VOCAB = model_download.TOKENIZER_VOCAB
-USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR = model_download.USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR
-RUNTIME_ONNX = model_download.RUNTIME_ONNX
-RUNTIME_COREML = model_download.RUNTIME_COREML
-COREML_VISUAL_BATCH_SIZE = model_download.COREML_VISUAL_BATCH_SIZE
-get_model_dir = model_download.get_model_dir
-ensure_compiled_coreml_model = model_download.ensure_compiled_coreml_model
-
 
 class Model:
   VECTOR_SIZE = 512

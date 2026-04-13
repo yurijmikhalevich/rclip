@@ -15,19 +15,6 @@ from rclip.model import Model
 FeatureBatch = npt.NDArray[np.float32]
 TokenBatch = npt.NDArray[np.int64]
 
-LEGACY_MODEL_EXPORTS = [
-  "HF_REPO_ID",
-  "MODEL_SUBDIR",
-  "VISUAL_ONNX",
-  "TEXTUAL_ONNX",
-  "VISUAL_COREML",
-  "TOKENIZER_VOCAB",
-  "USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR",
-  "RUNTIME_ONNX",
-  "RUNTIME_COREML",
-  "COREML_VISUAL_BATCH_SIZE",
-]
-
 
 class FakeTokenizer:
   def __init__(self, bpe_path: str):
@@ -54,14 +41,6 @@ class FakeInferenceSession:
 
   def get_inputs(self) -> list[object]:
     return [types.SimpleNamespace(type="tensor(float)")]
-
-
-def test_model_module_reexports_legacy_download_api():
-  for name in LEGACY_MODEL_EXPORTS:
-    assert getattr(model_module, name) == getattr(model_download_module, name)
-
-  assert model_module.get_model_dir is model_download_module.get_model_dir
-  assert model_module.ensure_compiled_coreml_model is model_download_module.ensure_compiled_coreml_model
 
 
 def test_download_coreml_model_materializes_real_package(monkeypatch: pytest.MonkeyPatch):
