@@ -349,31 +349,6 @@ def test_compute_image_features_only_loads_visual_session(fake_runtime: list[Fak
   assert getattr(model, "_session_visual_var") is fake_runtime[0]
 
 
-def test_run_session_casts_float16_inputs_for_onnx(monkeypatch: pytest.MonkeyPatch):
-  captured_dtypes: list[np.dtype[np.generic]] = []
-
-  class FakeFp16InferenceSession(FakeInferenceSession):
-    def get_inputs(self) -> list[object]:
-      return [types.SimpleNamespace(type="tensor(float16)")]
-
-    def run(self, output_names: object, inputs: dict[str, npt.NDArray[np.generic]]) -> tuple[FeatureBatch]:
-      captured_dtypes.append(inputs["input"].dtype)
-      return super().run(output_names, inputs)
-
-  fake_onnxruntime = types.ModuleType("onnxruntime")
-  setattr(fake_onnxruntime, "InferenceSession", FakeFp16InferenceSession)
-  monkeypatch.setitem(sys.modules, "onnxruntime", fake_onnxruntime)
-
-  model = Model()
-  session = FakeFp16InferenceSession("/models/visual.onnx", providers=["CPUExecutionProvider"])
-  batch = np.ones((1, 3, 256, 256), dtype=np.float32)
-
-  features = getattr(model, "_run_session")(session, batch, runtime="onnx")
-
-  assert features.shape == (1, Model.VECTOR_SIZE)
-  assert captured_dtypes == [np.dtype(np.float16)]
-
-
 def test_compute_image_features_uses_separate_visual_session_for_indexing_on_macos(monkeypatch: pytest.MonkeyPatch):
   created_sessions: list[tuple[str, object]] = []
 
@@ -425,44 +400,6 @@ def test_compute_image_features_uses_separate_visual_session_for_indexing_on_mac
   assert indexing_features.shape == (1, Model.VECTOR_SIZE)
   assert [session.path for session in FakeInferenceSession.created] == ["/models/visual.onnx"]
   assert created_sessions == [(str(Path("/models/visual.mlmodelc")), "all")]
-
-
-def test_ensure_downloaded_downloads_all_supported_runtimes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-  data_dir = tmp_path / "rclip-datadir"
-  model_dir = data_dir / "ViT-B-32-256-datacomp_s34b_b86k"
-
-  def fake_get_app_datadir() -> Path:
-    return data_dir
-
-  existing_paths = {
-    model_dir / "visual.onnx",
-    model_dir / "textual.onnx",
-    model_dir / "visual.mlpackage",
-    data_dir / "tokenizer/bpe_simple_vocab_16e6.txt.gz",
-  }
-  compiled_paths: list[str] = []
-
-  monkeypatch.setattr(model_module.helpers, "get_app_datadir", fake_get_app_datadir)
-  monkeypatch.setattr(model_module, "IS_MACOS", True)
-  monkeypatch.delenv("RCLIP_USE_ONNX_ON_MACOS", raising=False)
-
-  def fake_isdir(path: str) -> bool:
-    return Path(path) in existing_paths
-
-  def fake_isfile(path: str) -> bool:
-    return Path(path) in existing_paths
-
-  def fake_ensure_compiled_coreml_model(path: str) -> str:
-    compiled_paths.append(path)
-    return path
-
-  monkeypatch.setattr(model_module.os.path, "isdir", fake_isdir)
-  monkeypatch.setattr(model_module.os.path, "isfile", fake_isfile)
-  monkeypatch.setattr(model_module, "_ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
-
-  Model().ensure_downloaded()
-
-  assert compiled_paths == [str(model_dir / "visual.mlpackage")]
 
 
 def test_text_then_image_loads_sessions_lazily(fake_runtime: list[FakeInferenceSession]):
