@@ -173,7 +173,7 @@ class Model:
     self._preprocess_executor_var: Optional[ThreadPoolExecutor] = None
     self._preprocess_workers = max(1, min(8, os.cpu_count() or 1))
 
-  def ensure_downloaded(self, *, for_indexing: bool = False) -> None:
+  def ensure_downloaded(self) -> None:
     model_dir = _get_model_dir()
 
     to_download: List[Tuple[str, Tuple[str, ...], Callable[[Optional[type]], str]]] = []
@@ -181,7 +181,7 @@ class Model:
       ("visual query model", _VISUAL_ONNX, _RUNTIME_ONNX),
       ("textual model", _TEXTUAL_ONNX, _RUNTIME_ONNX),
     ]
-    if _get_runtime(is_visual=True, for_indexing=for_indexing) == _RUNTIME_COREML:
+    if _get_runtime(is_visual=True, for_indexing=True) == _RUNTIME_COREML:
       model_files.append(("visual indexing model", _VISUAL_COREML, _RUNTIME_COREML))
 
     for label, filename, runtime in model_files:

@@ -152,7 +152,7 @@ def test_ensure_downloaded_compiles_existing_coreml_packages(monkeypatch: pytest
   monkeypatch.setattr(model_module.os.path, "isfile", fake_isfile)
   monkeypatch.setattr(model_module, "_ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
 
-  Model().ensure_downloaded(for_indexing=True)
+  Model().ensure_downloaded()
 
   assert compiled_paths == [str(model_dir / "visual.mlpackage")]
 
@@ -236,7 +236,7 @@ def test_ensure_downloaded_uses_matching_downloader_for_each_runtime(monkeypatch
 
   monkeypatch.setattr(model_module, "_download_tokenizer_vocab", fake_download_tokenizer_vocab)
 
-  Model().ensure_downloaded(for_indexing=True)
+  Model().ensure_downloaded()
 
   assert downloaded == [
     ("onnx", "visual.onnx"),
@@ -427,7 +427,7 @@ def test_compute_image_features_uses_separate_visual_session_for_indexing_on_mac
   assert created_sessions == [(str(Path("/models/visual.mlmodelc")), "all")]
 
 
-def test_ensure_downloaded_skips_coreml_without_indexing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_ensure_downloaded_downloads_all_supported_runtimes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
   data_dir = tmp_path / "rclip-datadir"
   model_dir = data_dir / "ViT-B-32-256-datacomp_s34b_b86k"
 
@@ -437,6 +437,7 @@ def test_ensure_downloaded_skips_coreml_without_indexing(monkeypatch: pytest.Mon
   existing_paths = {
     model_dir / "visual.onnx",
     model_dir / "textual.onnx",
+    model_dir / "visual.mlpackage",
     data_dir / "tokenizer/bpe_simple_vocab_16e6.txt.gz",
   }
   compiled_paths: list[str] = []
@@ -459,9 +460,9 @@ def test_ensure_downloaded_skips_coreml_without_indexing(monkeypatch: pytest.Mon
   monkeypatch.setattr(model_module.os.path, "isfile", fake_isfile)
   monkeypatch.setattr(model_module, "_ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
 
-  Model().ensure_downloaded(for_indexing=False)
+  Model().ensure_downloaded()
 
-  assert compiled_paths == []
+  assert compiled_paths == [str(model_dir / "visual.mlpackage")]
 
 
 def test_text_then_image_loads_sessions_lazily(fake_runtime: list[FakeInferenceSession]):

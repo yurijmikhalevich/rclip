@@ -224,7 +224,7 @@ def init_rclip(
 
   database = db.DB(db_path)
   model_instance = model.Model()
-  model_instance.ensure_downloaded(for_indexing=not no_indexing)
+  model_instance.ensure_downloaded()
   rclip = RClip(
     model_instance=model_instance,
     database=database,
