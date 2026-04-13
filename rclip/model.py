@@ -167,7 +167,7 @@ class Model:
   def ensure_downloaded(self, *, for_indexing: bool = False) -> None:
     model_dir = _get_model_dir()
 
-    to_download: List[Tuple[str, str, Callable[[Optional[type]], str]]] = []
+    to_download: List[Tuple[str, Tuple[str, ...], Callable[[Optional[type]], str]]] = []
     model_files = [
       ("visual query model", _VISUAL_ONNX, _RUNTIME_ONNX),
       ("textual model", _TEXTUAL_ONNX, _RUNTIME_ONNX),
@@ -180,15 +180,19 @@ class Model:
       path_prefix_suffix = "/" if use_coreml else ""
       path_exists = os.path.isdir if use_coreml else os.path.isfile
       download_model = _download_coreml_model if use_coreml else _download_onnx_model
-      expected_path = os.path.join(model_dir, _MODEL_SUBDIR, filename)
-      if path_exists(expected_path):
+      candidate_filenames = (filename,)
+      existing_path = None
+      candidate_path = os.path.join(model_dir, _MODEL_SUBDIR, filename)
+      if path_exists(candidate_path):
+        existing_path = candidate_path
+      if existing_path is not None:
         if use_coreml:
-          _ensure_compiled_coreml_model(expected_path)
+          _ensure_compiled_coreml_model(existing_path)
         continue
       to_download.append(
         (
           label,
-          f"{_MODEL_SUBDIR}/{filename}{path_prefix_suffix}",
+          tuple(f"{_MODEL_SUBDIR}/{candidate}{path_prefix_suffix}" for candidate in candidate_filenames),
           lambda tc, filename=filename, download_model=download_model: download_model(filename, tqdm_class=tc),
         )
       )
@@ -197,7 +201,7 @@ class Model:
       to_download.append(
         (
           "tokenizer",
-          _TOKENIZER_VOCAB,
+          (_TOKENIZER_VOCAB,),
           lambda tc: _download_tokenizer_vocab(tqdm_class=tc),
         )
       )
@@ -213,8 +217,17 @@ class Model:
     # Fetch file sizes so the progress bar total is known from the start.
     repo_info = HfApi().repo_info(_HF_REPO_ID, files_metadata=True)
     size_by_file = {f.rfilename: f.size or 0 for f in (repo_info.siblings or [])}
-    prefixes = [prefix for _, prefix, _ in to_download]
-    total_bytes = sum(size for path, size in size_by_file.items() if any(path.startswith(p) for p in prefixes))
+
+    selected_prefixes = []
+    for _, prefix_group, _ in to_download:
+      selected_prefix = prefix_group[0]
+      for prefix in prefix_group:
+        if any(path.startswith(prefix) for path in size_by_file):
+          selected_prefix = prefix
+          break
+      selected_prefixes.append(selected_prefix)
+
+    total_bytes = sum(size for path, size in size_by_file.items() if any(path.startswith(p) for p in selected_prefixes))
 
     shared_bar = tqdm_cls(total=total_bytes, desc="Downloading model", unit="B", unit_scale=True)
     AggregatedProgressBar.shared_bar = shared_bar

@@ -130,8 +130,6 @@ def test_ensure_downloaded_compiles_existing_coreml_packages(monkeypatch: pytest
   existing_paths = {
     model_dir / "visual.onnx",
     model_dir / "textual.onnx",
-    model_dir / "visual.fp32.onnx",
-    model_dir / "textual.fp32.onnx",
     model_dir / "visual.mlpackage",
     data_dir / "tokenizer/bpe_simple_vocab_16e6.txt.gz",
   }
@@ -191,8 +189,6 @@ def test_ensure_downloaded_uses_matching_downloader_for_each_runtime(monkeypatch
         siblings=[
           FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/visual.onnx"),
           FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/textual.onnx"),
-          FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/visual.fp32.onnx"),
-          FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/textual.fp32.onnx"),
           FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/visual.mlpackage/Manifest.json"),
           FakeRepoFile("tokenizer/bpe_simple_vocab_16e6.txt.gz"),
         ]
@@ -303,6 +299,10 @@ def test_uses_dedicated_model_cache_dir_when_configured(monkeypatch: pytest.Monk
     ) -> str:
       calls.append({"allow_patterns": allow_patterns, "cache_dir": cache_dir, "local_dir": local_dir})
       assert cache_dir == str(Path(tmp_model_cache_dir))
+      if allow_patterns == "ViT-B-32-256-datacomp_s34b_b86k/visual.onnx":
+        downloaded_path = Path(local_dir) / "ViT-B-32-256-datacomp_s34b_b86k/visual.onnx"
+        downloaded_path.parent.mkdir(parents=True, exist_ok=True)
+        downloaded_path.touch()
       return tmp_datadir
 
     monkeypatch.setattr("huggingface_hub.snapshot_download", fake_snapshot_download)
@@ -437,8 +437,6 @@ def test_ensure_downloaded_skips_coreml_without_indexing(monkeypatch: pytest.Mon
   existing_paths = {
     model_dir / "visual.onnx",
     model_dir / "textual.onnx",
-    model_dir / "visual.fp32.onnx",
-    model_dir / "textual.fp32.onnx",
     data_dir / "tokenizer/bpe_simple_vocab_16e6.txt.gz",
   }
   compiled_paths: list[str] = []
