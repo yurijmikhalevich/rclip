@@ -28,4 +28,4 @@ apps:
 parts:
   rclip:
     plugin: poetry
-    source: ./snap/local/rclip-2.1.7a0.tar.gz
+    source: .
