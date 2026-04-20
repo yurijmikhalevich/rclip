@@ -36,6 +36,13 @@ def _filter_onnxruntime_stderr(stderr_output: str) -> str:
   return "".join(filtered_lines)
 
 
+def _flush_stderr() -> None:
+  try:
+    sys.stderr.flush()
+  except (AttributeError, OSError, ValueError):
+    pass
+
+
 def _import_onnxruntime():
   if sys.platform != "linux" or "onnxruntime" in sys.modules:
     return importlib.import_module("onnxruntime")
@@ -48,11 +55,14 @@ def _import_onnxruntime():
   with tempfile.TemporaryFile(mode="w+b") as stderr_capture:
     saved_stderr_fd = os.dup(stderr_fd)
     try:
+      _flush_stderr()
       os.dup2(stderr_capture.fileno(), stderr_fd)
       ort = importlib.import_module("onnxruntime")
     finally:
+      _flush_stderr()
       os.dup2(saved_stderr_fd, stderr_fd)
       os.close(saved_stderr_fd)
+      _flush_stderr()
 
     stderr_capture.seek(0)
     filtered_stderr = _filter_onnxruntime_stderr(stderr_capture.read().decode(errors="replace"))

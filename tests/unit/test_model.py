@@ -160,6 +160,28 @@ def test_filter_onnxruntime_stderr_only_removes_gpu_discovery_warning():
   )
 
 
+def test_import_onnxruntime_flushes_stderr_around_fd_swap(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+  flush_calls: list[str] = []
+  fake_onnxruntime = object()
+  import_onnxruntime = cast(Callable[[], object], getattr(model_download_module, "_import_onnxruntime"))
+
+  def fake_import_module(name: str) -> object:
+    assert name == "onnxruntime"
+    return fake_onnxruntime
+
+  stderr_path = tmp_path / "stderr.txt"
+  with stderr_path.open("w+") as stderr_file:
+    monkeypatch.setattr(model_download_module.sys, "platform", "linux")
+    monkeypatch.setattr(model_download_module.sys, "stderr", stderr_file)
+    monkeypatch.delitem(model_download_module.sys.modules, "onnxruntime", raising=False)
+    monkeypatch.setattr(model_download_module, "_flush_stderr", lambda: flush_calls.append("flush"))
+    monkeypatch.setattr(model_download_module.importlib, "import_module", fake_import_module)
+
+    assert import_onnxruntime() is fake_onnxruntime
+
+  assert flush_calls == ["flush", "flush", "flush"]
+
+
 def test_ensure_downloaded_compiles_existing_coreml_packages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
   data_dir = tmp_path / "rclip-datadir"
   model_dir = data_dir / "ViT-B-32-256-datacomp_s34b_b86k"

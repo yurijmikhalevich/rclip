@@ -14,6 +14,9 @@ import sys
 env = jinja2.Environment(trim_blocks=True, lstrip_blocks=True)
 
 REQUEST_TIMEOUT = 60  # seconds
+TARGET_PYTHON_VERSION = "3.13"
+TARGET_PYTHON_FULL_VERSION = f"{TARGET_PYTHON_VERSION}.0"
+TARGET_PYTHON_TAG = f"cp{TARGET_PYTHON_VERSION.replace('.', '')}"
 
 
 TEMPLATE = env.from_string("""class Rclip < Formula
@@ -35,7 +38,7 @@ TEMPLATE = env.from_string("""class Rclip < Formula
   depends_on "libyaml"
   depends_on "numpy"
   depends_on "pillow"
-  depends_on "python@3.13"
+  depends_on "python@{{ target_python_version }}"
 
 {{ resources }}
 
@@ -52,16 +55,16 @@ TEMPLATE = env.from_string("""class Rclip < Formula
       wheel = Dir["*.whl"].first
       valid_wheel = wheel.sub(/^.*--/, "")
       File.rename(wheel, valid_wheel)
-      system "python3.13", "-m", "pip", "--python=#{libexec}/bin/python", "install", "--no-deps", valid_wheel
+      system "python{{ target_python_version }}", "-m", "pip", "--python=#{libexec}/bin/python", "install", "--no-deps", valid_wheel
     end
 {% if pkg.patchelf %}
 
     if OS.linux?
 {% for path, rpath in pkg.patchelf.items() %}
-      targets = Dir[libexec/"lib/python3.13/site-packages/{{ path }}"]
+      targets = Dir[libexec/"lib/python{{ target_python_version }}/site-packages/{{ path }}"]
       if targets.empty?
         odie "Failed to find any files to patch with patchelf for pattern: " \\
-             "#{libexec}/lib/python3.13/site-packages/{{ path }}"
+             "#{libexec}/lib/python{{ target_python_version }}/site-packages/{{ path }}"
       end
       targets.each do |so|
         next if File.symlink?(so)
@@ -127,14 +130,14 @@ class WheelPackage(_WheelPackageRequired, total=False):
 WHEEL_PACKAGES: list[WheelPackage] = [
   {
     "name": "rawpy",
-    "tag": "cp313",
+    "tag": TARGET_PYTHON_TAG,
     "patchelf": {
       "rawpy/_rawpy*.so": "$ORIGIN/../rawpy.libs",
       "rawpy.libs/*.so*": "$ORIGIN",
     },
   },
   {"name": "hf-xet", "tag": "abi3"},
-  {"name": "onnxruntime", "tag": "cp313"},
+  {"name": "onnxruntime", "tag": TARGET_PYTHON_TAG},
 ]
 
 RESOURCE_URL_OVERRIDES = {}
@@ -152,6 +155,15 @@ def get_marker_environment(overrides: Mapping[str, str]) -> MarkerEnvironment:
   for key, value in default_environment().items():
     if isinstance(value, str):
       environment[key] = value
+  environment.update(
+    {
+      "python_version": TARGET_PYTHON_VERSION,
+      "python_full_version": TARGET_PYTHON_FULL_VERSION,
+      "platform_python_implementation": "CPython",
+      "implementation_name": "cpython",
+      "implementation_version": TARGET_PYTHON_FULL_VERSION,
+    }
+  )
   environment.update(overrides)
   return environment
 
@@ -394,6 +406,7 @@ def main():
     TEMPLATE.render(
       package=rclip_metadata,
       resources=resources,
+      target_python_version=TARGET_PYTHON_VERSION,
       wheel_resources=wheel_resources,
       wheel_names=wheel_names,
       wheel_packages=WHEEL_PACKAGES,
