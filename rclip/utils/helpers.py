@@ -191,30 +191,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
     default=False,
     help="enables support for RAW images (only ARW and CR2 are supported)",
   )
-  if IS_MACOS:
-    if is_mps_available():
-      parser.add_argument(
-        "--device", "-d", default="mps", choices=["cpu", "mps"], help="device to run on; default: mps"
-      )
   return parser
-
-
-def is_mps_available() -> bool:
-  if not IS_MACOS:
-    return False
-  import torch.backends.mps
-
-  if not torch.backends.mps.is_available():
-    return False
-  try:
-    import torch
-
-    # on some systems, specifically in GHA
-    # torch.backends.mps.is_available() returns True, but using the mps backend fails
-    torch.ones(1, device="mps")
-    return True
-  except RuntimeError:
-    return False
 
 
 # See: https://meta.wikimedia.org/wiki/User-Agent_policy

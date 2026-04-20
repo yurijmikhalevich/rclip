@@ -1,6 +1,7 @@
 import os.path
 import pathlib
 import sqlite3
+import sys
 from typing import Any, Optional, TypedDict, Union
 
 
@@ -20,7 +21,7 @@ class Image(NewImage):
 
 
 class DB:
-  VERSION = 2
+  VERSION = 3
 
   def __init__(self, filename: Union[str, pathlib.Path]):
     self._con = sqlite3.connect(filename)
@@ -58,9 +59,16 @@ class DB:
         "found index version newer than this version of rclip can support;"
         " please, update rclip: https://github.com/yurijmikhalevich/rclip/blob/main/README.md#installation",
       )
+    if db_version < 3 and self._has_cached_vectors():
+      self._confirm_vector_cache_deletion()
     if db_version < 2:
       self._con.execute("ALTER TABLE images ADD COLUMN indexing BOOLEAN")
       db_version = 2
+    if db_version < 3:
+      # Model changed from ViT-B-32-quickgelu/openai to ViT-B-32-256/datacomp_s34b_b86k;
+      # all embeddings must be recomputed.
+      self._con.execute("DELETE FROM images")
+      db_version = 3
     if db_version < self.VERSION:
       raise Exception("migration to a newer index version isn't implemented")
     if db_version_entry:
@@ -68,6 +76,27 @@ class DB:
     else:
       self._con.execute("INSERT INTO db_version(version) VALUES (?)", (self.VERSION,))
     self._con.commit()
+
+  def _has_cached_vectors(self) -> bool:
+    return self._con.execute("SELECT 1 FROM images LIMIT 1").fetchone() is not None
+
+  def _confirm_vector_cache_deletion(self) -> None:
+    print(
+      "rclip v3 is incompatible with the existing vector cache; the cached vectors will be deleted and rebuilt.",
+      file=sys.stderr,
+    )
+    print("Delete the vector cache and continue? [y/N]: ", file=sys.stderr, end="", flush=True)
+    try:
+      answer = input()
+    except EOFError:
+      answer = ""
+
+    if answer.strip().lower() in {"y", "yes"}:
+      return
+
+    print("Aborting without changing the vector cache.", file=sys.stderr)
+    self._con.close()
+    raise SystemExit(0)
 
   def commit(self):
     self._con.commit()
