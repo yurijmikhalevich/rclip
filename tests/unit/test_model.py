@@ -2,6 +2,7 @@ from pathlib import Path
 import sys
 import tempfile
 import types
+from typing import Callable, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -24,12 +25,18 @@ class FakeTokenizer:
     return np.arange(len(text) * 4, dtype=np.int64).reshape(len(text), 4)
 
 
+class FakeSessionOptions:
+  def __init__(self):
+    self.intra_op_num_threads: int | None = None
+
+
 class FakeInferenceSession:
   created: list["FakeInferenceSession"] = []
 
-  def __init__(self, path: str, providers: list[str]):
+  def __init__(self, path: str, sess_options: FakeSessionOptions | None = None, providers: list[str] | None = None):
     self.path = path
-    self.providers = providers
+    self.sess_options = sess_options
+    self.providers = providers or []
     type(self).created.append(self)
 
   def run(self, _output_names: object, inputs: dict[str, npt.NDArray[np.generic]]) -> tuple[FeatureBatch]:
@@ -112,6 +119,47 @@ def test_load_session_uses_compiled_coreml_model(monkeypatch: pytest.MonkeyPatch
   assert compiled_model_calls == [(str(Path("/models/visual.mlmodelc")), "all")]
 
 
+def test_load_onnx_session_sets_explicit_thread_count(monkeypatch: pytest.MonkeyPatch):
+  fake_onnxruntime = types.ModuleType("onnxruntime")
+  setattr(fake_onnxruntime, "InferenceSession", FakeInferenceSession)
+  setattr(fake_onnxruntime, "SessionOptions", FakeSessionOptions)
+
+  def fake_sched_getaffinity(_pid: int) -> set[int]:
+    return {1, 3, 5}
+
+  monkeypatch.setitem(sys.modules, "onnxruntime", fake_onnxruntime)
+  monkeypatch.setattr(model_download_module.os, "sched_getaffinity", fake_sched_getaffinity, raising=False)
+  monkeypatch.setattr(model_download_module, "download_textual_model", lambda: "/models/textual.onnx")
+
+  session = model_download_module.load_text_session()
+
+  assert isinstance(session, FakeInferenceSession)
+  assert session.path == "/models/textual.onnx"
+  assert session.providers == ["CPUExecutionProvider"]
+  assert session.sess_options is not None
+  assert session.sess_options.intra_op_num_threads == 3
+
+
+def test_filter_onnxruntime_stderr_only_removes_gpu_discovery_warning():
+  stderr_output = (
+    "kept before\n"
+    "2026-04-20 09:15:26.311896006 [W:onnxruntime:Default, device_discovery.cc:325 DiscoverDevicesForPlatform] "
+    "GPU device discovery failed: device_discovery.cc:92 ReadFileContents Failed to open file: "
+    '"/sys/class/drm/card0/device/vendor"\n'
+    "2026-04-20 09:15:26.328306440 [E:onnxruntime:Default, env.cc:227 ThreadMain] pthread_setaffinity_np failed\n"
+  )
+
+  filter_onnxruntime_stderr = cast(
+    Callable[[str], str],
+    getattr(model_download_module, "_filter_onnxruntime_stderr"),
+  )
+
+  assert filter_onnxruntime_stderr(stderr_output) == (
+    "kept before\n"
+    "2026-04-20 09:15:26.328306440 [E:onnxruntime:Default, env.cc:227 ThreadMain] pthread_setaffinity_np failed\n"
+  )
+
+
 def test_ensure_downloaded_compiles_existing_coreml_packages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
   data_dir = tmp_path / "rclip-datadir"
   model_dir = data_dir / "ViT-B-32-256-datacomp_s34b_b86k"
@@ -143,6 +191,7 @@ def test_ensure_downloaded_compiles_existing_coreml_packages(monkeypatch: pytest
   monkeypatch.setattr(model_download_module.os.path, "isdir", fake_isdir)
   monkeypatch.setattr(model_download_module.os.path, "isfile", fake_isfile)
   monkeypatch.setattr(model_download_module, "ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
+  monkeypatch.setattr(model_download_module, "_import_onnxruntime", lambda: None)
 
   Model().ensure_downloaded()
 
@@ -227,6 +276,7 @@ def test_ensure_downloaded_uses_matching_downloader_for_each_runtime(monkeypatch
   monkeypatch.setattr(model_download_module, "download_visual_query_model", fake_download_visual_query_model)
   monkeypatch.setattr(model_download_module, "download_textual_model", fake_download_textual_model)
   monkeypatch.setattr(model_download_module, "download_visual_index_model_package", fake_download_coreml_model)
+  monkeypatch.setattr(model_download_module, "_import_onnxruntime", lambda: None)
 
   def fake_download_tokenizer_vocab(tqdm_class: type | None = None) -> str:
     return "/models/tokenizer.gz"
@@ -256,6 +306,7 @@ def fake_runtime(monkeypatch: pytest.MonkeyPatch) -> list[FakeInferenceSession]:
   FakeInferenceSession.created.clear()
   fake_onnxruntime = types.ModuleType("onnxruntime")
   setattr(fake_onnxruntime, "InferenceSession", FakeInferenceSession)
+  setattr(fake_onnxruntime, "SessionOptions", FakeSessionOptions)
 
   monkeypatch.setitem(sys.modules, "onnxruntime", fake_onnxruntime)
   monkeypatch.setattr(model_module, "SimpleTokenizer", FakeTokenizer)
@@ -371,6 +422,7 @@ def test_compute_image_features_uses_separate_visual_session_for_indexing_on_mac
   FakeInferenceSession.created.clear()
   fake_onnxruntime = types.ModuleType("onnxruntime")
   setattr(fake_onnxruntime, "InferenceSession", FakeInferenceSession)
+  setattr(fake_onnxruntime, "SessionOptions", FakeSessionOptions)
 
   monkeypatch.setitem(sys.modules, "onnxruntime", fake_onnxruntime)
   monkeypatch.setitem(sys.modules, "coremltools", fake_coremltools)

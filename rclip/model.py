@@ -101,10 +101,13 @@ class Model:
 
   def _run_visual(self, batch: npt.NDArray[np.float32], *, for_indexing: bool = False) -> npt.NDArray[np.float32]:
     session = self._session_visual_index if for_indexing else self._session_visual
+    assert session is not None
     return self._run_session(session, batch, coreml_batch_size=model_download.COREML_VISUAL_BATCH_SIZE)
 
   def _run_textual(self, tokens: npt.NDArray[np.int64]) -> npt.NDArray[np.float32]:
-    return self._run_session(self._session_text, tokens)
+    session = self._session_text
+    assert session is not None
+    return self._run_session(session, tokens)
 
   def compute_image_features(self, images: List[Image.Image], *, for_indexing: bool = False) -> npt.NDArray[np.float32]:
     if len(images) < 2 or self._preprocess_workers == 1:

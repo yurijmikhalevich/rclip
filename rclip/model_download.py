@@ -1,6 +1,10 @@
+import importlib
+import io
 import logging
 import os
 import shutil
+import sys
+import tempfile
 from typing import Callable, Optional
 
 from rclip.const import IS_MACOS
@@ -18,6 +22,48 @@ USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR = "RCLIP_USE_ONNX_ON_MACOS"
 RUNTIME_ONNX = "onnx"
 RUNTIME_COREML = "coreml"
 COREML_VISUAL_BATCH_SIZE = 8
+
+
+def _filter_onnxruntime_stderr(stderr_output: str) -> str:
+  filtered_lines = []
+  for line in stderr_output.splitlines(True):
+    if (
+      "[W:onnxruntime" in line
+      and "device_discovery.cc" in line
+      and "DiscoverDevicesForPlatform" in line
+      and "GPU device discovery failed" in line
+    ):
+      continue
+    filtered_lines.append(line)
+  return "".join(filtered_lines)
+
+
+def _import_onnxruntime():
+  if sys.platform != "linux" or "onnxruntime" in sys.modules:
+    return importlib.import_module("onnxruntime")
+
+  try:
+    stderr_fd = sys.stderr.fileno()
+  except (AttributeError, io.UnsupportedOperation):
+    return importlib.import_module("onnxruntime")
+
+  with tempfile.TemporaryFile(mode="w+b") as stderr_capture:
+    saved_stderr_fd = os.dup(stderr_fd)
+    try:
+      os.dup2(stderr_capture.fileno(), stderr_fd)
+      ort = importlib.import_module("onnxruntime")
+    finally:
+      os.dup2(saved_stderr_fd, stderr_fd)
+      os.close(saved_stderr_fd)
+
+    stderr_capture.seek(0)
+    filtered_stderr = _filter_onnxruntime_stderr(stderr_capture.read().decode(errors="replace"))
+
+  if filtered_stderr:
+    sys.stderr.write(filtered_stderr)
+    sys.stderr.flush()
+
+  return ort
 
 
 def get_model_dir() -> str:
@@ -181,6 +227,7 @@ def ensure_downloaded() -> None:
     to_download.append((TOKENIZER_VOCAB, lambda tqdm_class: download_tokenizer_vocab(tqdm_class=tqdm_class)))
 
   if not to_download:
+    _import_onnxruntime()
     return
 
   from huggingface_hub import HfApi
@@ -205,11 +252,23 @@ def ensure_downloaded() -> None:
     AggregatedProgressBar.shared_bar = None
     shared_bar.close()
 
+  _import_onnxruntime()
+
 
 def _load_onnx_session(model_path: str):
-  import onnxruntime as ort
+  ort = _import_onnxruntime()
 
-  return ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
+  session_options = ort.SessionOptions()
+  sched_getaffinity = getattr(os, "sched_getaffinity", None)
+  if sched_getaffinity is not None:
+    try:
+      session_options.intra_op_num_threads = max(1, len(sched_getaffinity(0)))
+    except OSError:
+      session_options.intra_op_num_threads = max(1, os.cpu_count() or 1)
+  else:
+    session_options.intra_op_num_threads = max(1, os.cpu_count() or 1)
+
+  return ort.InferenceSession(model_path, sess_options=session_options, providers=["CPUExecutionProvider"])
 
 
 def load_text_session():
