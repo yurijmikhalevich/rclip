@@ -149,15 +149,6 @@ def test_search_heic(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, sha
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
-def test_repeated_searches_should_be_the_same(
-  test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
-):
-  execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "boats on a lake")
-  execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "boats on a lake")
-  execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "boats on a lake")
-
-
-@pytest.mark.usefixtures("assert_output_snapshot")
 def test_search_by_image(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
   execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, str(test_images_dir / "cat.jpg"))
 

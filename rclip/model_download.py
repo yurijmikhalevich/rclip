@@ -19,8 +19,6 @@ TEXTUAL_ONNX = "textual.onnx"
 VISUAL_COREML = "visual.mlpackage"
 TOKENIZER_VOCAB = "tokenizer/bpe_simple_vocab_16e6.txt.gz"
 USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR = "RCLIP_USE_ONNX_ON_MACOS"
-RUNTIME_ONNX = "onnx"
-RUNTIME_COREML = "coreml"
 COREML_VISUAL_BATCH_SIZE = 8
 
 
@@ -66,17 +64,13 @@ def _import_onnxruntime():
   return ort
 
 
-def get_model_dir() -> str:
-  return str(helpers.get_app_datadir())
-
-
 def _get_model_cache_dir() -> Optional[str]:
   model_cache_dir = helpers.get_model_cache_dir()
   return str(model_cache_dir) if model_cache_dir else None
 
 
 def download_onnx_model(filename: str, tqdm_class: Optional[type] = None) -> str:
-  model_dir = get_model_dir()
+  model_dir = str(helpers.get_app_datadir())
   expected_path = os.path.join(model_dir, MODEL_SUBDIR, filename)
   if os.path.isfile(expected_path):
     return expected_path
@@ -107,7 +101,7 @@ def download_textual_model(tqdm_class: Optional[type] = None) -> str:
 
 
 def download_tokenizer_vocab(tqdm_class: Optional[type] = None) -> str:
-  model_dir = get_model_dir()
+  model_dir = str(helpers.get_app_datadir())
   expected_path = os.path.join(model_dir, TOKENIZER_VOCAB)
   if os.path.isfile(expected_path):
     return expected_path
@@ -128,7 +122,7 @@ def download_tokenizer_vocab(tqdm_class: Optional[type] = None) -> str:
 
 
 def download_coreml_model(dirname: str, tqdm_class: Optional[type] = None) -> str:
-  model_dir = get_model_dir()
+  model_dir = str(helpers.get_app_datadir())
   expected_path = os.path.join(model_dir, MODEL_SUBDIR, dirname)
   if os.path.isdir(expected_path):
     return expected_path
@@ -180,22 +174,12 @@ def ensure_compiled_coreml_model(package_path: str) -> str:
   return compile_coreml_model(package_path)
 
 
-def get_runtime(*, is_visual: bool, for_indexing: bool = False) -> str:
-  if not IS_MACOS:
-    return RUNTIME_ONNX
-  if os.getenv(USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR):
-    return RUNTIME_ONNX
-  if is_visual and for_indexing:
-    return RUNTIME_COREML
-  return RUNTIME_ONNX
-
-
 def use_coreml_for_visual_index() -> bool:
-  return get_runtime(is_visual=True, for_indexing=True) == RUNTIME_COREML
+  return IS_MACOS and not os.getenv(USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR)
 
 
 def ensure_downloaded() -> None:
-  model_dir = get_model_dir()
+  model_dir = str(helpers.get_app_datadir())
   to_download: list[tuple[str, Callable[[type | None], str]]] = []
 
   visual_query_path = os.path.join(model_dir, MODEL_SUBDIR, VISUAL_ONNX)

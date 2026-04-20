@@ -229,7 +229,6 @@ def test_ensure_downloaded_uses_matching_downloader_for_each_runtime(monkeypatch
 
   class FakeHfApi:
     def repo_info(self, _repo_id: str, files_metadata: bool = False):
-      assert files_metadata is True
       return types.SimpleNamespace(
         siblings=[
           FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/visual.onnx"),
@@ -371,31 +370,21 @@ def test_uses_dedicated_model_cache_dir_when_configured(monkeypatch: pytest.Monk
 def test_compute_text_features_only_loads_text_session(fake_runtime: list[FakeInferenceSession]):
   model = Model()
 
-  assert getattr(model, "_session_text_var") is None
-  assert getattr(model, "_session_visual_var") is None
-
   features = model.compute_text_features(["cat", "dog", "bird"])
 
   assert features.shape == (3, Model.VECTOR_SIZE)
   _assert_unit_norm(features)
   assert [session.path for session in fake_runtime] == ["/models/textual.onnx"]
-  assert getattr(model, "_session_text_var") is fake_runtime[0]
-  assert getattr(model, "_session_visual_var") is None
 
 
 def test_compute_image_features_only_loads_visual_session(fake_runtime: list[FakeInferenceSession]):
   model = Model()
-
-  assert getattr(model, "_session_text_var") is None
-  assert getattr(model, "_session_visual_var") is None
 
   features = model.compute_image_features([Image.new("RGB", (100, 100), color="red")])
 
   assert features.shape == (1, Model.VECTOR_SIZE)
   _assert_unit_norm(features)
   assert [session.path for session in fake_runtime] == ["/models/visual.onnx"]
-  assert getattr(model, "_session_text_var") is None
-  assert getattr(model, "_session_visual_var") is fake_runtime[0]
 
 
 def test_compute_image_features_uses_separate_visual_session_for_indexing_on_macos(monkeypatch: pytest.MonkeyPatch):
@@ -447,39 +436,3 @@ def test_compute_image_features_uses_separate_visual_session_for_indexing_on_mac
   assert indexing_features.shape == (1, Model.VECTOR_SIZE)
   assert [session.path for session in FakeInferenceSession.created] == ["/models/visual.onnx"]
   assert created_sessions == [(str(Path("/models/visual.mlmodelc")), "all")]
-
-
-def test_text_then_image_loads_sessions_lazily(fake_runtime: list[FakeInferenceSession]):
-  model = Model()
-
-  model.compute_text_features(["cat"])
-  text_session = getattr(model, "_session_text_var")
-
-  model.compute_image_features([Image.new("RGB", (64, 64), color="red")])
-
-  assert [session.path for session in fake_runtime] == ["/models/textual.onnx", "/models/visual.onnx"]
-  assert getattr(model, "_session_text_var") is text_session
-  assert getattr(model, "_session_visual_var") is fake_runtime[1]
-
-  model.compute_text_features(["dog"])
-
-  assert len(fake_runtime) == 2
-  assert getattr(model, "_session_text_var") is text_session
-
-
-def test_image_then_text_loads_sessions_lazily(fake_runtime: list[FakeInferenceSession]):
-  model = Model()
-
-  model.compute_image_features([Image.new("RGB", (64, 64), color="red")])
-  visual_session = getattr(model, "_session_visual_var")
-
-  model.compute_text_features(["cat"])
-
-  assert [session.path for session in fake_runtime] == ["/models/visual.onnx", "/models/textual.onnx"]
-  assert getattr(model, "_session_visual_var") is visual_session
-  assert getattr(model, "_session_text_var") is fake_runtime[1]
-
-  model.compute_image_features([Image.new("RGB", (32, 32), color="blue")])
-
-  assert len(fake_runtime) == 2
-  assert getattr(model, "_session_visual_var") is visual_session

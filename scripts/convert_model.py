@@ -16,11 +16,15 @@ import shutil
 import warnings
 from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import numpy.typing as npt
 import open_clip
 import torch
+
+if TYPE_CHECKING:
+  pass
 
 MODEL_NAME = "ViT-B-32-256"
 PRETRAINED = "datacomp_s34b_b86k"
@@ -94,8 +98,10 @@ def _assert_normalized_features_close(
   max_abs_diff = np.max(np.abs(reference - candidate))
   print(f"  {label} cosine min: {float(cosine.min()):.8f}")
   print(f"  {label} normalized max abs diff: {max_abs_diff:.2e}")
-  assert float(cosine.min()) > cosine_threshold, f"{label} cosine drift is too large"
-  assert max_abs_diff < max_abs_threshold, f"{label} normalized feature drift is too large"
+  if float(cosine.min()) <= cosine_threshold:
+    raise RuntimeError(f"{label} cosine drift is too large")
+  if max_abs_diff >= max_abs_threshold:
+    raise RuntimeError(f"{label} normalized feature drift is too large")
 
 
 def export_visual_onnx(model: open_clip.CLIP, output_path: Path) -> None:
@@ -153,7 +159,8 @@ def convert_visual_to_coreml(model: open_clip.CLIP, output_path: Path) -> None:
     compute_precision=ct.precision.FLOAT32,
     minimum_deployment_target=ct.target.macOS13,
   )
-  assert isinstance(ml_model, ct.models.MLModel)
+  if not isinstance(ml_model, ct.models.MLModel):
+    raise RuntimeError("CoreML conversion did not return an MLModel")
   ml_model.save(str(output_path))
   print(f"  Converted visual to CoreML FP32: {output_path}")
 
@@ -172,7 +179,8 @@ def verify_onnx(model: open_clip.CLIP, visual_onnx_path: Path, textual_onnx_path
   onnx_visual = np.asarray(onnx_visual_raw, dtype=np.float32)
   visual_diff = np.max(np.abs(pt_visual - onnx_visual))
   print(f"  Visual max abs diff: {visual_diff:.2e}")
-  assert visual_diff < 1e-4, f"Visual ONNX diverges too much: {visual_diff}"
+  if visual_diff >= 1e-4:
+    raise RuntimeError(f"Visual ONNX diverges too much: {visual_diff}")
 
   dummy_text = torch.zeros(2, CONTEXT_LENGTH, dtype=torch.long)
   dummy_text[0, 0] = 49406
@@ -189,7 +197,8 @@ def verify_onnx(model: open_clip.CLIP, visual_onnx_path: Path, textual_onnx_path
   onnx_text = np.asarray(onnx_text_raw, dtype=np.float32)
   text_diff = np.max(np.abs(pt_text - onnx_text))
   print(f"  Textual max abs diff: {text_diff:.2e}")
-  assert text_diff < 1e-4, f"Textual ONNX diverges too much: {text_diff}"
+  if text_diff >= 1e-4:
+    raise RuntimeError(f"Textual ONNX diverges too much: {text_diff}")
 
   print("  ONNX verification passed!")
 
@@ -280,11 +289,9 @@ def main() -> None:
   model_dir.mkdir(parents=True, exist_ok=True)
 
   print(f"Loading {MODEL_NAME}/{PRETRAINED}...")
-  clip_model, _preprocess_train, _preprocess_eval = open_clip.create_model_and_transforms(
-    MODEL_NAME, pretrained=PRETRAINED
-  )
-  assert isinstance(clip_model, open_clip.CLIP)
-  model = clip_model
+  model, _preprocess_train, _preprocess_eval = open_clip.create_model_and_transforms(MODEL_NAME, pretrained=PRETRAINED)
+  if not isinstance(model, open_clip.CLIP):
+    raise RuntimeError(f"Expected open_clip.CLIP, got {type(model).__name__}")
   model.eval()
 
   visual_onnx = model_dir / "visual.onnx"

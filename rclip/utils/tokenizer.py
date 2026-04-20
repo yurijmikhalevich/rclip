@@ -57,7 +57,6 @@ def _whitespace_clean(text: str) -> str:
 class SimpleTokenizer:
   def __init__(self, bpe_path: str):
     self.byte_encoder = _bytes_to_unicode()
-    self.byte_decoder = {encoded_char: byte_value for byte_value, encoded_char in self.byte_encoder.items()}
     merges = gzip.open(bpe_path).read().decode("utf-8").split("\n")
     merges = merges[1 : 49152 - 256 - 2 + 1]
     merges = [tuple(merge.split()) for merge in merges]
@@ -68,7 +67,6 @@ class SimpleTokenizer:
     special_tokens = ["<start_of_text>", "<end_of_text>"]
     vocab.extend(special_tokens)
     self.encoder = dict(zip(vocab, range(len(vocab))))
-    self.decoder = {token_id: token for token, token_id in self.encoder.items()}
     self.bpe_ranks = dict(zip(merges, range(len(merges))))
     self.cache = {special_token: special_token for special_token in special_tokens}
     special_token_pattern = "|".join(re.escape(special_token) for special_token in special_tokens)
@@ -78,7 +76,6 @@ class SimpleTokenizer:
     )
     self.sot_token_id = self.encoder["<start_of_text>"]
     self.eot_token_id = self.encoder["<end_of_text>"]
-    self.context_length = CONTEXT_LENGTH
 
   def bpe(self, token: str) -> str:
     if token in self.cache:

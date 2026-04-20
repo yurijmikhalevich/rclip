@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, NoReturn
+from typing import TYPE_CHECKING, Any
 
-from tqdm import tqdm as tqdm_base
+from tqdm import tqdm
 
 if TYPE_CHECKING:
-  _Base = tqdm_base[NoReturn]
+  _TqdmBase = tqdm[Any]
 else:
-  _Base = tqdm_base
+  _TqdmBase = tqdm
 
 
-class AggregatedProgressBar(_Base):
+class AggregatedProgressBar(_TqdmBase):
   """Pass as ``tqdm_class`` to HF download functions.
 
   Byte-level ``update()`` calls are forwarded to the class-level
@@ -20,7 +20,7 @@ class AggregatedProgressBar(_Base):
   Set ``shared_bar`` to a visible ``tqdm`` instance before use.
   """
 
-  shared_bar: tqdm_base[NoReturn] | None = None
+  shared_bar: tqdm[Any] | None = None
 
   def __init__(self, *args: object, **kwargs: object):
     self._is_bytes = kwargs.get("unit") == "B"
