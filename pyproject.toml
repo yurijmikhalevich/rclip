@@ -35,7 +35,7 @@ rawpy = "^0.26.1"
 coremltools = {version = "^9.0", markers = "sys_platform != 'windows'"}
 open_clip_torch = "^3.2.0"
 pyright = {extras = ["nodejs"], version = "^1.1.394"}
-pytest = ">=7.2.1,<8.0"
+pytest = ">=7.2.1,<10.0"
 ruff = "^0.9.7"
 torch = "2.10.0"
 torchvision = "0.25.0"
