@@ -34,6 +34,20 @@ class Model:
   def ensure_downloaded(self) -> None:
     model_download.ensure_downloaded()
 
+  def unload(self) -> None:
+    for session_attr in ("_session_text_var", "_session_visual_var", "_session_visual_index_var"):
+      session = getattr(self, session_attr)
+      close = getattr(session, "close", None)
+      if callable(close):
+        close()
+      setattr(self, session_attr, None)
+
+    if self._preprocess_executor_var is not None:
+      self._preprocess_executor_var.shutdown()
+      self._preprocess_executor_var = None
+
+    self._tokenizer_var = None
+
   @property
   def _tokenizer(self) -> SimpleTokenizer:
     if self._tokenizer_var is None:
