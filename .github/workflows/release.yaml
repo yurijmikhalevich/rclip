@@ -229,9 +229,8 @@ jobs:
           advinst-enable-automation: 'true'
       - run: |
           # & ./release-utils/windows/build-msi.ps1 "${{ needs.parse_tag.outputs.version }}"
-          # mv build-msi/rclip-SetupFiles/rclip.msi build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi
           & ./release-utils/windows/build-msi.ps1 "0.0.1"
-          mv build-msi/rclip-SetupFiles/rclip.msi build-msi/rclip-SetupFiles/rclip-0.0.1-test.msi
+          mv build-msi/rclip-SetupFiles/rclip.msi build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi
       - name: Sign MSI
         run: |
           mkdir signed
