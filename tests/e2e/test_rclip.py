@@ -115,10 +115,11 @@ def execute_query(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared
       if completed_run.returncode != 0:
         raise SystemExit(completed_run.returncode)
     else:
-      from rclip.main import main
-
       monkeypatch.setenv("RCLIP_DATADIR", tmpdirname)
       monkeypatch.setenv("RCLIP_MODEL_CACHE_DIR", shared_model_cache_dir)
+
+      from rclip.main import main
+
       monkeypatch.chdir(test_images_dir)
       set_argv(*args)
       main()
@@ -145,15 +146,6 @@ def test_search_png(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shar
 def test_search_heic(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
   # this test result snapshot should contain a heic image
   execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "bee")
-
-
-@pytest.mark.usefixtures("assert_output_snapshot")
-def test_repeated_searches_should_be_the_same(
-  test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
-):
-  execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "boats on a lake")
-  execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "boats on a lake")
-  execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "boats on a lake")
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")

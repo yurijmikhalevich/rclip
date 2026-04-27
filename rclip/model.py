@@ -1,148 +1,112 @@
+from concurrent.futures import ThreadPoolExecutor
+import logging
+import os
 import re
-from typing import List, Tuple, Optional, cast
-import sys
+from typing import Any, List, Optional, Tuple
 
 import numpy as np
 import numpy.typing as npt
 from PIL import Image, UnidentifiedImageError
+
+from rclip import model_download
 from rclip.utils import helpers
-from importlib.metadata import version
-import open_clip
+from rclip.utils.preprocess import preprocess
+from rclip.utils.tokenizer import SimpleTokenizer
+
+logging.getLogger("coremltools").setLevel(logging.ERROR)
 
 QUERY_WITH_MULTIPLIER_RE = re.compile(r"^(?P<multiplier>(\d+(\.\d+)?|\.\d+|\d+\.)):(?P<query>.+)$")
 QueryWithMultiplier = Tuple[float, str]
 FeatureVector = npt.NDArray[np.float32]
 
-TEXT_ONLY_SUPPORTED_MODELS = [
-  {
-    "model_name": "ViT-B-32-quickgelu",
-    "checkpoint_name": "openai",
-  }
-]
-
-
-def get_open_clip_version():
-  return version("open_clip_torch")
-
 
 class Model:
   VECTOR_SIZE = 512
-  _model_name = "ViT-B-32-quickgelu"
-  _checkpoint_name = "openai"
 
-  def __init__(self, device: str = "cpu"):
-    self._device = device
-    self._model_cache_dir = helpers.get_model_cache_dir()
+  def __init__(self):
+    self._session_text_var: Optional[Any] = None
+    self._session_visual_var: Optional[Any] = None
+    self._session_visual_index_var: Optional[Any] = None
+    self._tokenizer_var: Optional[SimpleTokenizer] = None
+    self._preprocess_executor_var: Optional[ThreadPoolExecutor] = None
+    self._preprocess_workers = max(1, min(8, os.cpu_count() or 1))
 
-    self._model_var = None
-    self._model_text_var = None
-    self._preprocess_var = None
-    self._tokenizer_var = None
-
-    model_datadir = self._model_cache_dir or helpers.get_app_datadir()
-    self._text_model_path = model_datadir / f"{self._model_name}_{self._checkpoint_name}_text.pth"
-    self._text_model_version_path = model_datadir / f"{self._model_name}_{self._checkpoint_name}_text.version"
+  def ensure_downloaded(self) -> None:
+    model_download.ensure_downloaded()
 
   @property
-  def _tokenizer(self):
-    if not self._tokenizer_var:
-      self._tokenizer_var = open_clip.get_tokenizer(self._model_name)
+  def _tokenizer(self) -> SimpleTokenizer:
+    if self._tokenizer_var is None:
+      self._tokenizer_var = SimpleTokenizer(bpe_path=model_download.download_tokenizer_vocab())
     return self._tokenizer_var
 
-  def _load_model(self):
-    self._model_var, _, self._preprocess_var = open_clip.create_model_and_transforms(
-      self._model_name,
-      pretrained=self._checkpoint_name,
-      device=self._device,
-      cache_dir=str(self._model_cache_dir) if self._model_cache_dir else None,
-    )
-    self._model_text_var = None
+  def _run_session(
+    self,
+    session: Any,
+    batch: npt.NDArray[np.generic],
+    *,
+    coreml_batch_size: int = 1,
+  ) -> npt.NDArray[np.float32]:
+    if hasattr(session, "predict"):
+      outputs: list[npt.NDArray[np.float32]] = []
+      for start in range(0, batch.shape[0], coreml_batch_size):
+        chunk = batch[start : start + coreml_batch_size]
+        actual_size = chunk.shape[0]
+        if actual_size < coreml_batch_size:
+          chunk = np.concatenate([chunk, np.repeat(chunk[-1:], coreml_batch_size - actual_size, axis=0)], axis=0)
+        result = session.predict({"input": chunk})
+        outputs.append(np.array(result["output"], dtype=np.float32)[:actual_size])
+      return np.concatenate(outputs, axis=0)
 
-    if {
-      "model_name": self._model_name,
-      "checkpoint_name": self._checkpoint_name,
-    } in TEXT_ONLY_SUPPORTED_MODELS and self._should_update_text_model():
-      import torch
-
-      model_text = self._get_text_model(cast(open_clip.CLIP, self._model_var))
-      torch.save(model_text, self._text_model_path)
-
-      with self._text_model_version_path.open("w") as f:
-        f.write(get_open_clip_version())
-
-  @staticmethod
-  def _get_text_model(model: open_clip.CLIP):
-    import copy
-
-    model_text = copy.deepcopy(model)
-    model_text.visual = None  # type: ignore
-    return model_text
-
-  def _should_update_text_model(self):
-    if not self._text_model_path.exists():
-      return True
-
-    if not self._text_model_version_path.exists():
-      return True
-
-    with self._text_model_version_path.open("r") as f:
-      text_model_version = f.read().strip()
-
-    # to be safe, update the text model on open_clip update (which could update the base model)
-    return get_open_clip_version() != text_model_version
+    input_type = session.get_inputs()[0].type
+    if input_type == "tensor(float16)":
+      batch = batch.astype(np.float16)
+    (features,) = session.run(None, {"input": batch})
+    return np.asarray(features, dtype=np.float32)
 
   @property
-  def _model(self):
-    if not self._model_var:
-      self._load_model()
-    return cast(open_clip.CLIP, self._model_var)
+  def _session_text(self) -> Any:
+    if self._session_text_var is None:
+      self._session_text_var = model_download.load_text_session()
+    return self._session_text_var
 
   @property
-  def _model_text(self):
-    if self._model_var:
-      return self._model_var
-
-    if self._model_text_var:
-      return self._model_text_var
-
-    if self._text_model_path.exists() and not self._should_update_text_model():
-      import torch
-
-      self._model_text_var = torch.load(self._text_model_path, weights_only=False, map_location=self._device)
-      return self._model_text_var
-
-    if not self._model_var:
-      self._load_model()
-
-    return cast(open_clip.CLIP, self._model_var)
+  def _session_visual(self) -> Any:
+    if self._session_visual_var is None:
+      self._session_visual_var = model_download.load_visual_query_session()
+    return self._session_visual_var
 
   @property
-  def _preprocess(self):
-    from torchvision.transforms import Compose
+  def _session_visual_index(self) -> Any:
+    if not model_download.use_coreml_for_visual_index():
+      return self._session_visual
+    if self._session_visual_index_var is None:
+      self._session_visual_index_var = model_download.load_visual_index_session()
+    return self._session_visual_index_var
 
-    if not self._preprocess_var:
-      self._load_model()
-    return cast(Compose, self._preprocess_var)
+  def _run_visual(self, batch: npt.NDArray[np.float32], *, for_indexing: bool = False) -> npt.NDArray[np.float32]:
+    session = self._session_visual_index if for_indexing else self._session_visual
+    return self._run_session(session, batch, coreml_batch_size=model_download.COREML_VISUAL_BATCH_SIZE)
 
-  def compute_image_features(self, images: List[Image.Image]) -> npt.NDArray[np.float32]:
-    import torch
+  def _run_textual(self, tokens: npt.NDArray[np.int64]) -> npt.NDArray[np.float32]:
+    return self._run_session(self._session_text, tokens)
 
-    images_preprocessed = torch.stack(cast(list[torch.Tensor], [self._preprocess(thumb) for thumb in images])).to(
-      self._device
-    )
-    with torch.no_grad():
-      image_features = self._model.encode_image(images_preprocessed)
-      image_features /= image_features.norm(dim=-1, keepdim=True)
-    return image_features.cpu().numpy()
+  def compute_image_features(self, images: List[Image.Image], *, for_indexing: bool = False) -> npt.NDArray[np.float32]:
+    if len(images) < 2 or self._preprocess_workers == 1:
+      batch = np.stack([preprocess(img) for img in images])
+    else:
+      if self._preprocess_executor_var is None:
+        self._preprocess_executor_var = ThreadPoolExecutor(max_workers=self._preprocess_workers)
+      batch = np.stack(list(self._preprocess_executor_var.map(preprocess, images)))
+    image_features = self._run_visual(batch, for_indexing=for_indexing)
+    image_features = image_features / np.linalg.norm(image_features, axis=-1, keepdims=True)
+    return image_features
 
   def compute_text_features(self, text: List[str]) -> npt.NDArray[np.float32]:
-    import torch
-
-    with torch.no_grad():
-      tokenized_text = self._tokenizer(text).to(self._device)
-      text_features = self._model_text.encode_text(tokenized_text)  # type: ignore
-      text_features /= text_features.norm(dim=-1, keepdim=True)
-    return text_features.cpu().numpy()
+    tokens = self._tokenizer(text)
+    text_features = self._run_textual(tokens)
+    text_features = text_features / np.linalg.norm(text_features, axis=-1, keepdims=True)
+    return text_features
 
   @staticmethod
   def _extract_query_multiplier(query: str) -> QueryWithMultiplier:
@@ -175,38 +139,38 @@ class Model:
     image_features: Optional[FeatureVector] = None
     phrases, files, urls = self._group_queries_by_type(queries)
 
-    # process images first to avoid loading BOTH full and text-only models
-    # if we need to process images, we will load the full model, and the text processing logic will use it, too
-    # if we don't need to process images, we will skip loading the full model, and the text processing
-    # logic will load the text-only model
-
     if files or urls:
-      file_multipliers, file_paths = cast(Tuple[Tuple[float], Tuple[str]], zip(*(files))) if files else ((), ())
-      url_multipliers, url_paths = cast(Tuple[Tuple[float], Tuple[str]], zip(*(urls))) if urls else ((), ())
+      file_multipliers, file_paths = zip(*files) if files else ((), ())
+      url_multipliers, url_paths = zip(*urls) if urls else ((), ())
       try:
-        images = [helpers.download_image(q) for q in url_paths] + [helpers.read_image(q) for q in file_paths]
-      except FileNotFoundError as e:
-        print(f'File "{e.filename}" not found. Check if you have typos in the filename.')
+        images = [helpers.download_image(url_path) for url_path in url_paths] + [
+          helpers.read_image(file_path) for file_path in file_paths
+        ]
+      except FileNotFoundError as error:
+        print(f'File "{error.filename}" not found. Check if you have typos in the filename.')
+        import sys
+
         sys.exit(1)
-      except UnidentifiedImageError as e:
-        print(f'File "{e.filename}" is not an image. You can only use image files or text as queries.')
+      except UnidentifiedImageError as error:
+        print(f'File "{error.filename}" is not an image. You can only use image files or text as queries.')
+        import sys
+
         sys.exit(1)
       image_multipliers = np.array(url_multipliers + file_multipliers)
       image_features = np.add.reduce(self.compute_image_features(images) * image_multipliers.reshape(-1, 1))
 
     if phrases:
-      phrase_multipliers, phrase_queries = cast(Tuple[Tuple[float], Tuple[str]], zip(*phrases))
+      phrase_multipliers, phrase_queries = zip(*phrases)
       phrase_multipliers_np = np.array(phrase_multipliers).reshape(-1, 1)
       text_features = np.add.reduce(self.compute_text_features([*phrase_queries]) * phrase_multipliers_np)
 
-    if text_features is not None and image_features is not None:
-      return text_features + image_features
-    elif text_features is not None:
-      return text_features
-    elif image_features is not None:
-      return image_features
-    else:
+    if text_features is None:
+      if image_features is not None:
+        return image_features
       return np.zeros(Model.VECTOR_SIZE, dtype=np.float32)
+    if image_features is None:
+      return text_features
+    return text_features + image_features
 
   def compute_similarities_to_text(
     self, item_features: FeatureVector, positive_queries: List[str], negative_queries: List[str]
@@ -217,6 +181,10 @@ class Model:
     features = positive_features - negative_features
 
     similarities = features @ item_features.T
-    sorted_similarities = sorted(zip(similarities, range(item_features.shape[0])), key=lambda x: x[0], reverse=True)
+    sorted_similarities = sorted(
+      zip(similarities, range(item_features.shape[0])),
+      key=lambda similarity_with_index: similarity_with_index[0],
+      reverse=True,
+    )
 
     return sorted_similarities
