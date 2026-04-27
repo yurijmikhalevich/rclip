@@ -127,7 +127,7 @@ def export_textual_onnx(model: open_clip.CLIP, output_path: Path) -> None:
   wrapper = _TextualWrapper(model)
   wrapper.eval()
 
-  dummy_input = torch.zeros(1, CONTEXT_LENGTH, dtype=torch.long)
+  dummy_input = torch.LongTensor([[0] * CONTEXT_LENGTH])
   with _quiet_onnx_export(), _disable_mha_fastpath():
     torch.onnx.export(
       wrapper,
@@ -182,7 +182,7 @@ def verify_onnx(model: open_clip.CLIP, visual_onnx_path: Path, textual_onnx_path
   if visual_diff >= 1e-4:
     raise RuntimeError(f"Visual ONNX diverges too much: {visual_diff}")
 
-  dummy_text = torch.zeros(2, CONTEXT_LENGTH, dtype=torch.long)
+  dummy_text = torch.LongTensor([[0] * CONTEXT_LENGTH for _ in range(2)])
   dummy_text[0, 0] = 49406
   dummy_text[0, 1] = 320
   dummy_text[0, 2] = 49407
@@ -217,7 +217,7 @@ def verify_coreml(
   rng = np.random.default_rng(0)
   dummy_image = rng.standard_normal((COREML_VISUAL_BATCH_SIZE, 3, IMAGE_SIZE, IMAGE_SIZE), dtype=np.float32)
   with torch.no_grad():
-    pt_visual = np.asarray(model.visual(torch.from_numpy(dummy_image)).numpy(), dtype=np.float32)
+    pt_visual = np.asarray(model.visual(torch.Tensor(dummy_image)).numpy(), dtype=np.float32)
 
   ml_model = ct.models.MLModel(str(visual_coreml_path), compute_units=ct.ComputeUnit.ALL)
   result = ml_model.predict({"input": dummy_image})

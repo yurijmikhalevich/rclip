@@ -229,7 +229,7 @@ def ensure_downloaded() -> None:
 
   from rclip.utils.download_progress import AggregatedProgressBar
 
-  repo_info = HfApi().repo_info(HF_REPO_ID, files_metadata=True)
+  repo_info = HfApi().model_info(HF_REPO_ID, files_metadata=True)
   size_by_file = {repo_file.rfilename: repo_file.size or 0 for repo_file in (repo_info.siblings or [])}
   selected_prefixes = [prefix for prefix, _download_function in to_download]
   total_bytes = sum(
