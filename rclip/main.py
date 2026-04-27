@@ -272,7 +272,7 @@ def main():
   if is_snap():
     check_snap_permissions(current_directory, is_current_directory=True)
 
-  rclip, model_instance, db = init_rclip(
+  rclip, _, db = init_rclip(
     current_directory,
     args.indexing_batch_size,
     args.exclude_dir,
@@ -284,7 +284,6 @@ def main():
     result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
     print_results(result, args)
   finally:
-    model_instance.unload()
     db.close()
 
 
