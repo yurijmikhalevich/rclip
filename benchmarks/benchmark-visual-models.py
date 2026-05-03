@@ -13,13 +13,14 @@ import onnxruntime as ort
 from PIL import Image
 from tqdm import tqdm
 
+from benchmarks import config
 from rclip import db, model, model_download
 from rclip.utils.preprocess import preprocess
 
 FeatureBatch = npt.NDArray[np.float32]
 ClassIdBatch = npt.NDArray[np.str_]
 
-DEFAULT_DATASET_DIR = "/Users/yurij/datasets/imagenet_1k/sample5k"
+DEFAULT_DATASET_DIR = config.DATASET_DIR
 COREML_BATCH_SIZE = model_download.COREML_VISUAL_BATCH_SIZE
 
 
