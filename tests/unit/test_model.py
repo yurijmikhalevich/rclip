@@ -250,7 +250,7 @@ def test_ensure_downloaded_uses_matching_downloader_for_each_runtime(monkeypatch
       self.size = 1
 
   class FakeHfApi:
-    def repo_info(self, _repo_id: str, files_metadata: bool = False):
+    def model_info(self, _repo_id: str, files_metadata: bool = False):
       return types.SimpleNamespace(
         siblings=[
           FakeRepoFile("ViT-B-32-256-datacomp_s34b_b86k/visual.onnx"),
