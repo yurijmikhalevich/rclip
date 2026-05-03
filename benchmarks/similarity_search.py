@@ -21,7 +21,7 @@ from rclip.main import RClip
 def main(tmp_datadir: str):
   TEST_IMAGE_PREFIX = os.path.join(DATASET_DIR, "imagenet_1k", "data")
 
-  model_instance = model.Model("mps")
+  model_instance = model.Model()
   database = db.DB(os.path.join(tmp_datadir, "db.sqlite3"))
   rclip = RClip(model_instance, database, BATCH_SIZE, None)
 

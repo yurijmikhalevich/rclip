@@ -1,6 +1,7 @@
 import os.path
 import pathlib
 import sqlite3
+import sys
 from typing import Any, Optional, TypedDict, Union
 
 
@@ -20,13 +21,13 @@ class Image(NewImage):
 
 
 class DB:
-  VERSION = 2
+  VERSION = 3
 
-  def __init__(self, filename: Union[str, pathlib.Path]):
+  def __init__(self, filename: Union[str, pathlib.Path], allow_vector_cache_reset: bool = True):
     self._con = sqlite3.connect(filename)
     self._con.row_factory = sqlite3.Row
     self.ensure_tables()
-    self.ensure_version()
+    self.ensure_version(allow_vector_cache_reset=allow_vector_cache_reset)
 
   def close(self):
     self._con.commit()
@@ -48,7 +49,7 @@ class DB:
     self._con.execute("CREATE TABLE IF NOT EXISTS db_version (version INTEGER)")
     self._con.commit()
 
-  def ensure_version(self):
+  def ensure_version(self, *, allow_vector_cache_reset: bool = True):
     db_version_entry = self._con.execute("SELECT version FROM db_version").fetchone()
     db_version = db_version_entry["version"] if db_version_entry else 1
     if db_version == self.VERSION:
@@ -58,9 +59,23 @@ class DB:
         "found index version newer than this version of rclip can support;"
         " please, update rclip: https://github.com/yurijmikhalevich/rclip/blob/main/README.md#installation",
       )
+    if db_version < 3 and self._has_cached_vectors():
+      if not allow_vector_cache_reset:
+        raise Exception(
+          'the existing vector cache is incompatible with this rclip version; rerun without "--no-indexing" to rebuild it.'
+        )
+      print(
+        "The existing vector cache is incompatible with this rclip version; deleting cached vectors and rebuilding the index.",
+        file=sys.stderr,
+      )
     if db_version < 2:
       self._con.execute("ALTER TABLE images ADD COLUMN indexing BOOLEAN")
       db_version = 2
+    if db_version < 3:
+      # Model changed from ViT-B-32-quickgelu/openai to ViT-B-32-256/datacomp_s34b_b86k;
+      # all embeddings must be recomputed.
+      self._con.execute("DELETE FROM images")
+      db_version = 3
     if db_version < self.VERSION:
       raise Exception("migration to a newer index version isn't implemented")
     if db_version_entry:
@@ -68,6 +83,9 @@ class DB:
     else:
       self._con.execute("INSERT INTO db_version(version) VALUES (?)", (self.VERSION,))
     self._con.commit()
+
+  def _has_cached_vectors(self) -> bool:
+    return self._con.execute("SELECT 1 FROM images LIMIT 1").fetchone() is not None
 
   def commit(self):
     self._con.commit()
