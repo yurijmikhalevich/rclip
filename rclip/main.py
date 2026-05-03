@@ -222,7 +222,7 @@ def init_rclip(
   datadir = helpers.get_app_datadir()
   db_path = datadir / "db.sqlite3"
 
-  database = db.DB(db_path)
+  database = db.DB(db_path, allow_vector_cache_reset=not no_indexing)
   model_instance = model.Model()
   model_instance.ensure_downloaded()
   rclip = RClip(

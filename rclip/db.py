@@ -23,11 +23,11 @@ class Image(NewImage):
 class DB:
   VERSION = 3
 
-  def __init__(self, filename: Union[str, pathlib.Path]):
+  def __init__(self, filename: Union[str, pathlib.Path], allow_vector_cache_reset: bool = True):
     self._con = sqlite3.connect(filename)
     self._con.row_factory = sqlite3.Row
     self.ensure_tables()
-    self.ensure_version()
+    self.ensure_version(allow_vector_cache_reset=allow_vector_cache_reset)
 
   def close(self):
     self._con.commit()
@@ -49,7 +49,7 @@ class DB:
     self._con.execute("CREATE TABLE IF NOT EXISTS db_version (version INTEGER)")
     self._con.commit()
 
-  def ensure_version(self):
+  def ensure_version(self, *, allow_vector_cache_reset: bool = True):
     db_version_entry = self._con.execute("SELECT version FROM db_version").fetchone()
     db_version = db_version_entry["version"] if db_version_entry else 1
     if db_version == self.VERSION:
@@ -60,7 +60,14 @@ class DB:
         " please, update rclip: https://github.com/yurijmikhalevich/rclip/blob/main/README.md#installation",
       )
     if db_version < 3 and self._has_cached_vectors():
-      self._confirm_vector_cache_deletion()
+      if not allow_vector_cache_reset:
+        raise Exception(
+          'the existing vector cache is incompatible with this rclip version; rerun without "--no-indexing" to rebuild it.'
+        )
+      print(
+        "The existing vector cache is incompatible with this rclip version; deleting cached vectors and rebuilding the index.",
+        file=sys.stderr,
+      )
     if db_version < 2:
       self._con.execute("ALTER TABLE images ADD COLUMN indexing BOOLEAN")
       db_version = 2
@@ -79,24 +86,6 @@ class DB:
 
   def _has_cached_vectors(self) -> bool:
     return self._con.execute("SELECT 1 FROM images LIMIT 1").fetchone() is not None
-
-  def _confirm_vector_cache_deletion(self) -> None:
-    print(
-      "rclip v3 is incompatible with the existing vector cache; the cached vectors will be deleted and rebuilt.",
-      file=sys.stderr,
-    )
-    print("Delete the vector cache and continue? [y/N]: ", file=sys.stderr, end="", flush=True)
-    try:
-      answer = input()
-    except EOFError:
-      answer = ""
-
-    if answer.strip().lower() in {"y", "yes"}:
-      return
-
-    print("Aborting without changing the vector cache.", file=sys.stderr)
-    self._con.close()
-    raise SystemExit(0)
 
   def commit(self):
     self._con.commit()
