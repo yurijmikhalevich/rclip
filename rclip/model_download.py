@@ -256,6 +256,11 @@ def _load_onnx_session(model_path: str):
   if IS_MACOS:
     session_options.intra_op_num_threads = 1
     session_options.inter_op_num_threads = 1
+    session_options.enable_mem_pattern = False
+    session_options.enable_cpu_mem_arena = False
+    graph_optimization_level = getattr(ort, "GraphOptimizationLevel", None)
+    if graph_optimization_level is not None:
+      session_options.graph_optimization_level = graph_optimization_level.ORT_DISABLE_ALL
   else:
     sched_getaffinity = getattr(os, "sched_getaffinity", None)
     if sched_getaffinity is not None:

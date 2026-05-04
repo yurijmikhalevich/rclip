@@ -29,6 +29,9 @@ class FakeSessionOptions:
   def __init__(self):
     self.intra_op_num_threads: int | None = None
     self.inter_op_num_threads: int | None = None
+    self.enable_mem_pattern: bool | None = None
+    self.enable_cpu_mem_arena: bool | None = None
+    self.graph_optimization_level: object | None = None
 
 
 class FakeInferenceSession:
@@ -146,6 +149,7 @@ def test_load_onnx_session_uses_single_thread_on_macos(monkeypatch: pytest.Monke
   fake_onnxruntime = types.ModuleType("onnxruntime")
   setattr(fake_onnxruntime, "InferenceSession", FakeInferenceSession)
   setattr(fake_onnxruntime, "SessionOptions", FakeSessionOptions)
+  setattr(fake_onnxruntime, "GraphOptimizationLevel", types.SimpleNamespace(ORT_DISABLE_ALL="disable_all"))
 
   monkeypatch.setitem(sys.modules, "onnxruntime", fake_onnxruntime)
   monkeypatch.setattr(model_download_module, "IS_MACOS", True)
@@ -157,6 +161,9 @@ def test_load_onnx_session_uses_single_thread_on_macos(monkeypatch: pytest.Monke
   assert session.sess_options is not None
   assert session.sess_options.intra_op_num_threads == 1
   assert session.sess_options.inter_op_num_threads == 1
+  assert session.sess_options.enable_mem_pattern is False
+  assert session.sess_options.enable_cpu_mem_arena is False
+  assert session.sess_options.graph_optimization_level == "disable_all"
 
 
 def test_filter_onnxruntime_stderr_only_removes_gpu_discovery_warning():
