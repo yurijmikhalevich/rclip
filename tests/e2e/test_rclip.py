@@ -14,6 +14,16 @@ def set_argv(*args: str):
   sys.argv.extend(args)
 
 
+def _get_rclip_subprocess_command(*args: str) -> list[str] | None:
+  if os.getenv("RCLIP_TEST_RUN_SYSTEM_RCLIP"):
+    return ["rclip", *args]
+  if os.getenv("CI") and sys.platform == "darwin" and sys.version_info[:2] == (3, 12):
+    # The macOS CI runner occasionally segfaults inside onnxruntime when the CLI
+    # is invoked repeatedly in-process. Run the real CLI in a subprocess there.
+    return [sys.executable, "-m", "rclip.main", *args]
+  return None
+
+
 @pytest.fixture
 def test_images_dir():
   return Path(__file__).parent / "images"
@@ -110,10 +120,10 @@ def assert_output_snapshot_unicode_filepaths(
 
 
 def execute_query(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str, *args: str):
-  run_system_rclip = os.getenv("RCLIP_TEST_RUN_SYSTEM_RCLIP")
-  if run_system_rclip:
+  command = _get_rclip_subprocess_command(*args)
+  if command is not None:
     completed_run = subprocess.run(
-      ["rclip", *args],
+      command,
       cwd=test_images_dir,
       env={
         **os.environ,
@@ -131,6 +141,31 @@ def execute_query(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared
     monkeypatch.chdir(test_images_dir)
     set_argv(*args)
     main()
+
+
+def test_get_rclip_subprocess_command_uses_system_rclip_when_requested(monkeypatch: pytest.MonkeyPatch):
+  monkeypatch.setenv("RCLIP_TEST_RUN_SYSTEM_RCLIP", "true")
+
+  assert _get_rclip_subprocess_command("kitty") == ["rclip", "kitty"]
+
+
+def test_get_rclip_subprocess_command_uses_module_subprocess_on_macos_ci_python_312(
+  monkeypatch: pytest.MonkeyPatch,
+):
+  monkeypatch.delenv("RCLIP_TEST_RUN_SYSTEM_RCLIP", raising=False)
+  monkeypatch.setenv("CI", "true")
+  monkeypatch.setattr(sys, "platform", "darwin")
+  monkeypatch.setattr(sys, "version_info", (3, 12, 10))
+  monkeypatch.setattr(sys, "executable", "/tmp/python")
+
+  assert _get_rclip_subprocess_command("kitty") == ["/tmp/python", "-m", "rclip.main", "kitty"]
+
+
+def test_get_rclip_subprocess_command_returns_none_for_normal_in_process_runs(monkeypatch: pytest.MonkeyPatch):
+  monkeypatch.delenv("RCLIP_TEST_RUN_SYSTEM_RCLIP", raising=False)
+  monkeypatch.delenv("CI", raising=False)
+
+  assert _get_rclip_subprocess_command("kitty") is None
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
