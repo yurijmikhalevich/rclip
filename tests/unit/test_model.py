@@ -28,6 +28,7 @@ class FakeTokenizer:
 class FakeSessionOptions:
   def __init__(self):
     self.intra_op_num_threads: int | None = None
+    self.inter_op_num_threads: int | None = None
 
 
 class FakeInferenceSession:
@@ -128,6 +129,7 @@ def test_load_onnx_session_sets_explicit_thread_count(monkeypatch: pytest.Monkey
     return {1, 3, 5}
 
   monkeypatch.setitem(sys.modules, "onnxruntime", fake_onnxruntime)
+  monkeypatch.setattr(model_download_module, "IS_MACOS", False)
   monkeypatch.setattr(model_download_module.os, "sched_getaffinity", fake_sched_getaffinity, raising=False)
   monkeypatch.setattr(model_download_module, "download_textual_model", lambda: "/models/textual.onnx")
 
@@ -138,6 +140,23 @@ def test_load_onnx_session_sets_explicit_thread_count(monkeypatch: pytest.Monkey
   assert session.providers == ["CPUExecutionProvider"]
   assert session.sess_options is not None
   assert session.sess_options.intra_op_num_threads == 3
+
+
+def test_load_onnx_session_uses_single_thread_on_macos(monkeypatch: pytest.MonkeyPatch):
+  fake_onnxruntime = types.ModuleType("onnxruntime")
+  setattr(fake_onnxruntime, "InferenceSession", FakeInferenceSession)
+  setattr(fake_onnxruntime, "SessionOptions", FakeSessionOptions)
+
+  monkeypatch.setitem(sys.modules, "onnxruntime", fake_onnxruntime)
+  monkeypatch.setattr(model_download_module, "IS_MACOS", True)
+  monkeypatch.setattr(model_download_module, "download_textual_model", lambda: "/models/textual.onnx")
+
+  session = model_download_module.load_text_session()
+
+  assert isinstance(session, FakeInferenceSession)
+  assert session.sess_options is not None
+  assert session.sess_options.intra_op_num_threads == 1
+  assert session.sess_options.inter_op_num_threads == 1
 
 
 def test_filter_onnxruntime_stderr_only_removes_gpu_discovery_warning():

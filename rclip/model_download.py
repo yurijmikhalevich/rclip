@@ -253,14 +253,18 @@ def _load_onnx_session(model_path: str):
   ort = _import_onnxruntime()
 
   session_options = ort.SessionOptions()
-  sched_getaffinity = getattr(os, "sched_getaffinity", None)
-  if sched_getaffinity is not None:
-    try:
-      session_options.intra_op_num_threads = max(1, len(sched_getaffinity(0)))
-    except OSError:
-      session_options.intra_op_num_threads = max(1, os.cpu_count() or 1)
+  if IS_MACOS:
+    session_options.intra_op_num_threads = 1
+    session_options.inter_op_num_threads = 1
   else:
-    session_options.intra_op_num_threads = max(1, os.cpu_count() or 1)
+    sched_getaffinity = getattr(os, "sched_getaffinity", None)
+    if sched_getaffinity is not None:
+      try:
+        session_options.intra_op_num_threads = max(1, len(sched_getaffinity(0)))
+      except OSError:
+        session_options.intra_op_num_threads = max(1, os.cpu_count() or 1)
+    else:
+      session_options.intra_op_num_threads = max(1, os.cpu_count() or 1)
 
   return ort.InferenceSession(model_path, sess_options=session_options, providers=["CPUExecutionProvider"])
 
