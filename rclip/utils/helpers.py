@@ -212,8 +212,8 @@ def get_file_extension(path: str) -> str:
 
 
 def read_raw_image_file(path: str):
-  raw = rawpy.imread(path)
-  rgb = raw.postprocess()
+  with rawpy.imread(path) as raw:
+    rgb = raw.postprocess()
   return Image.fromarray(np.array(rgb))
 
 
