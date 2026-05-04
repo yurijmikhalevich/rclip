@@ -20,6 +20,9 @@ VISUAL_COREML = "visual.mlpackage"
 TOKENIZER_VOCAB = "tokenizer/bpe_simple_vocab_16e6.txt.gz"
 USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR = "RCLIP_USE_ONNX_ON_MACOS"
 COREML_VISUAL_BATCH_SIZE = 8
+_TEXT_SESSION: object | None = None
+_VISUAL_QUERY_SESSION: object | None = None
+_VISUAL_INDEX_SESSION: object | None = None
 
 
 def _filter_onnxruntime_stderr(stderr_output: str) -> str:
@@ -275,23 +278,34 @@ def _load_onnx_session(model_path: str):
 
 
 def load_text_session():
-  return _load_onnx_session(download_textual_model())
+  global _TEXT_SESSION
+  if _TEXT_SESSION is None:
+    _TEXT_SESSION = _load_onnx_session(download_textual_model())
+  return _TEXT_SESSION
 
 
 def load_visual_query_session():
-  return _load_onnx_session(download_visual_query_model())
+  global _VISUAL_QUERY_SESSION
+  if _VISUAL_QUERY_SESSION is None:
+    _VISUAL_QUERY_SESSION = _load_onnx_session(download_visual_query_model())
+  return _VISUAL_QUERY_SESSION
 
 
 def load_visual_index_session():
+  global _VISUAL_INDEX_SESSION
   if not use_coreml_for_visual_index():
     return load_visual_query_session()
+
+  if _VISUAL_INDEX_SESSION is not None:
+    return _VISUAL_INDEX_SESSION
 
   import coremltools as ct
 
   package_path = download_visual_index_model_package()
   compiled_path = ensure_compiled_coreml_model(package_path)
   try:
-    return ct.models.CompiledMLModel(compiled_path, compute_units=ct.ComputeUnit.ALL)
+    _VISUAL_INDEX_SESSION = ct.models.CompiledMLModel(compiled_path, compute_units=ct.ComputeUnit.ALL)
   except Exception:
     compiled_path = compile_coreml_model(package_path, force=True)
-    return ct.models.CompiledMLModel(compiled_path, compute_units=ct.ComputeUnit.ALL)
+    _VISUAL_INDEX_SESSION = ct.models.CompiledMLModel(compiled_path, compute_units=ct.ComputeUnit.ALL)
+  return _VISUAL_INDEX_SESSION

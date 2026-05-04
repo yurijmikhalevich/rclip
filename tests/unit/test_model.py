@@ -54,6 +54,13 @@ class FakeInferenceSession:
     return [types.SimpleNamespace(type="tensor(float)")]
 
 
+@pytest.fixture(autouse=True)
+def reset_cached_sessions(monkeypatch: pytest.MonkeyPatch):
+  monkeypatch.setattr(model_download_module, "_TEXT_SESSION", None)
+  monkeypatch.setattr(model_download_module, "_VISUAL_QUERY_SESSION", None)
+  monkeypatch.setattr(model_download_module, "_VISUAL_INDEX_SESSION", None)
+
+
 def test_download_coreml_model_materializes_real_package(monkeypatch: pytest.MonkeyPatch):
   def fake_get_app_datadir() -> Path:
     return Path("/tmp/rclip-datadir")
@@ -164,6 +171,40 @@ def test_load_onnx_session_uses_single_thread_on_macos(monkeypatch: pytest.Monke
   assert session.sess_options.enable_mem_pattern is False
   assert session.sess_options.enable_cpu_mem_arena is False
   assert session.sess_options.graph_optimization_level == "disable_all"
+
+
+def test_load_text_session_reuses_cached_session(monkeypatch: pytest.MonkeyPatch):
+  fake_onnxruntime = types.ModuleType("onnxruntime")
+  setattr(fake_onnxruntime, "InferenceSession", FakeInferenceSession)
+  setattr(fake_onnxruntime, "SessionOptions", FakeSessionOptions)
+
+  FakeInferenceSession.created.clear()
+  monkeypatch.setitem(sys.modules, "onnxruntime", fake_onnxruntime)
+  monkeypatch.setattr(model_download_module, "IS_MACOS", False)
+  monkeypatch.setattr(model_download_module, "download_textual_model", lambda: "/models/textual.onnx")
+
+  session1 = model_download_module.load_text_session()
+  session2 = model_download_module.load_text_session()
+
+  assert session1 is session2
+  assert [session.path for session in FakeInferenceSession.created] == ["/models/textual.onnx"]
+
+
+def test_load_visual_query_session_reuses_cached_session(monkeypatch: pytest.MonkeyPatch):
+  fake_onnxruntime = types.ModuleType("onnxruntime")
+  setattr(fake_onnxruntime, "InferenceSession", FakeInferenceSession)
+  setattr(fake_onnxruntime, "SessionOptions", FakeSessionOptions)
+
+  FakeInferenceSession.created.clear()
+  monkeypatch.setitem(sys.modules, "onnxruntime", fake_onnxruntime)
+  monkeypatch.setattr(model_download_module, "IS_MACOS", False)
+  monkeypatch.setattr(model_download_module, "download_visual_query_model", lambda: "/models/visual.onnx")
+
+  session1 = model_download_module.load_visual_query_session()
+  session2 = model_download_module.load_visual_query_session()
+
+  assert session1 is session2
+  assert [session.path for session in FakeInferenceSession.created] == ["/models/visual.onnx"]
 
 
 def test_filter_onnxruntime_stderr_only_removes_gpu_discovery_warning():
