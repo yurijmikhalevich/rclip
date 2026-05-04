@@ -14,10 +14,10 @@ def set_argv(*args: str):
   sys.argv.extend(args)
 
 
-def _get_rclip_subprocess_command(*args: str) -> list[str]:
+def _get_rclip_subprocess_command(*args: str) -> list[str] | None:
   if os.getenv("RCLIP_TEST_RUN_SYSTEM_RCLIP"):
     return ["rclip", *args]
-  return [sys.executable, "-m", "rclip.main", *args]
+  return None
 
 
 @pytest.fixture
@@ -116,23 +116,27 @@ def assert_output_snapshot_unicode_filepaths(
 
 
 def execute_query(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str, *args: str):
-  repo_root = Path(__file__).resolve().parents[2]
-  pythonpath_parts = [str(repo_root)]
-  if existing_pythonpath := os.environ.get("PYTHONPATH"):
-    pythonpath_parts.append(existing_pythonpath)
+  command = _get_rclip_subprocess_command(*args)
+  if command is not None:
+    completed_run = subprocess.run(
+      command,
+      cwd=test_images_dir,
+      env={
+        **os.environ,
+        "RCLIP_MODEL_CACHE_DIR": shared_model_cache_dir,
+        "RCLIP_TEST_RUN_SYSTEM_RCLIP": "",
+      },
+    )
+    if completed_run.returncode != 0:
+      raise SystemExit(completed_run.returncode)
+  else:
+    monkeypatch.setenv("RCLIP_MODEL_CACHE_DIR", shared_model_cache_dir)
 
-  completed_run = subprocess.run(
-    _get_rclip_subprocess_command(*args),
-    cwd=test_images_dir,
-    env={
-      **os.environ,
-      "PYTHONPATH": os.pathsep.join(pythonpath_parts),
-      "RCLIP_MODEL_CACHE_DIR": shared_model_cache_dir,
-      "RCLIP_TEST_RUN_SYSTEM_RCLIP": "",
-    },
-  )
-  if completed_run.returncode != 0:
-    raise SystemExit(completed_run.returncode)
+    from rclip.main import main
+
+    monkeypatch.chdir(test_images_dir)
+    set_argv(*args)
+    main()
 
 
 def test_get_rclip_subprocess_command_uses_system_rclip_when_requested(monkeypatch: pytest.MonkeyPatch):
@@ -145,16 +149,19 @@ def test_get_rclip_subprocess_command_uses_module_subprocess_on_macos_ci_python_
   monkeypatch: pytest.MonkeyPatch,
 ):
   monkeypatch.delenv("RCLIP_TEST_RUN_SYSTEM_RCLIP", raising=False)
+  monkeypatch.setenv("CI", "true")
+  monkeypatch.setattr(sys, "platform", "darwin")
+  monkeypatch.setattr(sys, "version_info", (3, 12, 10))
   monkeypatch.setattr(sys, "executable", "/tmp/python")
 
-  assert _get_rclip_subprocess_command("kitty") == ["/tmp/python", "-m", "rclip.main", "kitty"]
+  assert _get_rclip_subprocess_command("kitty") is None
 
 
-def test_get_rclip_subprocess_command_uses_module_subprocess_by_default(monkeypatch: pytest.MonkeyPatch):
+def test_get_rclip_subprocess_command_returns_none_by_default(monkeypatch: pytest.MonkeyPatch):
   monkeypatch.delenv("RCLIP_TEST_RUN_SYSTEM_RCLIP", raising=False)
-  monkeypatch.setattr(sys, "executable", "/tmp/python")
+  monkeypatch.delenv("CI", raising=False)
 
-  assert _get_rclip_subprocess_command("kitty") == ["/tmp/python", "-m", "rclip.main", "kitty"]
+  assert _get_rclip_subprocess_command("kitty") is None
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")

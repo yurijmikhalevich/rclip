@@ -31,3 +31,5 @@ jobs:
           pip install --upgrade poetry
           poetry install
       - run: make test
+        env:
+          PYTHONFAULTHANDLER: '1'
