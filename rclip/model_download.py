@@ -20,9 +20,6 @@ VISUAL_COREML = "visual.mlpackage"
 TOKENIZER_VOCAB = "tokenizer/bpe_simple_vocab_16e6.txt.gz"
 USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR = "RCLIP_USE_ONNX_ON_MACOS"
 COREML_VISUAL_BATCH_SIZE = 8
-_TEXT_SESSION: object | None = None
-_VISUAL_QUERY_SESSION: object | None = None
-_VISUAL_INDEX_SESSION: object | None = None
 
 
 def _filter_onnxruntime_stderr(stderr_output: str) -> str:
@@ -256,56 +253,36 @@ def _load_onnx_session(model_path: str):
   ort = _import_onnxruntime()
 
   session_options = ort.SessionOptions()
-  if IS_MACOS:
-    session_options.intra_op_num_threads = 1
-    session_options.inter_op_num_threads = 1
-    session_options.enable_mem_pattern = False
-    session_options.enable_cpu_mem_arena = False
-    graph_optimization_level = getattr(ort, "GraphOptimizationLevel", None)
-    if graph_optimization_level is not None:
-      session_options.graph_optimization_level = graph_optimization_level.ORT_DISABLE_ALL
-  else:
-    sched_getaffinity = getattr(os, "sched_getaffinity", None)
-    if sched_getaffinity is not None:
-      try:
-        session_options.intra_op_num_threads = max(1, len(sched_getaffinity(0)))
-      except OSError:
-        session_options.intra_op_num_threads = max(1, os.cpu_count() or 1)
-    else:
+  sched_getaffinity = getattr(os, "sched_getaffinity", None)
+  if sched_getaffinity is not None:
+    try:
+      session_options.intra_op_num_threads = max(1, len(sched_getaffinity(0)))
+    except OSError:
       session_options.intra_op_num_threads = max(1, os.cpu_count() or 1)
+  else:
+    session_options.intra_op_num_threads = max(1, os.cpu_count() or 1)
 
   return ort.InferenceSession(model_path, sess_options=session_options, providers=["CPUExecutionProvider"])
 
 
 def load_text_session():
-  global _TEXT_SESSION
-  if _TEXT_SESSION is None:
-    _TEXT_SESSION = _load_onnx_session(download_textual_model())
-  return _TEXT_SESSION
+  return _load_onnx_session(download_textual_model())
 
 
 def load_visual_query_session():
-  global _VISUAL_QUERY_SESSION
-  if _VISUAL_QUERY_SESSION is None:
-    _VISUAL_QUERY_SESSION = _load_onnx_session(download_visual_query_model())
-  return _VISUAL_QUERY_SESSION
+  return _load_onnx_session(download_visual_query_model())
 
 
 def load_visual_index_session():
-  global _VISUAL_INDEX_SESSION
   if not use_coreml_for_visual_index():
     return load_visual_query_session()
-
-  if _VISUAL_INDEX_SESSION is not None:
-    return _VISUAL_INDEX_SESSION
 
   import coremltools as ct
 
   package_path = download_visual_index_model_package()
   compiled_path = ensure_compiled_coreml_model(package_path)
   try:
-    _VISUAL_INDEX_SESSION = ct.models.CompiledMLModel(compiled_path, compute_units=ct.ComputeUnit.ALL)
+    return ct.models.CompiledMLModel(compiled_path, compute_units=ct.ComputeUnit.ALL)
   except Exception:
     compiled_path = compile_coreml_model(package_path, force=True)
-    _VISUAL_INDEX_SESSION = ct.models.CompiledMLModel(compiled_path, compute_units=ct.ComputeUnit.ALL)
-  return _VISUAL_INDEX_SESSION
+    return ct.models.CompiledMLModel(compiled_path, compute_units=ct.ComputeUnit.ALL)
