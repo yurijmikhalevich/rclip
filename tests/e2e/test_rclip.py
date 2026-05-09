@@ -40,9 +40,20 @@ def test_dir_with_unicode_filenames():
 
 
 @pytest.fixture(scope="session")
+def shared_datadir():
+  with tempfile.TemporaryDirectory() as tmpdirname:
+    yield tmpdirname
+
+
+@pytest.fixture(scope="session")
 def shared_model_cache_dir():
   with tempfile.TemporaryDirectory() as tmpdirname:
     yield tmpdirname
+
+
+@pytest.fixture(autouse=True)
+def use_shared_datadir(monkeypatch: pytest.MonkeyPatch, shared_datadir: str):
+  monkeypatch.setenv("RCLIP_DATADIR", shared_datadir)
 
 
 def _assert_output_snapshot(
@@ -99,30 +110,27 @@ def assert_output_snapshot_unicode_filepaths(
 
 
 def execute_query(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str, *args: str):
-  with tempfile.TemporaryDirectory() as tmpdirname:
-    run_system_rclip = os.getenv("RCLIP_TEST_RUN_SYSTEM_RCLIP")
-    if run_system_rclip:
-      completed_run = subprocess.run(
-        ["rclip", *args],
-        cwd=test_images_dir,
-        env={
-          **os.environ,
-          "RCLIP_DATADIR": tmpdirname,
-          "RCLIP_MODEL_CACHE_DIR": shared_model_cache_dir,
-          "RCLIP_TEST_RUN_SYSTEM_RCLIP": "",
-        },
-      )
-      if completed_run.returncode != 0:
-        raise SystemExit(completed_run.returncode)
-    else:
-      monkeypatch.setenv("RCLIP_DATADIR", tmpdirname)
-      monkeypatch.setenv("RCLIP_MODEL_CACHE_DIR", shared_model_cache_dir)
+  run_system_rclip = os.getenv("RCLIP_TEST_RUN_SYSTEM_RCLIP")
+  if run_system_rclip:
+    completed_run = subprocess.run(
+      ["rclip", *args],
+      cwd=test_images_dir,
+      env={
+        **os.environ,
+        "RCLIP_MODEL_CACHE_DIR": shared_model_cache_dir,
+        "RCLIP_TEST_RUN_SYSTEM_RCLIP": "",
+      },
+    )
+    if completed_run.returncode != 0:
+      raise SystemExit(completed_run.returncode)
+  else:
+    monkeypatch.setenv("RCLIP_MODEL_CACHE_DIR", shared_model_cache_dir)
 
-      from rclip.main import main
+    from rclip.main import main
 
-      monkeypatch.chdir(test_images_dir)
-      set_argv(*args)
-      main()
+    monkeypatch.chdir(test_images_dir)
+    set_argv(*args)
+    main()
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
