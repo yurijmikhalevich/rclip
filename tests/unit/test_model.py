@@ -50,6 +50,22 @@ class FakeInferenceSession:
     return [types.SimpleNamespace(type="tensor(float)")]
 
 
+class FakeExecutor:
+  def __init__(self, max_workers: int):
+    self.max_workers = max_workers
+    self.shutdown_calls: list[bool] = []
+    self.is_shutdown = False
+
+  def map(self, func: Callable[[Image.Image], FeatureBatch], images: list[Image.Image]):
+    if self.is_shutdown:
+      raise RuntimeError("executor was already shut down")
+    return [func(image) for image in images]
+
+  def shutdown(self, wait: bool = True) -> None:
+    self.shutdown_calls.append(wait)
+    self.is_shutdown = True
+
+
 def test_download_coreml_model_materializes_real_package(monkeypatch: pytest.MonkeyPatch):
   def fake_get_app_datadir() -> Path:
     return Path("/tmp/rclip-datadir")
@@ -458,3 +474,67 @@ def test_compute_image_features_uses_separate_visual_session_for_indexing_on_mac
   assert indexing_features.shape == (1, Model.VECTOR_SIZE)
   assert [session.path for session in FakeInferenceSession.created] == ["/models/visual.onnx"]
   assert created_sessions == [(str(Path("/models/visual.mlmodelc")), "all")]
+
+
+def test_release_indexing_resources_shuts_down_preprocess_executor(monkeypatch: pytest.MonkeyPatch):
+  fake_executors: list[FakeExecutor] = []
+
+  def fake_executor_factory(*, max_workers: int):
+    executor = FakeExecutor(max_workers)
+    fake_executors.append(executor)
+    return executor
+
+  monkeypatch.setattr(model_module, "ThreadPoolExecutor", fake_executor_factory)
+  monkeypatch.setattr(model_module, "preprocess", _fake_preprocess)
+
+  created_sessions: list[tuple[str, object]] = []
+
+  class FakeCompiledMLModel:
+    def __init__(self, path: str, compute_units: object):
+      created_sessions.append((path, compute_units))
+
+    def predict(self, inputs: dict[str, npt.NDArray[np.generic]]) -> dict[str, FeatureBatch]:
+      batch = inputs["input"]
+      base = np.arange(1, Model.VECTOR_SIZE + 1, dtype=np.float32)
+      features = np.stack([base + batch_index for batch_index in range(batch.shape[0])]).astype(np.float32)
+      return {"output": features}
+
+  fake_coremltools = types.ModuleType("coremltools")
+  fake_coremltools_models = types.ModuleType("coremltools.models")
+  setattr(fake_coremltools, "ComputeUnit", types.SimpleNamespace(ALL="all"))
+  setattr(fake_coremltools_models, "CompiledMLModel", FakeCompiledMLModel)
+  setattr(fake_coremltools_models, "MLModel", object)
+  setattr(fake_coremltools, "models", fake_coremltools_models)
+
+  monkeypatch.setitem(sys.modules, "coremltools", fake_coremltools)
+  monkeypatch.setitem(sys.modules, "coremltools.models", fake_coremltools_models)
+  monkeypatch.setattr(model_download_module, "IS_MACOS", True)
+  monkeypatch.delenv("RCLIP_USE_ONNX_ON_MACOS", raising=False)
+  def fake_download_visual_index_model_package() -> str:
+    return "/models/visual.mlpackage"
+
+  def fake_ensure_compiled_coreml_model(path: str) -> str:
+    return f"{Path(path).with_suffix('')}.mlmodelc"
+
+  monkeypatch.setattr(model_download_module, "download_visual_index_model_package", fake_download_visual_index_model_package)
+  monkeypatch.setattr(model_download_module, "ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
+
+  model = Model()
+  images = [Image.new("RGB", (64, 64), color="red"), Image.new("RGB", (32, 32), color="blue")]
+
+  model.compute_image_features(images, for_indexing=True)
+
+  assert len(fake_executors) == 1
+  assert created_sessions == [(str(Path("/models/visual.mlmodelc")), "all")]
+
+  model.release_indexing_resources()
+
+  assert fake_executors[0].shutdown_calls == [True]
+
+  model.compute_image_features(images, for_indexing=True)
+
+  assert len(fake_executors) == 2
+  assert created_sessions == [
+    (str(Path("/models/visual.mlmodelc")), "all"),
+    (str(Path("/models/visual.mlmodelc")), "all"),
+  ]
