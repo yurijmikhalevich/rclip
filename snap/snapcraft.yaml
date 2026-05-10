@@ -29,3 +29,5 @@ parts:
   rclip:
     plugin: uv
     source: .
+    build-snaps:
+      - astral-uv/latest/stable
