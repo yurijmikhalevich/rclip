@@ -16,7 +16,7 @@ fix-style:
 	uv run ruff format
 
 lint-types:
-	uv run pyright .
+	uv run ty check
 
 lint: lint-style lint-types
 
