@@ -31,6 +31,6 @@ runs:
       # on Windows, we set the latest PATH to ensure that the action can find
       # system rclip
       # on other OSes, we pass -ieo pipefail to bash to ensure it reads the .bashrc
-      shell: ${{ (runner.os != 'Windows' || inputs.force-bash == 'true') && 'bash -ieo pipefail {0}' || 'powershell -NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command "$env:Path = [Environment]::GetEnvironmentVariable(''Path'', ''Machine'') + '';'' + [Environment]::GetEnvironmentVariable(''Path'', ''User''); & {0}"' }}
+      shell: ${{ (runner.os != 'Windows' || inputs.force-bash == 'true') && 'bash -ieo pipefail {0}' || 'powershell -NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command "$env:Path = [Environment]::GetEnvironmentVariable(''Path'', ''Machine'') + '';'' + [Environment]::GetEnvironmentVariable(''Path'', ''User'') + '';'' + $env:Path; & {0}"' }}
     - run: make test-system-rclip
-      shell: ${{ (runner.os != 'Windows' || inputs.force-bash == 'true') && 'bash -ieo pipefail {0}' || 'powershell -NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command "$env:Path = [Environment]::GetEnvironmentVariable(''Path'', ''Machine'') + '';'' + [Environment]::GetEnvironmentVariable(''Path'', ''User''); & {0}"' }}
+      shell: ${{ (runner.os != 'Windows' || inputs.force-bash == 'true') && 'bash -ieo pipefail {0}' || 'powershell -NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command "$env:Path = [Environment]::GetEnvironmentVariable(''Path'', ''Machine'') + '';'' + [Environment]::GetEnvironmentVariable(''Path'', ''User'') + '';'' + $env:Path; & {0}"' }}
