@@ -340,19 +340,16 @@ def fake_runtime(monkeypatch: pytest.MonkeyPatch) -> list[FakeInferenceSession]:
 
 
 def test_extract_query_multiplier():
-  assert Model._extract_query_multiplier("1.5:cat") == (1.5, "cat")  # type: ignore
-  assert Model._extract_query_multiplier("cat") == (1.0, "cat")  # type: ignore
-  assert Model._extract_query_multiplier("1:cat") == (1.0, "cat")  # type: ignore
-  assert Model._extract_query_multiplier("0.5:cat") == (0.5, "cat")  # type: ignore
-  assert Model._extract_query_multiplier(".5:cat") == (0.5, "cat")  # type: ignore
-  assert Model._extract_query_multiplier("1.:cat") == (1.0, "cat")  # type: ignore
-  assert Model._extract_query_multiplier("1..:cat") == (1.0, "1..:cat")  # type: ignore
-  assert Model._extract_query_multiplier("..:cat") == (1.0, "..:cat")  # type: ignore
-  assert Model._extract_query_multiplier("whatever:cat") == (1.0, "whatever:cat")  # type: ignore
-  assert (
-    Model._extract_query_multiplier("1.5:complex and long query")  # type: ignore
-    == (1.5, "complex and long query")
-  )
+  assert Model._extract_query_multiplier("1.5:cat") == (1.5, "cat")
+  assert Model._extract_query_multiplier("cat") == (1.0, "cat")
+  assert Model._extract_query_multiplier("1:cat") == (1.0, "cat")
+  assert Model._extract_query_multiplier("0.5:cat") == (0.5, "cat")
+  assert Model._extract_query_multiplier(".5:cat") == (0.5, "cat")
+  assert Model._extract_query_multiplier("1.:cat") == (1.0, "cat")
+  assert Model._extract_query_multiplier("1..:cat") == (1.0, "1..:cat")
+  assert Model._extract_query_multiplier("..:cat") == (1.0, "..:cat")
+  assert Model._extract_query_multiplier("whatever:cat") == (1.0, "whatever:cat")
+  assert Model._extract_query_multiplier("1.5:complex and long query") == (1.5, "complex and long query")
 
 
 def test_uses_dedicated_model_cache_dir_when_configured(monkeypatch: pytest.MonkeyPatch):

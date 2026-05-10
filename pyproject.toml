@@ -48,11 +48,11 @@ rclip = "rclip.main:main"
 dev = [
     "coremltools>=9.0,<10 ; sys_platform != 'windows'",
     "open_clip_torch>=3.2.0,<4",
-    "pyright[nodejs]==1.1.408",
     "pytest>=7.2.1,<10.0",
     "ruff>=0.9.7,<0.10",
     "torch==2.10.0",
     "torchvision==0.25.0",
+    "ty==0.0.34",
     "jinja2>=3.1.5,<4",
 ]
 
@@ -70,3 +70,9 @@ build-backend = "uv_build"
 line-length = 120
 indent-width = 2
 exclude = ["AppDir", "appimage-builder-cache", "benchmarks/datasets"]
+
+[tool.ty.src]
+exclude = ["AppDir", "appimage-builder-cache", "benchmarks/datasets"]
+
+[tool.ty.terminal]
+error-on-warning = true

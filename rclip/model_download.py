@@ -166,7 +166,7 @@ def _get_compiled_coreml_model_path(package_path: str) -> str:
 
 
 def compile_coreml_model(package_path: str, *, force: bool = False) -> str:
-  import coremltools as ct
+  from coremltools.models import utils as coreml_utils
 
   compiled_path = _get_compiled_coreml_model_path(package_path)
   if os.path.isdir(compiled_path):
@@ -174,7 +174,7 @@ def compile_coreml_model(package_path: str, *, force: bool = False) -> str:
       return compiled_path
     shutil.rmtree(compiled_path)
 
-  return ct.models.utils.compile_model(package_path, compiled_path)
+  return coreml_utils.compile_model(package_path, compiled_path)
 
 
 def ensure_compiled_coreml_model(package_path: str) -> str:
