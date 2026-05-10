@@ -24,9 +24,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@v8
       - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install --upgrade poetry
-          poetry install
+        run: uv sync --locked
       - run: make test
