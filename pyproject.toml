@@ -46,7 +46,7 @@ rclip = "rclip.main:main"
 
 [dependency-groups]
 dev = [
-    "coremltools>=9.0,<10 ; sys_platform != 'windows'",
+    "coremltools>=9.0,<10 ; sys_platform != 'win32'",
     "open_clip_torch>=3.2.0,<4",
     "pytest>=7.2.1,<10.0",
     "ruff>=0.9.7,<0.10",
