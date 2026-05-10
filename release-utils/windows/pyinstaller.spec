@@ -13,7 +13,9 @@ a = Analysis(
     datas=[
         *collect_data_files('onnxruntime'),
     ],
-    hiddenimports=[],
+    # rclip imports onnxruntime dynamically, so PyInstaller won't see it unless we
+    # declare it explicitly.
+    hiddenimports=['onnxruntime'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
