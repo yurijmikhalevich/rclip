@@ -53,6 +53,7 @@ def shared_model_cache_dir():
 
 @pytest.fixture(autouse=True)
 def use_shared_datadir(monkeypatch: pytest.MonkeyPatch, shared_datadir: str):
+  Path(shared_datadir, "db.sqlite3").unlink(missing_ok=True)
   monkeypatch.setenv("RCLIP_DATADIR", shared_datadir)
 
 
