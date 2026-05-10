@@ -17,8 +17,7 @@ jobs:
     strategy:
       matrix:
         python: ['3.11', '3.12', '3.13']
-        # os: [ubuntu-22.04, macos-14, windows-2022]
-        os: [macos-14, macos-15, macos-26]
+        os: [ubuntu-22.04, macos-14, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -29,5 +28,3 @@ jobs:
       - name: Install Dependencies
         run: uv sync --locked
       - run: make test
-        env:
-          PYTHONFAULTHANDLER: '1'
