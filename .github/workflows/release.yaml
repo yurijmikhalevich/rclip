@@ -266,11 +266,33 @@ jobs:
           done
       - name: Rename AppImage for GitHub releases page
         run: mv artifacts/appimage/rclip-${{ needs.parse_tag.outputs.version }}-x86_64.AppImage artifacts/appimage/rclip-${{ needs.parse_tag.outputs.version }}-amd64.AppImage
+      - name: Get previous public release tag
+        id: previous_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          previous_tag=$(
+            curl -fsSL \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              | jq -r '
+                [
+                  .[]
+                  | select(.draft == false and .published_at != null and .tag_name != env.GITHUB_REF_NAME)
+                ]
+                | sort_by(.published_at)
+                | if length == 0 then "" else .[-1].tag_name end
+              '
+          )
+          echo "tag=$previous_tag" >> $GITHUB_OUTPUT
+          echo "Previous public release tag: ${previous_tag:-<none>}"
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
           name: ${{ github.ref_name }}
           artifacts: artifacts/pypi/rclip-*,artifacts/snap-amd64/rclip-*.snap,artifacts/snap-arm64/rclip-*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows/rclip-*.msi
           generateReleaseNotes: true
+          generateReleaseNotesPreviousTag: ${{ steps.previous_release.outputs.tag }}
           prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
           token: ${{ secrets.GITHUB_TOKEN }}
