@@ -28,7 +28,7 @@ sudo snap install rclip
 
   On Linux x86_64, you can install **rclip** as a self-contained executable.
 
-  1. Download the AppImage from the latest [release](https://github.com/yurijmikhalevich/rclip/releases).
+  1. Download the AppImage from the [latest release](https://github.com/yurijmikhalevich/rclip/releases/latest).
 
   2. Execute the following commands:
 
@@ -62,7 +62,7 @@ brew install yurijmikhalevich/tap/rclip
 
 ### Windows
 
-1. Download the "*.msi" from the latest [release](https://github.com/yurijmikhalevich/rclip/releases).
+1. Download the "*.msi" from the [latest release](https://github.com/yurijmikhalevich/rclip/releases/latest).
 2. Install **rclip** by running the installer.
 
 <details>
