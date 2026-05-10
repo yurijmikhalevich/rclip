@@ -31,7 +31,7 @@ build-docker:
 
 # CI runs release-brew as part of the `release` action
 build-windows:
-	uv run --with pyinstaller==6.10.0 pyinstaller -y ./release-utils/windows/pyinstaller.spec
+	uv run --exact --no-dev --with pyinstaller==6.10.0 pyinstaller -y ./release-utils/windows/pyinstaller.spec
 
 # CI runs release-brew as part of the `release` action
 release-brew:

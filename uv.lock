@@ -905,7 +905,7 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "coremltools", marker = "sys_platform != 'windows'" },
+    { name = "coremltools", marker = "sys_platform != 'win32'" },
     { name = "jinja2" },
     { name = "open-clip-torch" },
     { name = "pytest" },
@@ -932,7 +932,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "coremltools", marker = "sys_platform != 'windows'", specifier = ">=9.0,<10" },
+    { name = "coremltools", marker = "sys_platform != 'win32'", specifier = ">=9.0,<10" },
     { name = "jinja2", specifier = ">=3.1.5,<4" },
     { name = "open-clip-torch", specifier = ">=3.2.0,<4" },
     { name = "pytest", specifier = ">=7.2.1,<10.0" },
