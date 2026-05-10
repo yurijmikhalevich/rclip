@@ -1,5 +1,5 @@
 # the `release` action uses `sed` expressions which are only compatible with the GNU sed
-ifeq ($(shell command -v gsed 2>/dev/null),)
+ifeq ($(shell which gsed),)
     SED := sed
 else
     SED := gsed
