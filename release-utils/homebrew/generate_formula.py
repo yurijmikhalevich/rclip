@@ -3,7 +3,7 @@ import importlib.metadata
 from collections import OrderedDict
 from collections.abc import Mapping
 from time import sleep
-from typing import AbstractSet, Optional, TypedDict, cast
+from typing import AbstractSet, NotRequired, Optional, TypedDict, cast
 
 import jinja2
 from packaging.markers import default_environment
@@ -32,6 +32,9 @@ TEMPLATE = env.from_string("""class Rclip < Formula
     depends_on "patchelf" => :build # for rawpy
     depends_on "zlib-ng-compat" # rawpy bundled libs link against libz
   end
+  depends_on "pkgconf" => :build
+  # Homebrew CI builds uv_build's maturin dependency from source.
+  depends_on "rust" => :build
   depends_on "certifi"
   depends_on "libheif"
   depends_on "libraw"
@@ -48,7 +51,11 @@ TEMPLATE = env.from_string("""class Rclip < Formula
     # Fix for ZIP timestamp issue with files having dates before 1980
     ENV["SOURCE_DATE_EPOCH"] = "315532800" # 1980-01-01
 
-    virtualenv_install_with_resources without: %w[{{ wheel_names }}]
+    excluded_resources = %w[{{ wheel_names }}]
+{% if include_macos_wheel_resource %}
+    excluded_resources << "{{ macos_wheel_resource }}" if OS.mac?
+{% endif %}
+    virtualenv_install_with_resources without: excluded_resources
 {% for pkg in wheel_packages %}
 
     resource("{{ pkg.name }}").stage do
@@ -75,7 +82,17 @@ TEMPLATE = env.from_string("""class Rclip < Formula
     end
 {% endif %}
 {% endfor %}
+{% if include_macos_wheel_resource %}
 
+    if OS.mac?
+      resource("{{ macos_wheel_resource }}").stage do
+        wheel = Dir["*.whl"].first
+        valid_wheel = wheel.sub(/^.*--/, "")
+        File.rename(wheel, valid_wheel)
+        system "python{{ target_python_version }}", "-m", "pip", "--python=#{libexec}/bin/python", "install", "--no-deps", valid_wheel
+      end
+    end
+{% endif %}
   end
 
   test do
@@ -85,13 +102,6 @@ TEMPLATE = env.from_string("""class Rclip < Formula
 end
 """)  # noqa
 
-
-RESOURCE_TEMPLATE = env.from_string(
-  '  resource "{{ resource.name }}" do\n'
-  '    url "{{ resource.url }}"\n'
-  '    {{ resource.checksum_type }} "{{ resource.checksum }}"\n'
-  "  end"
-)
 
 # These deps are handled by Homebrew formulas (excluded from virtualenv resources)
 BREW_DEPS = ["numpy", "pillow", "certifi"]
@@ -115,6 +125,7 @@ class PackageResource(TypedDict):
   checksum: str
   checksum_type: str
   homepage: str
+  using_nounzip: NotRequired[bool]
 
 
 class _WheelPackageRequired(TypedDict):
@@ -146,6 +157,7 @@ MAKE_GRAPH_IGNORED = {"pip", "setuptools", "wheel", "argparse", "wsgiref"}
 
 EXTRA_MACOS_RESOURCES = ["coremltools"]
 EXTRA_MACOS_RESOURCE_KEYS = {name.lower().replace("-", "_") for name in EXTRA_MACOS_RESOURCES}
+MACOS_WHEEL_RESOURCE = "coremltools"
 
 MarkerEnvironment = dict[str, str | AbstractSet[str]]
 
@@ -166,6 +178,20 @@ def get_marker_environment(overrides: Mapping[str, str]) -> MarkerEnvironment:
   )
   environment.update(overrides)
   return environment
+
+
+def render_resource_block(resource: PackageResource, indent: str = "  ") -> str:
+  url_line = f'{indent}  url "{resource["url"]}"'
+  if resource.get("using_nounzip"):
+    url_line += ", using: :nounzip"
+  return "\n".join(
+    [
+      f'{indent}resource "{resource["name"]}" do',
+      url_line,
+      f'{indent}  {resource["checksum_type"]} "{resource["checksum"]}"',
+      f"{indent}end",
+    ]
+  )
 
 
 def make_graph(package_name: str, skip_pypi_packages: set[str]):
@@ -233,6 +259,19 @@ def get_pypi_resource(package_name: str, version: str) -> PackageResource:
   }
 
 
+def get_macos_arm_wheel_resource(package_name: str, version: str, tag: str) -> PackageResource:
+  wheel = get_wheels(package_name, tag=tag, resolved_version=version, required_platforms={"mac_arm"})["mac_arm"]
+  return {
+    "name": package_name,
+    "version": version,
+    "url": wheel["url"],
+    "checksum": wheel["sha256"],
+    "checksum_type": "sha256",
+    "homepage": "",
+    "using_nounzip": True,
+  }
+
+
 def get_macos_only_resources() -> OrderedDict[str, PackageResource]:
   marker_env = get_marker_environment({"sys_platform": "darwin", "platform_system": "Darwin"})
   resources: dict[str, PackageResource] = {}
@@ -247,8 +286,12 @@ def get_macos_only_resources() -> OrderedDict[str, PackageResource]:
 
     dist = importlib.metadata.distribution(package_name)
     actual_name = dist.metadata["Name"]
+    version = dist.metadata["Version"]
     normalized_name = actual_name.lower().replace("_", "-")
-    resources[normalized_name] = get_pypi_resource(actual_name, dist.metadata["Version"])
+    if normalized_name == MACOS_WHEEL_RESOURCE:
+      resources[normalized_name] = get_macos_arm_wheel_resource(actual_name, version, TARGET_PYTHON_TAG)
+    else:
+      resources[normalized_name] = get_pypi_resource(actual_name, version)
 
     for req_str in dist.requires or []:
       req = Requirement(req_str)
@@ -263,8 +306,15 @@ def get_macos_only_resources() -> OrderedDict[str, PackageResource]:
   return OrderedDict(sorted(resources.items()))
 
 
-def get_wheels(package_name: str, tag: Optional[str] = None, resolved_version: Optional[str] = None) -> PlatformWheels:
+def get_wheels(
+  package_name: str,
+  tag: Optional[str] = None,
+  resolved_version: Optional[str] = None,
+  required_platforms: Optional[AbstractSet[str]] = None,
+) -> dict[str, WheelInfo]:
   """Fetch platform-specific wheel URLs/SHA256 from PyPI, keyed by mac_arm/linux_arm/linux_x86."""
+  if required_platforms is None:
+    required_platforms = {"mac_arm", "linux_arm", "linux_x86"}
   if resolved_version is not None:
     version = resolved_version
   else:
@@ -297,7 +347,7 @@ def get_wheels(package_name: str, tag: Optional[str] = None, resolved_version: O
     elif tag:
       if tag not in py_tags:
         continue
-      if tag not in abi_tags and "abi3" not in abi_tags:
+      if tag not in abi_tags and "abi3" not in abi_tags and "none" not in abi_tags:
         continue
     info = {"url": url_info["url"], "sha256": url_info["digests"]["sha256"]}
     if "macosx" in plat and "arm64" in plat:
@@ -306,10 +356,10 @@ def get_wheels(package_name: str, tag: Optional[str] = None, resolved_version: O
       result["linux_arm"] = info
     elif "manylinux" in plat and "x86_64" in plat:
       result["linux_x86"] = info
-  missing = {"mac_arm", "linux_arm", "linux_x86"} - result.keys()
+  missing = required_platforms - result.keys()
   if missing:
     raise RuntimeError(f"Missing {package_name!r} wheels for platforms: {missing}")
-  return cast(PlatformWheels, result)
+  return result
 
 
 def render_macos_resource_blocks(resources: list[PackageResource]) -> str:
@@ -317,7 +367,7 @@ def render_macos_resource_blocks(resources: list[PackageResource]) -> str:
     return ""
   lines = ["  if OS.mac?"]
   for resource in resources:
-    lines.extend(RESOURCE_TEMPLATE.render(resource=resource).splitlines())
+    lines.extend(render_resource_block(resource, indent="    ").splitlines())
     lines.append("")
   if lines[-1] == "":
     lines.pop()
@@ -390,7 +440,7 @@ def main():
   all_wheels = []
   for pkg in WHEEL_PACKAGES:
     wheels = get_wheels(pkg["name"], tag=pkg.get("tag"), resolved_version=wheel_versions.get(pkg["name"]))
-    all_wheels.append(wheels)
+    all_wheels.append(cast(PlatformWheels, wheels))
 
   wheel_resources = "\n\n".join(
     render_wheel_resource_block(pkg["name"], wheels) for pkg, wheels in zip(WHEEL_PACKAGES, all_wheels)
@@ -398,7 +448,7 @@ def main():
   wheel_names = " ".join(pkg["name"] for pkg in WHEEL_PACKAGES)
   resources = "\n\n".join(
     [
-      *[RESOURCE_TEMPLATE.render(resource=dep) for dep in deps.values()],
+      *[render_resource_block(dep) for dep in deps.values()],
       *([render_macos_resource_blocks(list(macos_only_resources.values()))] if macos_only_resources else []),
     ]
   )
@@ -410,6 +460,8 @@ def main():
       wheel_resources=wheel_resources,
       wheel_names=wheel_names,
       wheel_packages=WHEEL_PACKAGES,
+      include_macos_wheel_resource=MACOS_WHEEL_RESOURCE in macos_only_resources,
+      macos_wheel_resource=MACOS_WHEEL_RESOURCE,
     )
   )
 
