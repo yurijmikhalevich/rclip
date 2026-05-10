@@ -17,7 +17,7 @@ runs:
     - uses: actions/setup-python@v6
       with:
         python-version: ${{ inputs.python }}
-    - uses: astral-sh/setup-uv@v8
+    - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
     - name: Print commit that we are going to run the tests from
       run: git rev-parse HEAD
       shell: bash
