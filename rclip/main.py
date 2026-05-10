@@ -241,6 +241,7 @@ def init_rclip(
         print(f"\n{get_snap_permission_error(realpath, symlink_path, is_current_directory=False)}\n")
         sys.exit(1)
       raise
+    model_instance.release_indexing_resources()
 
   return rclip, model_instance, database
 
@@ -269,7 +270,7 @@ def main():
   if is_snap():
     check_snap_permissions(current_directory, is_current_directory=True)
 
-  rclip, _, db = init_rclip(
+  rclip, model_instance, db = init_rclip(
     current_directory,
     args.indexing_batch_size,
     args.exclude_dir,
@@ -281,6 +282,7 @@ def main():
     result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
     print_results(result, args)
   finally:
+    model_instance.close()
     db.close()
 
 

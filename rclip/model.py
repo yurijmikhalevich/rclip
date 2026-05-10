@@ -34,6 +34,22 @@ class Model:
   def ensure_downloaded(self) -> None:
     model_download.ensure_downloaded()
 
+  def _shutdown_preprocess_executor(self) -> None:
+    if self._preprocess_executor_var is None:
+      return
+    self._preprocess_executor_var.shutdown(wait=True)
+    self._preprocess_executor_var = None
+
+  def release_indexing_resources(self) -> None:
+    self._shutdown_preprocess_executor()
+    self._session_visual_index_var = None
+
+  def close(self) -> None:
+    self.release_indexing_resources()
+    self._session_text_var = None
+    self._session_visual_var = None
+    self._tokenizer_var = None
+
   @property
   def _tokenizer(self) -> SimpleTokenizer:
     if self._tokenizer_var is None:
