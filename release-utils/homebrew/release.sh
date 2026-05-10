@@ -5,7 +5,7 @@ set -e
 # and push permissions to https://github.com/yurijmikhalevich/homebrew-tap
 
 ORIG_PWD=$(pwd)
-VERSION=$(poetry version -s)
+VERSION=$(uv version --short)
 
 TMP_DIR=$(mktemp -d -t release-rclip-brew-XXXXXXXXXX)
 cd $TMP_DIR

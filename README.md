@@ -170,7 +170,7 @@ This repository follows the [Conventional Commits](https://www.conventionalcommi
 
 ### Running locally from the source code
 
-To run **rclip** locally from the source code, you must have [Python](https://www.python.org/downloads/) and [Poetry](https://python-poetry.org/) installed.
+To run **rclip** locally from the source code, you must have [Python](https://www.python.org/downloads/) and [uv](https://docs.astral.sh/uv/) installed.
 
 Then do:
 ```bash
@@ -179,13 +179,10 @@ git clone git@github.com:yurijmikhalevich/rclip.git
 
 # install dependencies and rclip
 cd rclip
-poetry install
-
-# activate the new poetry environment
-poetry shell
+uv sync
 ```
 
-If the poetry environment is active, you can use **rclip** locally, as described in the [Usage](#usage) section above.
+Then use `uv run rclip`, as described in the [Usage](#usage) section above.
 
 ## Contributors ✨
 

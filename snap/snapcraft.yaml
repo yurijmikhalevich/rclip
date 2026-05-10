@@ -27,5 +27,5 @@ apps:
 
 parts:
   rclip:
-    plugin: poetry
+    plugin: uv
     source: .

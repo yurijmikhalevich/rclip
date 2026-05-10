@@ -6,42 +6,42 @@ else
 endif
 
 build-appimage:
-	poetry run appimage-builder --recipe ./release-utils/appimage/appimage-builder.yml
+	appimage-builder --recipe ./release-utils/appimage/appimage-builder.yml
 
 lint-style:
-	poetry run ruff check
+	uv run ruff check
 
 fix-style:
-	poetry run ruff check --fix
-	poetry run ruff format
+	uv run ruff check --fix
+	uv run ruff format
 
 lint-types:
-	poetry run pyright .
+	uv run ty check
 
 lint: lint-style lint-types
 
 test:
-	poetry run pytest tests
+	uv run pytest tests
 
 test-system-rclip:
-	RCLIP_TEST_RUN_SYSTEM_RCLIP=true poetry run pytest tests/e2e
+	RCLIP_TEST_RUN_SYSTEM_RCLIP=true uv run --no-sync pytest tests/e2e
 
 build-docker:
 	DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build . -t rclip
 
 # CI runs release-brew as part of the `release` action
 build-windows:
-	poetry run pyinstaller -y ./release-utils/windows/pyinstaller.spec
+	uv run --with pyinstaller==6.10.0 pyinstaller -y ./release-utils/windows/pyinstaller.spec
 
 # CI runs release-brew as part of the `release` action
 release-brew:
-	poetry run ./release-utils/homebrew/release.sh
+	uv run ./release-utils/homebrew/release.sh
 
 release:
-	@test $(VERSION) || (echo "VERSION arg is required" && exit 1)
-	poetry version $(VERSION)
-	$(SED) -i "s/version: .*/version: $$(poetry version -s)/" snap/snapcraft.yaml
-	git commit -am "release: v$$(poetry version -s)"
+	@test $(VERSION) || (echo "VERSION arg is required (e.g. VERSION=major|minor|patch|alpha|beta|rc)" && exit 1)
+	uv version --no-sync --bump $(VERSION)
+	$(SED) -i "s/version: .*/version: $$(uv version --short)/" snap/snapcraft.yaml
+	git commit -am "release: v$$(uv version --short)"
 	git push origin $$(git branch --show-current)
-	git tag v$$(poetry version -s)
-	git push origin v$$(poetry version -s)
+	git tag v$$(uv version --short)
+	git push origin v$$(uv version --short)

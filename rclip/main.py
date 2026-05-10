@@ -18,7 +18,7 @@ from rclip.utils.snap import check_snap_permissions, is_snap, get_snap_permissio
 from rclip.utils import helpers
 
 
-ImageFile.LOAD_TRUNCATED_IMAGES = True
+setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
 register_heif_opener()
 
 
@@ -36,10 +36,7 @@ def get_image_meta(entry: os.DirEntry[str]) -> ImageMeta:
 
 
 def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
-  for key in meta:
-    if meta[key] != image[key]:
-      return False
-  return True
+  return meta["modified_at"] == image["modified_at"] and meta["size"] == image["size"]
 
 
 class RClip:
