@@ -3,7 +3,7 @@ script:
   # Ensure that the mksquashfs tool is installed (workaround for the AppImageCrafters/build-appimage GHA)
   - which mksquashfs || apt-get install -y squashfs-tools
   # Remove any previous build
-  - rm -rf AppDir | true
+  - rm -rf AppDir appimage-build .bundle.yml rclip-*.AppImage rclip-*.AppImage.zsync | true
   # Make usr and icons dirs
   - mkdir -p AppDir/usr/src AppDir/usr/share/icons/hicolor/256x256/apps/
   # Copy the python application code and icon into the AppDir

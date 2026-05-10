@@ -6,7 +6,7 @@ else
 endif
 
 build-appimage:
-	appimage-builder --recipe ./release-utils/appimage/appimage-builder.yml
+	APP_VERSION=$(shell python3 -c 'from pathlib import Path; import tomllib; print(tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"])') bash ./release-utils/appimage/build_appimage.sh
 
 lint-style:
 	uv run ruff check
