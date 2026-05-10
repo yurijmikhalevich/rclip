@@ -2,7 +2,9 @@
   "exclude": [
     "AppDir",
     "appimage-builder-cache",
-    "benchmarks/datasets"
+    "benchmarks/datasets",
+    "**/.*",
+    "**/__pycache__",
   ],
   "typeCheckingMode": "strict",
   "reportMissingTypeStubs": "none",
