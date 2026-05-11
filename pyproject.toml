@@ -1,6 +1,6 @@
 [project]
 name = "rclip"
-version = "3.0.5"
+version = "3.0.6"
 description = "AI-Powered Command-Line Photo Search Tool"
 authors = [{ name = "Yurij Mikhalevich", email = "yurij@mikhalevi.ch" }]
 requires-python = ">=3.11,<3.14"
