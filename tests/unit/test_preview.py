@@ -13,12 +13,17 @@ def test_preview_uses_terminal_cell_dimensions_when_available(monkeypatch, capsy
   preview_module.preview("cat.jpg", 50)
 
   output = capsys.readouterr().out.rstrip("\n")
+  start_sequence = preview_module._get_start_sequence()
+  end_sequence = preview_module._get_end_sequence()
+
   assert ";width=10;height=5:" in output
+  assert output.startswith(f"{start_sequence}1337;File=inline=1;size=")
+  assert output.endswith(end_sequence)
 
   metadata, encoded_image = output.split(":", 1)
-  assert metadata.startswith("\033]1337;File=inline=1;size=")
+  assert metadata.startswith(f"{start_sequence}1337;File=inline=1;size=")
 
-  image = Image.open(BytesIO(base64.b64decode(encoded_image.removesuffix("\a"))))
+  image = Image.open(BytesIO(base64.b64decode(encoded_image.removesuffix(end_sequence))))
   assert image.size == (100, 50)
 
 
