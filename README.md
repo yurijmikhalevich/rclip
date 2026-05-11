@@ -1,4 +1,4 @@
-# rclip - AI-Powered Command-Line Photo Search Tool
+# rclip - AI-Powered Semantic Photo Search for the Command Line
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
 [![All Contributors](https://img.shields.io/badge/all_contributors-6-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
@@ -9,7 +9,7 @@
   <img alt="rclip logo" src="https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/resources/logo-transparent.png" width="600px" />
 </div>
 
-**rclip** is a command-line photo search tool powered by the awesome OpenAI's [CLIP](https://github.com/openai/CLIP) neural network.
+**rclip** is a command-line semantic photo search tool powered by [OpenCLIP's top-performing ViT-B/32 model](https://github.com/mlfoundations/open_clip/blob/55794d65a14dfc547a9ed3514145dd68ccc939e9/README.md). Search a local photo library with natural-language queries, similar image search, or mixed text and image queries directly from the terminal. It builds on the CLIP architecture introduced by OpenAI.
 
 ## Installation
 
@@ -75,19 +75,32 @@ brew install yurijmikhalevich/tap/rclip
 
 ## Usage
 
+Search the current directory with a natural-language query:
+
 ```bash
 cd photos && rclip "search query"
 ```
 
+<details>
+  <summary>Example output</summary>
+
+  ```text
+  score  filepath
+  0.297  "/photos/sunrise-beach.jpg"
+  0.286  "/photos/dawn-walk.png"
+  0.274  "/photos/morning-hike.heic"
+  ```
+</details>
+
 <img alt="rclip usage demo" src="https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/resources/rclip-usage.gif" width="640px" />
 
-When you run **rclip** for the first time in a particular directory, it will extract features from the photos, which takes time. How long it will take depends on your CPU and the number of pictures you will search through. It took about a day to process 73 thousand photos on my NAS, which runs an old-ish Intel Celeron J3455, 7 minutes to index 50 thousand images on my MacBook with an M1 Max CPU, and three hours to process 1.28 million images on the same MacBook.
+The first time you run **rclip** in a directory, it extracts features from your images to build the search index. How long this takes depends on your CPU and the number of images you search. On my hardware, it took about a day to process 73,000 photos on a NAS with an old Intel Celeron J3455, 7 minutes to index 50,000 images on a MacBook with an M1 Max, and 3 hours to process 1.28 million images on the same MacBook.
 
 For a detailed demonstration, watch the video: https://www.youtube.com/watch?v=tAJHXOkHidw.
 
-### Similar image search
+### Similar image search (image-to-image search)
 
-You can use another image as a query by passing a file path or even an URL to the image file, and **rclip** will find the images most similar to the one you used as a query. If you are referencing a local image via a relative path, you **must** prefix it with `./`. For example:
+You can also use an image as the query by passing a file path or image URL. **rclip** will return the images most similar to that query image. If you use a relative path to a local image, you **must** prefix it with `./`. For example:
 
 ```bash
 cd photos && rclip ./cat.jpg
@@ -100,7 +113,7 @@ Check this video out for the image-to-image search demo: https://www.youtube.com
 
 ### Combining multiple queries
 
-You can add and subtract image and text queries from each other; here are a few usage examples:
+You can combine and subtract image and text queries; here are a few examples:
 
 ```bash
 cd photos && rclip horse + stripes
@@ -114,7 +127,7 @@ If you want to see how these queries perform when executed on the 1.28 million i
 
 ### How do I preview the results?
 
-If you are using either one of [iTerm2](https://iterm2.com/), [Konsole](https://konsole.kde.org/) (version 22.04 and higher), [wezterm](https://wezfurlong.org/wezterm/), [Mintty](https://mintty.github.io/), or [mlterm](https://mlterm.sourceforge.net/) all you need to do is pass `--preview` (or `-p`) argument to **rclip**:
+If you are using either [iTerm2](https://iterm2.com/), [Konsole](https://konsole.kde.org/) (version 22.04 and higher), [wezterm](https://wezfurlong.org/wezterm/), [Mintty](https://mintty.github.io/), or [mlterm](https://mlterm.sourceforge.net/), all you need to do is pass the `--preview` (or `-p`) flag to **rclip**:
 
 ```bash
 rclip -p kitty
@@ -123,13 +136,13 @@ rclip -p kitty
 <details>
   <summary>Using a different terminal or viewer</summary>
 
-  If you are using any other terminal or want to view the results in your viewer of choice, you can pass the output of **rclip** to it. For example, on Linux, the command from below will open top-5 results for "kitty" in your default image viewer:
+  If you use another terminal or want to open the results in a viewer of your choice, you can pipe **rclip**'s output into it. For example, on Linux, the command below will open the top 5 results for "kitty" in your default image viewer:
 
   ```bash
   rclip -f -t 5 kitty | xargs -d '\n' -n 1 xdg-open
   ```
 
-  The `-f` param or `--filepath-only` makes **rclip** print the file paths only, without scores or the header, which makes it ideal to use together with a custom viewer as in the example.
+  The `-f` or `--filepath-only` flag makes **rclip** print only file paths, without scores or the header, which makes it ideal for use with a custom viewer as in the example.
   
   I prefer to use **feh**'s thumbnail mode to preview multiple results:
 
@@ -140,7 +153,7 @@ rclip -p kitty
 
 ### Can I use **rclip** to copy images matching a certain query?
 
-Yes, you can pipe **rclip**'s output to another tool to copy the images. For example, to copy top 3 images matching the "search query" to `/path/to/destination` on macOS, Linux, or WSL you can do:
+Yes. You can pipe **rclip**'s output to another tool to copy matching images. For example, to copy the top 3 images matching "search query" to `/path/to/destination` on macOS, Linux, or WSL:
 
 ```sh
 rclip -f -t 3 "search query" | xargs -I {} cp {} /path/to/destination
@@ -148,13 +161,13 @@ rclip -f -t 3 "search query" | xargs -I {} cp {} /path/to/destination
 
 ### How does **rclip** update the index?
 
-When you run **rclip** in a directory that has already been processed, it will
-only index the new images added since the last run and remove the deleted images
-from its index. This makes consecutive runs much faster.
+When you run **rclip** in a directory that has already been processed, it indexes
+only the new images added since the last run and removes deleted images from its
+index. This makes consecutive runs much faster.
 
-If you know that no new images were added or deleted since the last run, you can
-use the `--no-indexing` (or `-n`) argument to skip the indexing step altogether
-and speed up the search even more.
+If you know no images have been added or deleted since the last run, you can use
+the `--no-indexing` (or `-n`) flag to skip indexing entirely and speed up the
+search even more.
 
 ```bash
 rclip -n cat
@@ -170,9 +183,9 @@ This repository follows the [Conventional Commits](https://www.conventionalcommi
 
 ### Running locally from the source code
 
-To run **rclip** locally from the source code, you must have [Python](https://www.python.org/downloads/) and [uv](https://docs.astral.sh/uv/) installed.
+To run **rclip** locally from source, you must have [Python](https://www.python.org/downloads/) and [uv](https://docs.astral.sh/uv/) installed.
 
-Then do:
+Then run:
 ```bash
 # clone the source code repository
 git clone git@github.com:yurijmikhalevich/rclip.git
@@ -209,7 +222,7 @@ Thanks go to these wonderful people and organizations ([emoji key](https://allco
 
 <!-- ALL-CONTRIBUTORS-LIST:END -->
 
-Thanks to [Caphyon](https://github.com/Caphyon) and Advanced Installer team for generously supplying **rclip** project with the Professional Advanced Installer license for creating the Windows installer.
+Thanks to [Caphyon](https://github.com/Caphyon) and the Advanced Installer team for generously supplying the **rclip** project with the Professional Advanced Installer license for creating the Windows installer.
 
 This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind are welcome!
 
