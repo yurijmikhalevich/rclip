@@ -10,7 +10,7 @@ description: |
   For a detailed demonstration, watch the video: https://www.youtube.com/watch?v=tAJHXOkHidw.
 
   You can also use an image as the query by passing a file path or image URL. You can also combine and subtract image and text queries. Check out the project's README on GitHub for more usage examples: https://github.com/yurijmikhalevich/rclip#readme.
-version: 3.0.7
+version: 3.0.8
 website: https://github.com/yurijmikhalevich/rclip
 contact: yurij@mikhalevi.ch
 passthrough:
