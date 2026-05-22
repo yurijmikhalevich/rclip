@@ -36,7 +36,6 @@ TEMPLATE = env.from_string("""class Rclip < Formula
   # Homebrew CI builds uv_build's maturin dependency from source.
   depends_on "rust" => :build
   depends_on "certifi"
-  depends_on "libheif"
   depends_on "libraw"
   depends_on "libyaml"
   depends_on "numpy"
@@ -149,6 +148,7 @@ WHEEL_PACKAGES: list[WheelPackage] = [
   },
   {"name": "hf-xet", "tag": "abi3"},
   {"name": "onnxruntime", "tag": TARGET_PYTHON_TAG},
+  {"name": "pillow-heif", "tag": TARGET_PYTHON_TAG, "patchelf": {"pillow_heif.libs/*.so*": "$ORIGIN"}},
 ]
 
 RESOURCE_URL_OVERRIDES = {}
