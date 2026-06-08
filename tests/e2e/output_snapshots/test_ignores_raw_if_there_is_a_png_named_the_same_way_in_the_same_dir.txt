@@ -1,4 +1,6 @@
 score	filepath
 0.301	"<test_images_dir>boats on a lake.png"
+0.144	"<test_images_dir>RAW_LEICA_M8.DNG"
 0.119	"<test_images_dir>RAW_CANON_400D_ARGB.CR2"
 0.083	"<test_images_dir>DSC08882.ARW"
+0.042	"<test_images_dir>DSC03671.dng"

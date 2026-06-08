@@ -327,6 +327,18 @@ def test_can_read_cr2_images(
   )
 
 
+@pytest.mark.usefixtures("assert_output_snapshot_raw_images")
+def test_can_read_dng_images(
+  test_dir_with_raw_images: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  shared_model_cache_dir: str,
+):
+  # DSC03671.dng should be at the top of the results
+  execute_query(
+    test_dir_with_raw_images, monkeypatch, shared_model_cache_dir, "--experimental-raw-support", "two parrots on a tree branch"
+  )
+
+
 @pytest.mark.usefixtures("assert_output_snapshot_unicode_filepaths")
 def test_unicode_filepaths(
   test_dir_with_unicode_filenames: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
