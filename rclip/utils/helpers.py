@@ -29,7 +29,7 @@ def _ensure_image_loading_configured() -> None:
   from PIL import ImageFile
   from pillow_heif import register_heif_opener
 
-  ImageFile.LOAD_TRUNCATED_IMAGES = True
+  setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
   register_heif_opener()
   _image_loading_configured = True
 
