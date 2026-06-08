@@ -203,7 +203,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
     "--experimental-raw-support",
     action="store_true",
     default=False,
-    help="enables support for RAW images (only ARW and CR2 are supported)",
+    help="enables support for RAW images (ARW, CR2, and DNG are supported)",
   )
   return parser
 
