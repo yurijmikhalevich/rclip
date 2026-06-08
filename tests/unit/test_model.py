@@ -507,13 +507,16 @@ def test_release_indexing_resources_shuts_down_preprocess_executor(monkeypatch: 
   monkeypatch.setitem(sys.modules, "coremltools.models", fake_coremltools_models)
   monkeypatch.setattr(model_download_module, "IS_MACOS", True)
   monkeypatch.delenv("RCLIP_USE_ONNX_ON_MACOS", raising=False)
+
   def fake_download_visual_index_model_package() -> str:
     return "/models/visual.mlpackage"
 
   def fake_ensure_compiled_coreml_model(path: str) -> str:
     return f"{Path(path).with_suffix('')}.mlmodelc"
 
-  monkeypatch.setattr(model_download_module, "download_visual_index_model_package", fake_download_visual_index_model_package)
+  monkeypatch.setattr(
+    model_download_module, "download_visual_index_model_package", fake_download_visual_index_model_package
+  )
   monkeypatch.setattr(model_download_module, "ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
 
   model = Model()

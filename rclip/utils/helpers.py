@@ -6,8 +6,6 @@ from typing import IO, cast
 from PIL import Image, UnidentifiedImageError
 import re
 import numpy as np
-import rawpy
-import requests
 import sys
 from importlib.metadata import version
 
@@ -18,6 +16,22 @@ MAX_DOWNLOAD_SIZE_BYTES = 50_000_000
 DOWNLOAD_TIMEOUT_SECONDS = 60
 WIN_ABSOLUTE_FILE_PATH_REGEX = re.compile(r"^[a-z]:\\", re.I)
 DEFAULT_TERMINAL_TEXT_WIDTH = 100
+
+_image_loading_configured = False
+
+
+def _ensure_image_loading_configured() -> None:
+  """Configures PIL for reading the images rclip works with. Imports pillow_heif (which loads the
+  native libheif) lazily so runs that never open an image don't pay for it."""
+  global _image_loading_configured
+  if _image_loading_configured:
+    return
+  from PIL import ImageFile
+  from pillow_heif import register_heif_opener
+
+  setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
+  register_heif_opener()
+  _image_loading_configured = True
 
 
 def __get_system_datadir() -> pathlib.Path:
@@ -196,6 +210,9 @@ def init_arg_parser() -> argparse.ArgumentParser:
 
 # See: https://meta.wikimedia.org/wiki/User-Agent_policy
 def download_image(url: str) -> Image.Image:
+  import requests
+
+  _ensure_image_loading_configured()
   headers = {"User-agent": "rclip - (https://github.com/yurijmikhalevich/rclip)"}
   check_size = requests.request("HEAD", url, headers=headers, timeout=60)
   if length := check_size.headers.get("Content-Length"):
@@ -212,12 +229,15 @@ def get_file_extension(path: str) -> str:
 
 
 def read_raw_image_file(path: str):
+  import rawpy
+
   with rawpy.imread(path) as raw:
     rgb = raw.postprocess()
   return Image.fromarray(np.array(rgb))
 
 
 def read_image(query: str) -> Image.Image:
+  _ensure_image_loading_configured()
   path = str.removeprefix(query, "file://")
   try:
     file_ext = get_file_extension(path)

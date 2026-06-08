@@ -8,18 +8,13 @@ from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
 import numpy as np
 from tqdm import tqdm
 import PIL
-from PIL import Image, ImageFile
-from pillow_heif import register_heif_opener
+from PIL import Image
 
 from rclip import db, fs, model
 from rclip.const import IMAGE_EXT, IMAGE_RAW_EXT
 from rclip.utils.preview import preview
 from rclip.utils.snap import check_snap_permissions, is_snap, get_snap_permission_error
 from rclip.utils import helpers
-
-
-setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
-register_heif_opener()
 
 
 class ImageMeta(TypedDict):
