@@ -888,7 +888,7 @@ wheels = [
 
 [[package]]
 name = "rclip"
-version = "3.0.10"
+version = "3.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "coremltools", marker = "sys_platform == 'darwin'" },
