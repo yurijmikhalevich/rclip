@@ -9,8 +9,3 @@ score	filepath
 0.152	"<test_images_dir>cautious cat.jpg"
 0.151	"<test_images_dir>black cat sleeping on a chair.JPG"
 0.149	"<test_images_dir>black kitty.jpeg"
-0.149	"<test_images_dir>parrot-and-flowers.pgm"
-0.148	"<test_images_dir>cat.jpg"
-0.146	"<test_images_dir>black cat at night.jpg"
-0.137	"<test_images_dir>cake.jpg"
-0.120	"<test_images_dir>books.jpg"

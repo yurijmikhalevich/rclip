@@ -9,8 +9,3 @@ score	filepath
 0.151	"<test_images_dir>camera.jpg"
 0.145	"<test_images_dir>bee_animated.gif"
 0.136	"<test_images_dir>bee.jpg"
-0.132	"<test_images_dir>parrot-looks-into-the-camera.ppm"
-0.131	"<test_images_dir>cautious cat.jpg"
-0.129	"<test_images_dir>black kitty.jpeg"
-0.115	"<test_images_dir>books.jpg"
-0.110	"<test_images_dir>chess-queen.gif"

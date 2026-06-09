@@ -197,7 +197,7 @@ def test_search_format(
   query: str,
   expected_ext: str,
 ):
-  results = execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, query, "--top", "15")
+  results = execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, query)
   assert any(expected_ext in result.filepath for result in results)
 
 

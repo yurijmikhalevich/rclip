@@ -9,8 +9,3 @@ score	filepath
 0.113	"<test_images_dir>cake.jpg"
 0.101	"<test_images_dir>duck.jp2"
 0.095	"<test_images_dir>cautious cat.jpg"
-0.086	"<test_images_dir>kookaburras.pnm"
-0.084	"<test_images_dir>chessboard with rocks.JPG"
-0.073	"<test_images_dir>black cat sleeping on a chair.JPG"
-0.069	"<test_images_dir>cat.jpg"
-0.064	"<test_images_dir>camera.jpg"
