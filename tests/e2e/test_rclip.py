@@ -135,7 +135,7 @@ def execute_query(
       text=True,
     )
     output = completed_run.stdout
-    os.write(1, output.encode())
+    os.write(sys.stdout.fileno(), output.encode())
     if completed_run.returncode != 0:
       raise SystemExit(completed_run.returncode)
   else:
@@ -153,7 +153,7 @@ def execute_query(
     finally:
       output = captured.getvalue()
       sys.stdout = old_stdout
-      os.write(1, output.encode())
+      os.write(sys.stdout.fileno(), output.encode())
 
   results = []
   for line in output.strip().split("\n")[1:]:
