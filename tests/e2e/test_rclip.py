@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Callable, NamedTuple
+from typing import NamedTuple
 import os
 import subprocess
 import sys
@@ -11,17 +11,6 @@ import pytest
 class SearchResult(NamedTuple):
   filepath: str
   score: float
-
-
-# Runs an rclip query and returns its parsed results; see the ``execute_query`` fixture.
-ExecuteQuery = Callable[..., list[SearchResult]]
-
-
-def set_argv(*args: str):
-  script_name = sys.argv[0]
-  sys.argv.clear()
-  sys.argv.append(script_name)
-  sys.argv.extend(args)
 
 
 @pytest.fixture
@@ -78,9 +67,10 @@ def _assert_output_snapshot(
     .replace("." + os.path.sep, "<test_images_dir>")
     .replace(os.path.sep, "/")
     .replace("\r\n", "\n")
-    # Stripping the BOM marker we are adding on Windows systems when the output is being piped to a file.
-    # Otherwise, the output won't be encoded correctly.
-  ).lstrip("\ufeff")
+    # Stripping the BOM markers we add on Windows systems when the output is being piped to a file.
+    # One is emitted per rclip invocation, so a single test may produce several of them; otherwise,
+    # the output won't be encoded correctly.
+  ).replace("\ufeff", "")
   if not snapshot_path.exists():
     snapshot_path.write_text(snapshot)
   assert snapshot == snapshot_path.read_text(encoding=encoding)
@@ -120,73 +110,45 @@ def assert_output_snapshot_unicode_filepaths(
   _assert_output_snapshot(test_dir_with_unicode_filenames, request, capfd, "utf-8-sig")
 
 
-@pytest.fixture
-def execute_query(capfd: pytest.CaptureFixture[str]) -> ExecuteQuery:
-  """Returns a helper that runs an rclip query and parses the printed results.
+def execute_query(
+  test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str, *args: str
+) -> list[SearchResult]:
+  """Run the real rclip CLI as a subprocess and return its parsed results.
 
-  ``main`` runs in-process and prints straight to the real stdout, so rclip stays in charge of
-  encoding it (this is what keeps the Windows unicode/BOM handling under test). We read the output
-  back via ``capfd`` to parse it, then replay it so the snapshot fixtures still observe it at
-  teardown."""
+  Running rclip as a separate process is the truest end-to-end test: it exercises rclip's actual
+  stdout encoding (including the utf-8-sig it applies on Windows) and keeps every test isolated --
+  the child owns its own stdout and SQLite connection, both released when it exits. We forward the
+  child's stdout/stderr bytes verbatim so the snapshot fixtures observe rclip's genuine output
+  without the parent's console re-encoding it."""
+  monkeypatch.setenv("RCLIP_MODEL_CACHE_DIR", shared_model_cache_dir)
 
-  def run(
-    test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str, *args: str
-  ) -> list[SearchResult]:
-    run_system_rclip = os.getenv("RCLIP_TEST_RUN_SYSTEM_RCLIP")
-    if run_system_rclip:
-      completed_run = subprocess.run(
-        ["rclip", *args],
-        cwd=test_images_dir,
-        env={
-          **os.environ,
-          "RCLIP_MODEL_CACHE_DIR": shared_model_cache_dir,
-          "RCLIP_TEST_RUN_SYSTEM_RCLIP": "",
-        },
-        capture_output=True,
-        text=True,
-      )
-      output = completed_run.stdout
-      sys.stdout.write(output)
-      sys.stdout.flush()
-      # Keep the subprocess diagnostics visible instead of swallowing them with capture_output.
-      if completed_run.stderr:
-        sys.stderr.write(completed_run.stderr)
-        sys.stderr.flush()
-      if completed_run.returncode != 0:
-        raise SystemExit(completed_run.returncode)
-    else:
-      monkeypatch.setenv("RCLIP_MODEL_CACHE_DIR", shared_model_cache_dir)
+  # RCLIP_TEST_RUN_SYSTEM_RCLIP runs the installed console script; otherwise run the package under
+  # the current interpreter so the test doesn't depend on rclip being on PATH.
+  command = ["rclip"] if os.getenv("RCLIP_TEST_RUN_SYSTEM_RCLIP") else [sys.executable, "-m", "rclip"]
+  completed_run = subprocess.run([*command, *args], cwd=test_images_dir, capture_output=True)
 
-      from rclip.main import main
+  sys.stdout.buffer.write(completed_run.stdout)
+  sys.stdout.buffer.flush()
+  sys.stderr.buffer.write(completed_run.stderr)
+  sys.stderr.buffer.flush()
+  if completed_run.returncode != 0:
+    raise SystemExit(completed_run.returncode)
 
-      monkeypatch.chdir(test_images_dir)
-      set_argv(*args)
-      main()
+  results: list[SearchResult] = []
+  for line in completed_run.stdout.decode("utf-8").splitlines():
+    # Strip the BOM rclip emits on Windows, then drop the header and blanks.
+    line = line.strip().lstrip("﻿")
+    if not line or line.startswith("score\t"):
+      continue
+    parts = line.split("\t")
+    if len(parts) >= 2:
+      results.append(SearchResult(filepath=parts[1].strip('"'), score=float(parts[0])))
 
-      # Capture what rclip printed so we can parse it, then replay it for the snapshot fixtures.
-      output, err = capfd.readouterr()
-      sys.stdout.write(output)
-      sys.stderr.write(err)
-
-    results: list[SearchResult] = []
-    for line in output.splitlines():
-      # Strip the per-invocation BOM that rclip emits on Windows, then drop the header and blanks.
-      line = line.strip().lstrip("﻿")
-      if not line or line.startswith("score\t"):
-        continue
-      parts = line.split("\t")
-      if len(parts) >= 2:
-        results.append(SearchResult(filepath=parts[1].strip('"'), score=float(parts[0])))
-
-    return sorted(results, key=lambda r: (-r.score, r.filepath))
-
-  return run
+  return sorted(results, key=lambda r: (-r.score, r.filepath))
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
-def test_search(
-  execute_query: ExecuteQuery, test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
-):
+def test_search(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
   execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "kitty")
 
 
@@ -209,7 +171,6 @@ def test_search(
   ids=["webp", "png", "heic", "tiff", "bmp", "gif", "jp2", "pnm", "pbm", "pgm", "ppm"],
 )
 def test_search_format(
-  execute_query: ExecuteQuery,
   test_images_dir: Path,
   monkeypatch: pytest.MonkeyPatch,
   shared_model_cache_dir: str,
@@ -221,24 +182,18 @@ def test_search_format(
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
-def test_search_animated_gif(
-  execute_query: ExecuteQuery, test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
-):
+def test_search_animated_gif(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
   results = execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "bee animated", "--top", "15")
   assert any("bee_animated.gif" in result.filepath for result in results)
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
-def test_search_by_image(
-  execute_query: ExecuteQuery, test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
-):
+def test_search_by_image(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
   execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, str(test_images_dir / "cat.jpg"))
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
-def test_search_by_image_from_url(
-  execute_query: ExecuteQuery, test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
-):
+def test_search_by_image_from_url(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
   execute_query(
     test_images_dir,
     monkeypatch,
@@ -249,55 +204,45 @@ def test_search_by_image_from_url(
 
 @pytest.mark.usefixtures("assert_output_snapshot")
 def test_search_by_non_existing_file(
-  execute_query: ExecuteQuery, test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
+  test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
 ):
   with pytest.raises(SystemExit):
     execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "./non-existing-file.jpg")
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
-def test_search_by_not_an_image(
-  execute_query: ExecuteQuery, test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
-):
+def test_search_by_not_an_image(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
   with pytest.raises(SystemExit):
     execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, str(test_images_dir / "not-an-image.txt"))
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
-def test_add_queries(
-  execute_query: ExecuteQuery, test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
-):
+def test_add_queries(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
   execute_query(
     test_images_dir, monkeypatch, shared_model_cache_dir, "kitty", "--add", "puppy", "-a", "roof", "+", "fence"
   )
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
-def test_subtract_queries(
-  execute_query: ExecuteQuery, test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
-):
+def test_subtract_queries(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
   execute_query(
     test_images_dir, monkeypatch, shared_model_cache_dir, "kitty", "--subtract", "puppy", "-s", "roof", "-", "fence"
   )
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
-def test_add_and_subtract_queries(
-  execute_query: ExecuteQuery, test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
-):
+def test_add_and_subtract_queries(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
   execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "kitty", "+", "roof", "-", "fence")
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
-def test_query_multipliers(
-  execute_query: ExecuteQuery, test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
-):
+def test_query_multipliers(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
   execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "kitty", "+", "2:night", "-", "0.5:fence")
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
 def test_combine_text_query_with_image_query(
-  execute_query: ExecuteQuery, test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
+  test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
 ):
   execute_query(
     test_images_dir, monkeypatch, shared_model_cache_dir, str(test_images_dir / "cat.jpg"), "-", "3:cat", "+", "2:bee"
@@ -306,7 +251,7 @@ def test_combine_text_query_with_image_query(
 
 @pytest.mark.usefixtures("assert_output_snapshot")
 def test_combine_image_query_with_text_query(
-  execute_query: ExecuteQuery, test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
+  test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
 ):
   execute_query(
     test_images_dir, monkeypatch, shared_model_cache_dir, "kitty", "-", str(test_images_dir / "cat.jpg"), "+", "1.5:bee"
@@ -314,15 +259,12 @@ def test_combine_image_query_with_text_query(
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
-def test_search_empty_dir(
-  execute_query: ExecuteQuery, test_empty_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
-):
+def test_search_empty_dir(test_empty_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
   execute_query(test_empty_dir, monkeypatch, shared_model_cache_dir, "kitty")
 
 
 @pytest.mark.usefixtures("assert_output_snapshot_nested_directories")
 def test_search_dir_with_multiple_nested_directories(
-  execute_query: ExecuteQuery,
   test_dir_with_nested_directories: Path,
   monkeypatch: pytest.MonkeyPatch,
   shared_model_cache_dir: str,
@@ -332,7 +274,6 @@ def test_search_dir_with_multiple_nested_directories(
 
 @pytest.mark.usefixtures("assert_output_snapshot_nested_directories")
 def test_search_dir_with_deeply_nested_directories(
-  execute_query: ExecuteQuery,
   test_dir_with_nested_directories: Path,
   monkeypatch: pytest.MonkeyPatch,
   shared_model_cache_dir: str,
@@ -343,7 +284,6 @@ def test_search_dir_with_deeply_nested_directories(
 
 @pytest.mark.usefixtures("assert_output_snapshot_nested_directories")
 def test_handles_addition_and_deletion_of_images(
-  execute_query: ExecuteQuery,
   test_dir_with_nested_directories: Path,
   monkeypatch: pytest.MonkeyPatch,
   shared_model_cache_dir: str,
@@ -373,7 +313,6 @@ def test_handles_addition_and_deletion_of_images(
 
 @pytest.mark.usefixtures("assert_output_snapshot_raw_images")
 def test_ignores_raw_files_if_raw_support_is_disabled(
-  execute_query: ExecuteQuery,
   test_dir_with_raw_images: Path,
   monkeypatch: pytest.MonkeyPatch,
   shared_model_cache_dir: str,
@@ -384,7 +323,6 @@ def test_ignores_raw_files_if_raw_support_is_disabled(
 
 @pytest.mark.usefixtures("assert_output_snapshot_raw_images")
 def test_ignores_raw_if_there_is_a_png_named_the_same_way_in_the_same_dir(
-  execute_query: ExecuteQuery,
   test_dir_with_raw_images: Path,
   monkeypatch: pytest.MonkeyPatch,
   shared_model_cache_dir: str,
@@ -397,7 +335,6 @@ def test_ignores_raw_if_there_is_a_png_named_the_same_way_in_the_same_dir(
 
 @pytest.mark.usefixtures("assert_output_snapshot_raw_images")
 def test_can_read_arw_images(
-  execute_query: ExecuteQuery,
   test_dir_with_raw_images: Path,
   monkeypatch: pytest.MonkeyPatch,
   shared_model_cache_dir: str,
@@ -410,7 +347,6 @@ def test_can_read_arw_images(
 
 @pytest.mark.usefixtures("assert_output_snapshot_raw_images")
 def test_can_read_cr2_images(
-  execute_query: ExecuteQuery,
   test_dir_with_raw_images: Path,
   monkeypatch: pytest.MonkeyPatch,
   shared_model_cache_dir: str,
@@ -423,7 +359,6 @@ def test_can_read_cr2_images(
 
 @pytest.mark.usefixtures("assert_output_snapshot_raw_images")
 def test_can_read_dng_images(
-  execute_query: ExecuteQuery,
   test_dir_with_raw_images: Path,
   monkeypatch: pytest.MonkeyPatch,
   shared_model_cache_dir: str,
@@ -440,9 +375,6 @@ def test_can_read_dng_images(
 
 @pytest.mark.usefixtures("assert_output_snapshot_unicode_filepaths")
 def test_unicode_filepaths(
-  execute_query: ExecuteQuery,
-  test_dir_with_unicode_filenames: Path,
-  monkeypatch: pytest.MonkeyPatch,
-  shared_model_cache_dir: str,
+  test_dir_with_unicode_filenames: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
 ):
   execute_query(test_dir_with_unicode_filenames, monkeypatch, shared_model_cache_dir, "鳥")
