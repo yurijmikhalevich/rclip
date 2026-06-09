@@ -14,7 +14,7 @@ class SearchResult(NamedTuple):
 
 
 # Runs an rclip query and returns its parsed results; see the ``execute_query`` fixture.
-ExecuteQuery = Callable[..., "list[SearchResult]"]
+ExecuteQuery = Callable[..., list[SearchResult]]
 
 
 def set_argv(*args: str):
