@@ -1,4 +1,4 @@
-# rclip - semantic photo search for the command line
+# rclip – semantic photo search for the command line
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
 [![All Contributors](https://img.shields.io/badge/all_contributors-6-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
@@ -9,19 +9,19 @@
   <img alt="rclip logo" src="https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/resources/logo-transparent.png" width="600px" />
 </div>
 
-**rclip** is an AI-powered semantic photo search tool for the command line, powered by [OpenCLIP's top-performing ViT-B/32 model](https://github.com/mlfoundations/open_clip/blob/55794d65a14dfc547a9ed3514145dd68ccc939e9/README.md). Search a local photo library with natural-language queries, similar image search, or mixed text and image queries -- entirely on your machine, with no cloud and no uploads. It builds on the CLIP architecture introduced by OpenAI.
+**rclip** is a semantic photo search tool for the command line, powered by [OpenCLIP's top-performing ViT-B/32 AI model](https://github.com/mlfoundations/open_clip/blob/55794d65a14dfc547a9ed3514145dd68ccc939e9/README.md). Search a local photo library with natural-language queries, similar image search, or mixed text and image queries – entirely on your machine, with no cloud and no uploads. It builds on the CLIP architecture introduced by OpenAI.
 
 ## Features
 
-- **Natural-language search** -- find photos by describing them, e.g. `rclip "two dogs on a snowy beach"`.
-- **Reverse / image-to-image search** -- search by an example image from a local path or a URL.
-- **Combined & arithmetic queries** -- mix and weight text and image queries, e.g. `rclip "2:golden retriever" + "./pool.jpg" - fruit`.
-- **Local & private** -- runs entirely on your machine; your photos never leave your computer, no cloud, no uploads.
-- **CLIP-powered** -- built on OpenCLIP's top-performing ViT-B/32 model, the architecture introduced by OpenAI.
-- **Wide format support** -- `jpg`, `png`, `webp`, `heic`, `tiff`, `gif`, and more, plus experimental RAW (`arw`, `cr2`, `dng`).
-- **Fast incremental indexing** -- only new and changed images are reprocessed on subsequent runs.
-- **Terminal previews** -- view results inline in iTerm2, Konsole, wezterm, Mintty, and mlterm.
-- **Cross-platform** -- Linux, macOS (Apple Silicon), and Windows.
+- **Natural-language search** – find photos by describing them, e.g. `rclip "two dogs on a snowy beach"`.
+- **Reverse / image-to-image search** – search by an example image from a local path or a URL.
+- **Combined & arithmetic queries** – mix and weight text and image queries, e.g. `rclip "2:golden retriever" + "./pool.jpg" - fruit`.
+- **Local & private** – runs entirely on your machine; your photos never leave your computer, no cloud, no uploads.
+- **CLIP-powered** – built on OpenCLIP's top-performing ViT-B/32 model, the architecture introduced by OpenAI.
+- **Wide format support** – `jpg`, `png`, `webp`, `heic`, `tiff`, `gif`, and more, plus experimental RAW (`arw`, `cr2`, `dng`).
+- **Fast incremental indexing** – only new and changed images are reprocessed on subsequent runs.
+- **Terminal previews** – view results inline in iTerm2, Konsole, wezterm, Mintty, and mlterm.
+- **Cross-platform** – Linux, macOS (Apple Silicon), and Windows.
 
 ## Installation
 
