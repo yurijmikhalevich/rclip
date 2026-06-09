@@ -1,7 +1,7 @@
 [project]
 name = "rclip"
 version = "3.1.0"
-description = "AI-Powered Command-Line Photo Search Tool"
+description = "Semantic photo search for the command line"
 authors = [{ name = "Yurij Mikhalevich", email = "yurij@mikhalevi.ch" }]
 requires-python = ">=3.11,<3.14"
 readme = "README.md"
@@ -10,16 +10,23 @@ keywords = [
     "image search",
     "computer vision",
     "photography",
+    "ai",
+    "semantic search",
 ]
 classifiers = [
+    "Environment :: Console",
     "Intended Audience :: End Users/Desktop",
     "Intended Audience :: Science/Research",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
     "Topic :: Multimedia :: Graphics",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Image Processing",
     "Topic :: Scientific/Engineering :: Image Recognition",
     "Topic :: Utilities",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",

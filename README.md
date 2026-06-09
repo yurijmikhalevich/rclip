@@ -1,4 +1,4 @@
-# rclip - AI-Powered Semantic Photo Search for the Command Line
+# rclip – semantic photo search for the command line
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
 [![All Contributors](https://img.shields.io/badge/all_contributors-6-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
@@ -9,7 +9,18 @@
   <img alt="rclip logo" src="https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/resources/logo-transparent.png" width="600px" />
 </div>
 
-**rclip** is a command-line semantic photo search tool powered by [OpenCLIP's top-performing ViT-B/32 model](https://github.com/mlfoundations/open_clip/blob/55794d65a14dfc547a9ed3514145dd68ccc939e9/README.md). Search a local photo library with natural-language queries, similar image search, or mixed text and image queries directly from the terminal. It builds on the CLIP architecture introduced by OpenAI.
+**rclip** is a semantic photo search tool for the command line, powered by [OpenCLIP's top-performing ViT-B/32 AI model](https://github.com/mlfoundations/open_clip/blob/55794d65a14dfc547a9ed3514145dd68ccc939e9/README.md). Search a local photo library with natural-language queries, similar image search, or mixed text and image queries – entirely on your machine, with no cloud and no uploads. It builds on the CLIP architecture introduced by OpenAI.
+
+## Features
+
+- **Natural-language search** – find photos by describing them, e.g. `rclip "two parrots on a branch"`.
+- **Reverse / image-to-image search** – search by an example image from a local path or a URL.
+- **Combined & arithmetic queries** – mix and weight text and image queries, e.g. `rclip "2:golden retriever" + "./pool.jpg" - fruit`.
+- **Local & private** – works fully offline; your photos never leave your computer.
+- **Wide format support** – `jpg`, `png`, `webp`, `heic`, `tiff`, `gif`, and more, plus experimental RAW (`arw`, `cr2`, `dng`).
+- **Fast incremental indexing** – only new and changed images are reprocessed on subsequent runs.
+- **Terminal previews** – view images inline in iTerm2, Konsole, wezterm, Mintty, and mlterm.
+- **Cross-platform** – Linux, macOS (Apple Silicon), and Windows.
 
 ## Installation
 
@@ -124,6 +135,20 @@ cd photos && rclip "./racing car.jpg" - "2:sports car" + "2:snow"
 ```
 
 If you want to see how these queries perform when executed on the 1.28 million images ImageNet-1k dataset, check out the demo on YouTube: https://www.youtube.com/watch?v=MsTgYdOpgcQ.
+
+### Which formats does **rclip** support?
+
+**rclip** always indexes the following image formats: `jpg`, `jpeg`, `png`, `webp`, `heic`, `tiff`, `tif`, `bmp`, `gif`, `jp2`, `pnm`, `pbm`, `pgm`, and `ppm`.
+
+RAW formats (`arw`, `cr2`, and `dng`) are supported when you pass the `--experimental-raw-support` flag:
+
+```bash
+rclip --experimental-raw-support cat
+```
+
+When this flag is enabled, a RAW file is skipped if a processed image (e.g., a
+JPEG) with the same name sits alongside it, so previews and exported variants
+are indexed instead of the RAW original.
 
 ### How do I preview the results?
 
