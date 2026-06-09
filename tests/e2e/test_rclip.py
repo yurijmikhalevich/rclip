@@ -1,5 +1,7 @@
 from pathlib import Path
 from typing import NamedTuple
+from io import BytesIO
+from io import TextIOWrapper
 import os
 import subprocess
 import sys
@@ -135,7 +137,8 @@ def execute_query(
       text=True,
     )
     output = completed_run.stdout
-    os.write(sys.stdout.fileno(), output.encode())
+    sys.stdout.write(output)
+    sys.stdout.flush()
     if completed_run.returncode != 0:
       raise SystemExit(completed_run.returncode)
   else:
@@ -147,13 +150,16 @@ def execute_query(
     set_argv(*args)
 
     old_stdout = sys.stdout
-    sys.stdout = captured = StringIO()
+    captured_buffer = BytesIO()
+    sys.stdout = captured = TextIOWrapper(captured_buffer, encoding="utf-8")
     try:
       main()
     finally:
-      output = captured.getvalue()
+      captured.flush()
+      output = captured_buffer.getvalue().decode("utf-8")
       sys.stdout = old_stdout
-      os.write(sys.stdout.fileno(), output.encode())
+      sys.stdout.write(output)
+      sys.stdout.flush()
 
   results = []
   for line in output.strip().split("\n")[1:]:
