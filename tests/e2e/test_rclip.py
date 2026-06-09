@@ -164,7 +164,7 @@ def execute_query(
         filepath = parts[1].strip('"')
         results.append(SearchResult(filepath=filepath, score=score))
 
-  return results
+  return sorted(results, key=lambda r: (-r.score, r.filepath))
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
@@ -179,14 +179,14 @@ def test_search(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_m
     ("tree", "webp"),
     ("boats on a lake", "png"),
     ("bee", "heic"),
-    ("bee", "tiff"),
-    ("bee", "bmp"),
-    ("bee", "gif"),
+    ("black cat sleeping", "tiff"),
+    ("cake", "bmp"),
+    ("books", "gif"),
     ("bee", "jp2"),
-    ("bee", "pnm"),
+    ("camera lens", "pnm"),
     ("bee", "pbm"),
     ("bee", "pgm"),
-    ("bee", "ppm"),
+    ("camera", "ppm"),
   ],
   ids=["webp", "png", "heic", "tiff", "bmp", "gif", "jp2", "pnm", "pbm", "pgm", "ppm"],
 )
