@@ -1,6 +1,6 @@
 [project]
 name = "rclip"
-version = "3.1.0"
+version = "3.2.0"
 description = "Semantic photo search for the command line"
 authors = [{ name = "Yurij Mikhalevich", email = "yurij@mikhalevi.ch" }]
 requires-python = ">=3.11,<3.14"
