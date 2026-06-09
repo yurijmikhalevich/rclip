@@ -121,8 +121,6 @@ def assert_output_snapshot_unicode_filepaths(
 def execute_query(
   test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str, *args: str
 ) -> list[SearchResult]:
-  from io import StringIO
-
   run_system_rclip = os.getenv("RCLIP_TEST_RUN_SYSTEM_RCLIP")
   if run_system_rclip:
     completed_run = subprocess.run(
