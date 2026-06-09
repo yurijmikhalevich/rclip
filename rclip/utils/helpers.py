@@ -104,7 +104,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
   parser = argparse.ArgumentParser(
     formatter_class=HelpFormatter,
     prefix_chars="-+",
-    description="rclip is an AI-powered command-line photo search tool",
+    description="rclip is a semantic photo search tool for the command line",
     epilog="hints:\n"
     + textwrap.fill(
       '- relative file path should be prefixed with ./, e.g. "./cat.jpg", not "cat.jpg"',
@@ -196,8 +196,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
     "--exclude-dir",
     action="append",
     help="dir to exclude from search, can be used multiple times;"
-    ' adding this argument overrides the default of ("@eaDir", "node_modules", ".git");'
-    " WARNING: the default will be removed in v2",
+    ' adding this argument overrides the default of ("@eaDir", "node_modules", ".git")',
   )
   parser.add_argument(
     "--experimental-raw-support",

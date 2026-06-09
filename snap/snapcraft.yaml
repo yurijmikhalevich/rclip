@@ -1,5 +1,5 @@
 name: rclip
-summary: AI-Powered Semantic Photo Search for the Command Line
+summary: Semantic photo search for the command line
 description: |
   **rclip** is a command-line semantic photo search tool powered by OpenCLIP's top-performing ViT-B/32 model. Search a local photo library with natural-language queries, similar image search, or mixed text and image queries directly from the terminal. It builds on the CLIP architecture introduced by OpenAI.
 

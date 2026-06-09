@@ -22,7 +22,7 @@ TARGET_PYTHON_TAG = f"cp{TARGET_PYTHON_VERSION.replace('.', '')}"
 TEMPLATE = env.from_string("""class Rclip < Formula
   include Language::Python::Virtualenv
 
-  desc "AI-Powered Command-Line Photo Search Tool"
+  desc "Semantic photo search for the command line"
   homepage "https://github.com/yurijmikhalevich/rclip"
   url "{{ package.url }}"
   sha256 "{{ package.checksum }}"
