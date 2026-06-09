@@ -1,10 +1,16 @@
 from pathlib import Path
+from typing import NamedTuple
 import os
 import subprocess
 import sys
 import tempfile
 
 import pytest
+
+
+class SearchResult(NamedTuple):
+  filepath: str
+  score: float
 
 
 def set_argv(*args: str):
@@ -112,7 +118,7 @@ def assert_output_snapshot_unicode_filepaths(
 
 def execute_query(
   test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str, *args: str
-) -> list[tuple[float, str]]:
+) -> list[SearchResult]:
   from io import StringIO
 
   run_system_rclip = os.getenv("RCLIP_TEST_RUN_SYSTEM_RCLIP")
@@ -158,7 +164,7 @@ def execute_query(
       if len(parts) >= 2:
         score = float(parts[0])
         filepath = parts[1].strip('"')
-        results.append((score, filepath))
+        results.append(SearchResult(filepath=filepath, score=score))
 
   return results
 
@@ -194,13 +200,13 @@ def test_search_format(
   expected_ext: str,
 ):
   results = execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, query, "--top", "15")
-  assert any(expected_ext in result[1] for result in results)
+  assert any(expected_ext in result.filepath for result in results)
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
 def test_search_animated_gif(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
   results = execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "bee animated", "--top", "15")
-  assert any("bee_animated.gif" in result[1] for result in results)
+  assert any("bee_animated.gif" in result.filepath for result in results)
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
@@ -358,7 +364,7 @@ def test_can_read_arw_images(
   results = execute_query(
     test_dir_with_raw_images, monkeypatch, shared_model_cache_dir, "--experimental-raw-support", "green ears of rye"
   )
-  assert results[0][1].endswith("DSC08882.ARW")
+  assert results[0].filepath.endswith("DSC08882.ARW")
 
 
 @pytest.mark.usefixtures("assert_output_snapshot_raw_images")
@@ -370,7 +376,7 @@ def test_can_read_cr2_images(
   results = execute_query(
     test_dir_with_raw_images, monkeypatch, shared_model_cache_dir, "--experimental-raw-support", "dragon in a cave"
   )
-  assert results[0][1].endswith("RAW_CANON_400D_ARGB.CR2")
+  assert results[0].filepath.endswith("RAW_CANON_400D_ARGB.CR2")
 
 
 @pytest.mark.usefixtures("assert_output_snapshot_raw_images")
@@ -386,7 +392,7 @@ def test_can_read_dng_images(
     "--experimental-raw-support",
     "two parrots on a tree branch",
   )
-  assert results[0][1].endswith("DSC03671.dng")
+  assert results[0].filepath.endswith("DSC03671.dng")
 
 
 @pytest.mark.usefixtures("assert_output_snapshot_unicode_filepaths")
