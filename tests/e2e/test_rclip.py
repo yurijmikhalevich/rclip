@@ -198,9 +198,7 @@ def test_search_format(
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
-def test_search_animated_gif(
-  test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
-):
+def test_search_animated_gif(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
   results = execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "bee animated", "--top", "15")
   assert any("bee_animated.gif" in result[1] for result in results)
 
