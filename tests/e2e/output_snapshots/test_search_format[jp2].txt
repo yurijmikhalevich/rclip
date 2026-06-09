@@ -1,0 +1,11 @@
+score	filepath
+0.270	"<test_images_dir>duck.jp2"
+0.243	"<test_images_dir>magpie.pbm"
+0.180	"<test_images_dir>tree.webp"
+0.176	"<test_images_dir>parrot-and-flowers.pgm"
+0.162	"<test_images_dir>cautious cat.jpg"
+0.159	"<test_images_dir>chessboard with rocks.JPG"
+0.150	"<test_images_dir>boats on a lake.png"
+0.143	"<test_images_dir>kookaburras.pnm"
+0.141	"<test_images_dir>bee.heic"
+0.141	"<test_images_dir>black cat sleeping on a chair.JPG"

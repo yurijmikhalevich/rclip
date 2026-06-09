@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import NamedTuple
 import os
 import subprocess
 import sys
@@ -7,11 +8,9 @@ import tempfile
 import pytest
 
 
-def set_argv(*args: str):
-  script_name = sys.argv[0]
-  sys.argv.clear()
-  sys.argv.append(script_name)
-  sys.argv.extend(args)
+class SearchResult(NamedTuple):
+  filepath: str
+  score: float
 
 
 @pytest.fixture
@@ -68,9 +67,10 @@ def _assert_output_snapshot(
     .replace("." + os.path.sep, "<test_images_dir>")
     .replace(os.path.sep, "/")
     .replace("\r\n", "\n")
-    # Stripping the BOM marker we are adding on Windows systems when the output is being piped to a file.
-    # Otherwise, the output won't be encoded correctly.
-  ).lstrip("\ufeff")
+    # Stripping the BOM markers we add on Windows systems when the output is being piped to a file.
+    # One is emitted per rclip invocation, so a single test may produce several of them; otherwise,
+    # the output won't be encoded correctly.
+  ).replace("\ufeff", "")
   if not snapshot_path.exists():
     snapshot_path.write_text(snapshot)
   assert snapshot == snapshot_path.read_text(encoding=encoding)
@@ -110,28 +110,41 @@ def assert_output_snapshot_unicode_filepaths(
   _assert_output_snapshot(test_dir_with_unicode_filenames, request, capfd, "utf-8-sig")
 
 
-def execute_query(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str, *args: str):
-  run_system_rclip = os.getenv("RCLIP_TEST_RUN_SYSTEM_RCLIP")
-  if run_system_rclip:
-    completed_run = subprocess.run(
-      ["rclip", *args],
-      cwd=test_images_dir,
-      env={
-        **os.environ,
-        "RCLIP_MODEL_CACHE_DIR": shared_model_cache_dir,
-        "RCLIP_TEST_RUN_SYSTEM_RCLIP": "",
-      },
-    )
-    if completed_run.returncode != 0:
-      raise SystemExit(completed_run.returncode)
-  else:
-    monkeypatch.setenv("RCLIP_MODEL_CACHE_DIR", shared_model_cache_dir)
+def execute_query(
+  test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str, *args: str
+) -> list[SearchResult]:
+  """Run the real rclip CLI as a subprocess and return its parsed results.
 
-    from rclip.main import main
+  Running rclip as a separate process is the truest end-to-end test: it exercises rclip's actual
+  stdout encoding (including the utf-8-sig it applies on Windows) and keeps every test isolated --
+  the child owns its own stdout and SQLite connection, both released when it exits. We forward the
+  child's stdout/stderr bytes verbatim so the snapshot fixtures observe rclip's genuine output
+  without the parent's console re-encoding it."""
+  monkeypatch.setenv("RCLIP_MODEL_CACHE_DIR", shared_model_cache_dir)
 
-    monkeypatch.chdir(test_images_dir)
-    set_argv(*args)
-    main()
+  # RCLIP_TEST_RUN_SYSTEM_RCLIP runs the installed console script; otherwise run the package under
+  # the current interpreter so the test doesn't depend on rclip being on PATH.
+  command = ["rclip"] if os.getenv("RCLIP_TEST_RUN_SYSTEM_RCLIP") else [sys.executable, "-m", "rclip"]
+  completed_run = subprocess.run([*command, *args], cwd=test_images_dir, capture_output=True)
+
+  sys.stdout.buffer.write(completed_run.stdout)
+  sys.stdout.buffer.flush()
+  sys.stderr.buffer.write(completed_run.stderr)
+  sys.stderr.buffer.flush()
+  if completed_run.returncode != 0:
+    raise SystemExit(completed_run.returncode)
+
+  results: list[SearchResult] = []
+  for line in completed_run.stdout.decode("utf-8").splitlines():
+    # Strip the BOM rclip emits on Windows, then drop the header and blanks.
+    line = line.strip().lstrip("﻿")
+    if not line or line.startswith("score\t"):
+      continue
+    parts = line.split("\t")
+    if len(parts) >= 2:
+      results.append(SearchResult(filepath=parts[1].strip('"'), score=float(parts[0])))
+
+  return sorted(results, key=lambda r: (-r.score, r.filepath))
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
@@ -140,21 +153,38 @@ def test_search(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_m
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
-def test_search_webp(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
-  # this test result snapshot should contain a webp image
-  execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "tree")
+@pytest.mark.parametrize(
+  "query,expected_ext",
+  [
+    ("tree", "webp"),
+    ("boats on a lake", "png"),
+    ("bee", "heic"),
+    ("chess knight", "tiff"),
+    ("chess pawns", "bmp"),
+    ("chess queen", "gif"),
+    ("duck", "jp2"),
+    ("kookaburras", "pnm"),
+    ("magpie", "pbm"),
+    ("parrot and flowers", "pgm"),
+    ("parrot looks into the camera", "ppm"),
+  ],
+  ids=["webp", "png", "heic", "tiff", "bmp", "gif", "jp2", "pnm", "pbm", "pgm", "ppm"],
+)
+def test_search_format(
+  test_images_dir: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  shared_model_cache_dir: str,
+  query: str,
+  expected_ext: str,
+):
+  results = execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, query)
+  assert any(expected_ext in result.filepath for result in results)
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
-def test_search_png(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
-  # this test result snapshot should contain a png image
-  execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "boats on a lake")
-
-
-@pytest.mark.usefixtures("assert_output_snapshot")
-def test_search_heic(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
-  # this test result snapshot should contain a heic image
-  execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "bee")
+def test_search_animated_gif(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
+  results = execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "bee animated", "--top", "15")
+  assert any("bee_animated.gif" in result.filepath for result in results)
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
@@ -309,10 +339,10 @@ def test_can_read_arw_images(
   monkeypatch: pytest.MonkeyPatch,
   shared_model_cache_dir: str,
 ):
-  # DSC08882.ARW should be at the top of the results
-  execute_query(
+  results = execute_query(
     test_dir_with_raw_images, monkeypatch, shared_model_cache_dir, "--experimental-raw-support", "green ears of rye"
   )
+  assert results[0].filepath.endswith("DSC08882.ARW")
 
 
 @pytest.mark.usefixtures("assert_output_snapshot_raw_images")
@@ -321,10 +351,10 @@ def test_can_read_cr2_images(
   monkeypatch: pytest.MonkeyPatch,
   shared_model_cache_dir: str,
 ):
-  # RAW_CANON_400D_ARGB.CR2 should be at the top of the results
-  execute_query(
+  results = execute_query(
     test_dir_with_raw_images, monkeypatch, shared_model_cache_dir, "--experimental-raw-support", "dragon in a cave"
   )
+  assert results[0].filepath.endswith("RAW_CANON_400D_ARGB.CR2")
 
 
 @pytest.mark.usefixtures("assert_output_snapshot_raw_images")
@@ -333,10 +363,14 @@ def test_can_read_dng_images(
   monkeypatch: pytest.MonkeyPatch,
   shared_model_cache_dir: str,
 ):
-  # DSC03671.dng should be at the top of the results
-  execute_query(
-    test_dir_with_raw_images, monkeypatch, shared_model_cache_dir, "--experimental-raw-support", "two parrots on a tree branch"
+  results = execute_query(
+    test_dir_with_raw_images,
+    monkeypatch,
+    shared_model_cache_dir,
+    "--experimental-raw-support",
+    "two parrots on a tree branch",
   )
+  assert results[0].filepath.endswith("DSC03671.dng")
 
 
 @pytest.mark.usefixtures("assert_output_snapshot_unicode_filepaths")

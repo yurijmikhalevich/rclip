@@ -1,0 +1,11 @@
+score	filepath
+0.300	"<test_images_dir>chess-knight.tiff"
+0.267	"<test_images_dir>chess-pawns.bmp"
+0.240	"<test_images_dir>chess-queen.gif"
+0.233	"<test_images_dir>chessboard with rocks.JPG"
+0.189	"<test_images_dir>magpie.pbm"
+0.150	"<test_images_dir>tree.webp"
+0.146	"<test_images_dir>black cat sleeping on a chair.JPG"
+0.142	"<test_images_dir>bee_animated.gif"
+0.137	"<test_images_dir>bee.heic"
+0.134	"<test_images_dir>black cat at night.jpg"

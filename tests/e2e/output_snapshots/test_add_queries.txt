@@ -6,6 +6,6 @@ score	filepath
 0.694	"<test_images_dir>chessboard with rocks.JPG"
 0.677	"<test_images_dir>black cat sleeping on a chair.JPG"
 0.676	"<test_images_dir>tree.webp"
+0.661	"<test_images_dir>magpie.pbm"
 0.557	"<test_images_dir>camera.jpg"
-0.468	"<test_images_dir>bee.heic"
-0.426	"<test_images_dir>bee.jpg"
+0.523	"<test_images_dir>parrot-and-flowers.pgm"

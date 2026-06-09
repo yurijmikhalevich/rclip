@@ -1,0 +1,11 @@
+score	filepath
+0.278	"<test_images_dir>tree.webp"
+0.193	"<test_images_dir>parrot-and-flowers.pgm"
+0.192	"<test_images_dir>magpie.pbm"
+0.149	"<test_images_dir>kookaburras.pnm"
+0.148	"<test_images_dir>bee.heic"
+0.137	"<test_images_dir>bee_animated.gif"
+0.136	"<test_images_dir>parrot-looks-into-the-camera.ppm"
+0.134	"<test_images_dir>cautious cat.jpg"
+0.133	"<test_images_dir>bee.jpg"
+0.130	"<test_images_dir>chessboard with rocks.JPG"
