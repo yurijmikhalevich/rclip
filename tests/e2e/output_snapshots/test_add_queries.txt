@@ -1,4 +1,5 @@
 score	filepath
+0.842	"<test_images_dir>bee.pbm"
 0.791	"<test_images_dir>cautious cat.jpg"
 0.728	"<test_images_dir>cat.jpg"
 0.706	"<test_images_dir>black kitty.jpeg"
@@ -7,5 +8,4 @@ score	filepath
 0.677	"<test_images_dir>black cat sleeping on a chair.JPG"
 0.676	"<test_images_dir>tree.webp"
 0.557	"<test_images_dir>camera.jpg"
-0.468	"<test_images_dir>bee.heic"
-0.426	"<test_images_dir>bee.jpg"
+0.513	"<test_images_dir>bee.gif"

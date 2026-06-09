@@ -6,6 +6,6 @@ score	filepath
 0.569	"<test_images_dir>cautious cat.jpg"
 0.417	"<test_images_dir>chessboard with rocks.JPG"
 0.327	"<test_images_dir>boats on a lake.png"
+0.323	"<test_images_dir>bee.jp2"
+0.322	"<test_images_dir>bee.bmp"
 0.322	"<test_images_dir>bee.jpg"
-0.309	"<test_images_dir>books.jpg"
-0.301	"<test_images_dir>camera.jpg"
