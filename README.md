@@ -13,14 +13,13 @@
 
 ## Features
 
-- **Natural-language search** – find photos by describing them, e.g. `rclip "two dogs on a snowy beach"`.
+- **Natural-language search** – find photos by describing them, e.g. `rclip "two parrots on a branch"`.
 - **Reverse / image-to-image search** – search by an example image from a local path or a URL.
 - **Combined & arithmetic queries** – mix and weight text and image queries, e.g. `rclip "2:golden retriever" + "./pool.jpg" - fruit`.
-- **Local & private** – runs entirely on your machine; your photos never leave your computer, no cloud, no uploads.
-- **CLIP-powered** – built on OpenCLIP's top-performing ViT-B/32 model, the architecture introduced by OpenAI.
+- **Local & private** – works fully offline; your photos never leave your computer.
 - **Wide format support** – `jpg`, `png`, `webp`, `heic`, `tiff`, `gif`, and more, plus experimental RAW (`arw`, `cr2`, `dng`).
 - **Fast incremental indexing** – only new and changed images are reprocessed on subsequent runs.
-- **Terminal previews** – view results inline in iTerm2, Konsole, wezterm, Mintty, and mlterm.
+- **Terminal previews** – view images inline in iTerm2, Konsole, wezterm, Mintty, and mlterm.
 - **Cross-platform** – Linux, macOS (Apple Silicon), and Windows.
 
 ## Installation
