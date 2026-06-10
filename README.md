@@ -105,7 +105,7 @@ cd photos && rclip "search query"
 
 <img alt="rclip usage demo" src="https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/resources/rclip-usage.gif" width="640px" />
 
-The first time you run **rclip** in a directory, it extracts features from your images to build the search index. How long this takes depends on your CPU and the number of images you search. On my hardware, it took about a day to process 73,000 photos on a NAS with an old Intel Celeron J3455, 7 minutes to index 50,000 images on a MacBook with an M1 Max, and 3 hours to process 1.28 million images on the same MacBook.
+The first time you run **rclip** in a directory, it extracts features from your images to build the search index. How long this takes depends on your CPU and the number of images you search. On my hardware, it took 15 hours to process 84,725 photos on a NAS with an old Intel Celeron J3455, 7 minutes to index 50,000 images on a MacBook with an M1 Max, and 3 hours to process 1.28 million images on the same MacBook.
 
 For a detailed demonstration, watch the video: https://www.youtube.com/watch?v=tAJHXOkHidw.
 
