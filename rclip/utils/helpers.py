@@ -231,7 +231,7 @@ def read_raw_image_file(path: str):
   import rawpy
 
   with rawpy.imread(path) as raw:
-    rgb = raw.postprocess()
+    rgb = raw.postprocess(half_size=True)
   return Image.fromarray(np.array(rgb))
 
 

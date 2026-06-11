@@ -3,6 +3,7 @@ import os
 import re
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
 
 import numpy as np
@@ -61,12 +62,34 @@ class RClip:
     excluded_dirs = "|".join(re.escape(dir) for dir in exclude_dirs or self.EXCLUDE_DIRS_DEFAULT)
     self._exclude_dir_regex = re.compile(f"^.+\\{os.path.sep}({excluded_dirs})(\\{os.path.sep}.+)?$")
 
+    self._image_loading_executor: Optional[ThreadPoolExecutor] = None
+    self._image_loading_workers = max(1, min(8, os.cpu_count() or 1))
+
+  def _get_image_loading_executor(self) -> ThreadPoolExecutor:
+    if self._image_loading_executor is None:
+      self._image_loading_executor = ThreadPoolExecutor(max_workers=self._image_loading_workers)
+    return self._image_loading_executor
+
+  def _shutdown_image_loading_executor(self) -> None:
+    if self._image_loading_executor is None:
+      return
+    self._image_loading_executor.shutdown(wait=True)
+    self._image_loading_executor = None
+
+  def close(self) -> None:
+    self._shutdown_image_loading_executor()
+
   def _index_files(self, filepaths: List[str], metas: List[ImageMeta]):
     images: List[Image.Image] = []
     filtered_paths: List[str] = []
-    for path in filepaths:
+
+    helpers._ensure_image_loading_configured()
+    executor = self._get_image_loading_executor()
+    futures = [executor.submit(helpers.read_image, path) for path in filepaths]
+
+    for path, future in zip(filepaths, futures):
       try:
-        image = helpers.read_image(path)
+        image = future.result()
         images.append(image)
         filtered_paths.append(path)
       except PIL.UnidentifiedImageError:
@@ -277,6 +300,7 @@ def main():
     result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
     print_results(result, args)
   finally:
+    rclip.close()
     model_instance.close()
     db.close()
 
