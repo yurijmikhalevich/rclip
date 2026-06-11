@@ -82,16 +82,18 @@ class RClip:
   def _index_files(self, filepaths: List[str], metas: List[ImageMeta]):
     images: List[Image.Image] = []
     filtered_paths: List[str] = []
+    filtered_metas: List[ImageMeta] = []
 
     helpers._ensure_image_loading_configured()
     executor = self._get_image_loading_executor()
     futures = [executor.submit(helpers.read_image, path) for path in filepaths]
 
-    for path, future in zip(filepaths, futures):
+    for path, meta, future in zip(filepaths, metas, futures):
       try:
         image = future.result()
         images.append(image)
         filtered_paths.append(path)
+        filtered_metas.append(meta)
       except PIL.UnidentifiedImageError:
         pass
       except Exception as ex:
@@ -102,7 +104,7 @@ class RClip:
     except Exception as ex:
       print("error computing features:", ex, file=sys.stderr)
       return
-    for path, meta, vector in cast(Iterable[PathMetaVector], zip(filtered_paths, metas, features)):
+    for path, meta, vector in cast(Iterable[PathMetaVector], zip(filtered_paths, filtered_metas, features)):
       self._db.upsert_image(
         db.NewImage(filepath=path, modified_at=meta["modified_at"], size=meta["size"], vector=vector.tobytes()),
         commit=False,
