@@ -9,9 +9,6 @@ from rclip.utils import helpers
 
 
 def test_index_files_keeps_meta_aligned_when_an_image_fails_to_load(monkeypatch):
-  # configuring PIL is irrelevant here and would import libheif; skip it
-  monkeypatch.setattr(helpers, "_ensure_image_loading_configured", lambda: None)
-
   # the middle image in the batch fails to load, shrinking the surviving paths/features
   def fake_read_image(path: str) -> Image.Image:
     if path == "b.jpg":
