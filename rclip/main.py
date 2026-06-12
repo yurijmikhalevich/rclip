@@ -3,8 +3,9 @@ import os
 import re
 import sys
 import threading
-from concurrent.futures import ThreadPoolExecutor
-from typing import Iterable, List, NamedTuple, Optional, Tuple, TypedDict, cast
+from collections import deque
+from concurrent.futures import Future, ThreadPoolExecutor
+from typing import Deque, Iterable, Iterator, List, NamedTuple, Optional, Tuple, TypedDict, cast
 
 import numpy as np
 from tqdm import tqdm
@@ -79,32 +80,69 @@ class RClip:
   def close(self) -> None:
     self._shutdown_image_loading_executor()
 
-  def _index_files(self, filepaths: List[str], metas: List[ImageMeta]):
-    images: List[Image.Image] = []
-    filtered_paths: List[str] = []
-    filtered_metas: List[ImageMeta] = []
+  def _load_images(
+    self, items: Iterable[Tuple[str, ImageMeta]]
+  ) -> Iterator[Tuple[str, ImageMeta, Image.Image]]:
+    """Loads images in parallel, keeping a bounded look-ahead so decoding overlaps with whatever the
+    consumer does between iterations (model inference). Yields successfully loaded (path, meta, image)
+    tuples in input order; images that fail to load are skipped.
 
+    Only image loading runs on worker threads here; the model and the database are driven by the
+    consumer on the calling thread, so neither is ever touched concurrently."""
     helpers._ensure_image_loading_configured()
     executor = self._get_image_loading_executor()
-    futures = [executor.submit(helpers.read_image, path) for path in filepaths]
+    # keep at least a full next batch in flight so it can decode while the model processes the
+    # current one, while holding only ~one extra batch of decoded images in memory.
+    max_in_flight = self._indexing_batch_size + self._image_loading_workers
+    items_iter = iter(items)
+    in_flight: Deque[Tuple[str, ImageMeta, Future[Image.Image]]] = deque()
 
-    for path, meta, future in zip(filepaths, metas, futures):
+    def submit_next() -> None:
+      item = next(items_iter, None)
+      if item is not None:
+        path, meta = item
+        in_flight.append((path, meta, executor.submit(helpers.read_image, path)))
+
+    for _ in range(max_in_flight):
+      submit_next()
+
+    while in_flight:
+      path, meta, future = in_flight.popleft()
+      submit_next()  # refill so the window stays full while the consumer is busy
       try:
-        image = future.result()
-        images.append(image)
-        filtered_paths.append(path)
-        filtered_metas.append(meta)
+        yield path, meta, future.result()
       except PIL.UnidentifiedImageError:
         pass
       except Exception as ex:
         print(f"error loading image {path}:", ex, file=sys.stderr)
 
+  def _index_images(self, items: Iterable[Tuple[str, ImageMeta]]) -> None:
+    paths: List[str] = []
+    metas: List[ImageMeta] = []
+    images: List[Image.Image] = []
+
+    def flush() -> None:
+      if images:
+        self._store_image_features(paths, metas, images)
+        paths.clear()
+        metas.clear()
+        images.clear()
+
+    for path, meta, image in self._load_images(items):
+      paths.append(path)
+      metas.append(meta)
+      images.append(image)
+      if len(images) >= self._indexing_batch_size:
+        flush()
+    flush()
+
+  def _store_image_features(self, paths: List[str], metas: List[ImageMeta], images: List[Image.Image]) -> None:
     try:
       features = self._model.compute_image_features(images, for_indexing=True)
     except Exception as ex:
       print("error computing features:", ex, file=sys.stderr)
       return
-    for path, meta, vector in cast(Iterable[PathMetaVector], zip(filtered_paths, filtered_metas, features)):
+    for path, meta, vector in cast(Iterable[PathMetaVector], zip(paths, metas, features)):
       self._db.upsert_image(
         db.NewImage(filepath=path, modified_at=meta["modified_at"], size=meta["size"], vector=vector.tobytes()),
         commit=False,
@@ -121,6 +159,38 @@ class RClip:
       if os.path.isfile(image_path + "." + ext.upper()):
         return True
     return False
+
+  def _iter_images_to_index(self, directory: str, pbar: tqdm) -> Iterator[Tuple[str, ImageMeta]]:
+    """Walks the directory and yields (path, meta) for every image that needs (re)indexing, skipping
+    the ones already up to date in the database. Advances the progress bar once per scanned file."""
+    images_processed = 0
+    for entry in fs.walk(directory, self._exclude_dir_regex, self._image_regex):
+      filepath = entry.path
+
+      if self._enable_raw_support:
+        file_ext = helpers.get_file_extension(filepath)
+        if file_ext in IMAGE_RAW_EXT and self._does_processed_image_exist_for_raw(filepath):
+          images_processed += 1
+          pbar.update()
+          continue
+
+      try:
+        meta = get_image_meta(entry)
+      except Exception as ex:
+        print(f"error getting fs metadata for {filepath}:", ex, file=sys.stderr)
+        continue
+
+      if not images_processed % self.DB_IMAGES_BEFORE_COMMIT:
+        self._db.commit()
+      images_processed += 1
+      pbar.update()
+
+      image = self._db.get_image(filepath=filepath)
+      if image and is_image_meta_equal(image, meta):
+        self._db.remove_indexing_flag(filepath, commit=False)
+        continue
+
+      yield filepath, meta
 
   def ensure_index(self, directory: str):
     print(
@@ -144,45 +214,7 @@ class RClip:
       )
       counter_thread.start()
 
-      images_processed = 0
-      batch: List[str] = []
-      metas: List[ImageMeta] = []
-      for entry in fs.walk(directory, self._exclude_dir_regex, self._image_regex):
-        filepath = entry.path
-
-        if self._enable_raw_support:
-          file_ext = helpers.get_file_extension(filepath)
-          if file_ext in IMAGE_RAW_EXT and self._does_processed_image_exist_for_raw(filepath):
-            images_processed += 1
-            pbar.update()
-            continue
-
-        try:
-          meta = get_image_meta(entry)
-        except Exception as ex:
-          print(f"error getting fs metadata for {filepath}:", ex, file=sys.stderr)
-          continue
-
-        if not images_processed % self.DB_IMAGES_BEFORE_COMMIT:
-          self._db.commit()
-        images_processed += 1
-        pbar.update()
-
-        image = self._db.get_image(filepath=filepath)
-        if image and is_image_meta_equal(image, meta):
-          self._db.remove_indexing_flag(filepath, commit=False)
-          continue
-
-        batch.append(filepath)
-        metas.append(meta)
-
-        if len(batch) >= self._indexing_batch_size:
-          self._index_files(batch, metas)
-          batch = []
-          metas = []
-
-      if len(batch) != 0:
-        self._index_files(batch, metas)
+      self._index_images(self._iter_images_to_index(directory, pbar))
 
       self._db.commit()
       counter_thread.join()
