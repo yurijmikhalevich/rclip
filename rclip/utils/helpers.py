@@ -1,4 +1,5 @@
 import argparse
+import io
 import os
 import pathlib
 import textwrap
@@ -10,6 +11,7 @@ import sys
 from importlib.metadata import version
 
 from rclip.const import IMAGE_RAW_EXT, IS_LINUX, IS_MACOS, IS_WINDOWS
+from rclip.utils import preprocess
 
 
 MAX_DOWNLOAD_SIZE_BYTES = 50_000_000
@@ -231,6 +233,17 @@ def read_raw_image_file(path: str):
   import rawpy
 
   with rawpy.imread(path) as raw:
+    # The embedded JPEG preview is usually large enough for the 256px model
+    # input and far cheaper to decode than demosaicing the whole sensor.
+    # Fall back to postprocess otherwise.
+    try:
+      thumb = raw.extract_thumb()
+      if thumb.format == rawpy.ThumbFormat.JPEG:
+        image = Image.open(io.BytesIO(thumb.data))
+        if min(image.size) >= preprocess.IMAGE_SIZE:
+          return image
+    except rawpy.LibRawNoThumbnailError:
+      pass
     rgb = raw.postprocess(half_size=True)
   return Image.fromarray(np.array(rgb))
 
