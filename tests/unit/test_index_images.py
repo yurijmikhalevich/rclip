@@ -49,7 +49,7 @@ def test_index_images_keeps_meta_aligned_when_an_image_fails_to_load(monkeypatch
 
   model = Mock()
   # one feature vector per surviving image (a and c)
-  model.compute_image_features_from_preprocessed.return_value = [
+  model.compute_preprocessed_image_features.return_value = [
     np.zeros(4, dtype=np.float32),
     np.ones(4, dtype=np.float32),
   ]

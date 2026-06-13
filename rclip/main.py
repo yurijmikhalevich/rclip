@@ -38,19 +38,19 @@ def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
 
 
 def _read_and_preprocess(path: str) -> npt.NDArray[np.float32]:
-  """Reads an image and runs the CLIP preprocessing on it. Runs on the loader threads so that the
-  decoding and resizing happen in parallel and only the model forward pass is left for the consumer."""
+  """Reads an image and runs the CLIP preprocessing on it. Runs on the loader
+  threads so that the decoding and resizing happen in parallel and only the
+  model forward pass is left for the consumer."""
   return preprocess(helpers.read_image(path))
 
 
 class RClip:
   EXCLUDE_DIRS_DEFAULT = ["@eaDir", "node_modules", ".git"]
   DB_IMAGES_BEFORE_COMMIT = 50_000
-  # how many indexing batches to keep loading ahead of the model; preprocessed images are small
-  # (a few hundred KB each), so a few batches of look-ahead cost little memory.
+  # how many indexing batches to keep loading ahead of the model; preprocessed
+  # images are small (a few hundred KB each), so a few batches of look-ahead
+  # cost little memory.
   LOOKAHEAD_BATCHES = 3
-  # the loader threads now do the whole per-image CPU cost (decode + preprocess), so size the pool
-  # to the number of cores rather than capping it low.
   MAX_IMAGE_LOADING_WORKERS = 16
 
   class SearchResult(NamedTuple):
@@ -96,16 +96,10 @@ class RClip:
   def _load_images(
     self, items: Iterable[Tuple[str, ImageMeta]]
   ) -> Iterator[Tuple[str, ImageMeta, npt.NDArray[np.float32]]]:
-    """Reads and preprocesses images in parallel, keeping a bounded look-ahead so this work overlaps
-    with whatever the consumer does between iterations (model inference). Yields successfully loaded
-    (path, meta, preprocessed_image) tuples in input order; images that fail to load are skipped.
-
-    Preprocessed images are small and fixed-size, so the look-ahead buffer stays cheap even a few
-    batches deep. Only image loading runs on worker threads here; the model and the database are
-    driven by the consumer on the calling thread, so neither is ever touched concurrently."""
     helpers._ensure_image_loading_configured()
     executor = self._get_image_loading_executor()
-    # keep a few full batches in flight so they preprocess while the model processes the current one.
+    # keep a few full batches in flight so they preprocess while the model
+    # processes the current one.
     max_in_flight = max(self.LOOKAHEAD_BATCHES * self._indexing_batch_size, self._image_loading_workers)
     items_iter = iter(items)
     in_flight: Deque[Tuple[str, ImageMeta, Future[npt.NDArray[np.float32]]]] = deque()
@@ -153,7 +147,7 @@ class RClip:
     self, paths: List[str], metas: List[ImageMeta], images: List[npt.NDArray[np.float32]]
   ) -> None:
     try:
-      features = self._model.compute_image_features_from_preprocessed(images, for_indexing=True)
+      features = self._model.compute_preprocessed_image_features(images, for_indexing=True)
     except Exception as ex:
       print("error computing features:", ex, file=sys.stderr)
       return

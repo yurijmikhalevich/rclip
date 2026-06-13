@@ -104,14 +104,11 @@ class Model:
     return image_features
 
   def compute_image_features(self, images: List[Image.Image], *, for_indexing: bool = False) -> npt.NDArray[np.float32]:
-    batch = np.stack([preprocess(image) for image in images])
-    return self._encode_preprocessed_batch(batch, for_indexing=for_indexing)
+    return self.compute_preprocessed_image_features([preprocess(image) for image in images], for_indexing=for_indexing)
 
-  def compute_image_features_from_preprocessed(
+  def compute_preprocessed_image_features(
     self, preprocessed_images: List[npt.NDArray[np.float32]], *, for_indexing: bool = False
   ) -> npt.NDArray[np.float32]:
-    """Like compute_image_features, but takes images already run through preprocess() (e.g. on the
-    indexing loader threads), so only the model forward pass happens here."""
     batch = np.stack(preprocessed_images)
     return self._encode_preprocessed_batch(batch, for_indexing=for_indexing)
 
