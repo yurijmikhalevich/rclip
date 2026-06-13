@@ -96,13 +96,6 @@ class Model:
   def _run_textual(self, tokens: npt.NDArray[np.int64]) -> npt.NDArray[np.float32]:
     return self._run_session(self._session_text, tokens)
 
-  def _encode_preprocessed_batch(
-    self, batch: npt.NDArray[np.float32], *, for_indexing: bool
-  ) -> npt.NDArray[np.float32]:
-    image_features = self._run_visual(batch, for_indexing=for_indexing)
-    image_features = image_features / np.linalg.norm(image_features, axis=-1, keepdims=True)
-    return image_features
-
   def compute_image_features(self, images: List[Image.Image], *, for_indexing: bool = False) -> npt.NDArray[np.float32]:
     return self.compute_preprocessed_image_features([preprocess(image) for image in images], for_indexing=for_indexing)
 
@@ -110,7 +103,9 @@ class Model:
     self, preprocessed_images: List[npt.NDArray[np.float32]], *, for_indexing: bool = False
   ) -> npt.NDArray[np.float32]:
     batch = np.stack(preprocessed_images)
-    return self._encode_preprocessed_batch(batch, for_indexing=for_indexing)
+    image_features = self._run_visual(batch, for_indexing=for_indexing)
+    image_features = image_features / np.linalg.norm(image_features, axis=-1, keepdims=True)
+    return image_features
 
   def compute_text_features(self, text: List[str]) -> npt.NDArray[np.float32]:
     tokens = self._tokenizer(text)
