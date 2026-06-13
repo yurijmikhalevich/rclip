@@ -34,7 +34,8 @@ def test_load_images_preserves_order_and_skips_failures(monkeypatch):
 
   # b.jpg failed to load and is dropped; the survivors keep their order and their own metas/images
   assert [(path, meta) for path, meta, _image in loaded] == [("a.jpg", meta_a), ("c.jpg", meta_c)]
-  assert all(isinstance(image, Image.Image) for _path, _meta, image in loaded)
+  # the loader threads preprocess the images, so it yields ready-to-encode CLIP tensors
+  assert all(isinstance(image, np.ndarray) and image.shape == (3, 256, 256) for _path, _meta, image in loaded)
 
 
 def test_index_images_keeps_meta_aligned_when_an_image_fails_to_load(monkeypatch):
@@ -48,7 +49,10 @@ def test_index_images_keeps_meta_aligned_when_an_image_fails_to_load(monkeypatch
 
   model = Mock()
   # one feature vector per surviving image (a and c)
-  model.compute_image_features.return_value = [np.zeros(4, dtype=np.float32), np.ones(4, dtype=np.float32)]
+  model.compute_preprocessed_image_features.return_value = [
+    np.zeros(4, dtype=np.float32),
+    np.ones(4, dtype=np.float32),
+  ]
   database = Mock()
 
   rclip = _make_rclip(model, database)

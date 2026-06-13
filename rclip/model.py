@@ -1,6 +1,4 @@
-from concurrent.futures import ThreadPoolExecutor
 import logging
-import os
 import re
 from typing import Any, List, Optional, Tuple
 
@@ -28,20 +26,11 @@ class Model:
     self._session_visual_var: Optional[Any] = None
     self._session_visual_index_var: Optional[Any] = None
     self._tokenizer_var: Optional[SimpleTokenizer] = None
-    self._preprocess_executor_var: Optional[ThreadPoolExecutor] = None
-    self._preprocess_workers = max(1, min(8, os.cpu_count() or 1))
 
   def ensure_downloaded(self) -> None:
     model_download.ensure_downloaded()
 
-  def _shutdown_preprocess_executor(self) -> None:
-    if self._preprocess_executor_var is None:
-      return
-    self._preprocess_executor_var.shutdown(wait=True)
-    self._preprocess_executor_var = None
-
   def release_indexing_resources(self) -> None:
-    self._shutdown_preprocess_executor()
     self._session_visual_index_var = None
 
   def close(self) -> None:
@@ -108,12 +97,12 @@ class Model:
     return self._run_session(self._session_text, tokens)
 
   def compute_image_features(self, images: List[Image.Image], *, for_indexing: bool = False) -> npt.NDArray[np.float32]:
-    if len(images) < 2 or self._preprocess_workers == 1:
-      batch = np.stack([preprocess(img) for img in images])
-    else:
-      if self._preprocess_executor_var is None:
-        self._preprocess_executor_var = ThreadPoolExecutor(max_workers=self._preprocess_workers)
-      batch = np.stack(list(self._preprocess_executor_var.map(preprocess, images)))
+    return self.compute_preprocessed_image_features([preprocess(image) for image in images], for_indexing=for_indexing)
+
+  def compute_preprocessed_image_features(
+    self, preprocessed_images: List[npt.NDArray[np.float32]], *, for_indexing: bool = False
+  ) -> npt.NDArray[np.float32]:
+    batch = np.stack(preprocessed_images)
     image_features = self._run_visual(batch, for_indexing=for_indexing)
     image_features = image_features / np.linalg.norm(image_features, axis=-1, keepdims=True)
     return image_features

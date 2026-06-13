@@ -50,22 +50,6 @@ class FakeInferenceSession:
     return [types.SimpleNamespace(type="tensor(float)")]
 
 
-class FakeExecutor:
-  def __init__(self, max_workers: int):
-    self.max_workers = max_workers
-    self.shutdown_calls: list[bool] = []
-    self.is_shutdown = False
-
-  def map(self, func: Callable[[Image.Image], FeatureBatch], images: list[Image.Image]):
-    if self.is_shutdown:
-      raise RuntimeError("executor was already shut down")
-    return [func(image) for image in images]
-
-  def shutdown(self, wait: bool = True) -> None:
-    self.shutdown_calls.append(wait)
-    self.is_shutdown = True
-
-
 def test_download_coreml_model_materializes_real_package(monkeypatch: pytest.MonkeyPatch):
   def fake_get_app_datadir() -> Path:
     return Path("/tmp/rclip-datadir")
@@ -473,15 +457,7 @@ def test_compute_image_features_uses_separate_visual_session_for_indexing_on_mac
   assert created_sessions == [(str(Path("/models/visual.mlmodelc")), "all")]
 
 
-def test_release_indexing_resources_shuts_down_preprocess_executor(monkeypatch: pytest.MonkeyPatch):
-  fake_executors: list[FakeExecutor] = []
-
-  def fake_executor_factory(*, max_workers: int):
-    executor = FakeExecutor(max_workers)
-    fake_executors.append(executor)
-    return executor
-
-  monkeypatch.setattr(model_module, "ThreadPoolExecutor", fake_executor_factory)
+def test_release_indexing_resources_releases_visual_index_session(monkeypatch: pytest.MonkeyPatch):
   monkeypatch.setattr(model_module, "preprocess", _fake_preprocess)
 
   created_sessions: list[tuple[str, object]] = []
@@ -524,16 +500,13 @@ def test_release_indexing_resources_shuts_down_preprocess_executor(monkeypatch: 
 
   model.compute_image_features(images, for_indexing=True)
 
-  assert len(fake_executors) == 1
   assert created_sessions == [(str(Path("/models/visual.mlmodelc")), "all")]
 
+  # releasing indexing resources drops the visual index session so it is recreated on next use
   model.release_indexing_resources()
-
-  assert fake_executors[0].shutdown_calls == [True]
 
   model.compute_image_features(images, for_indexing=True)
 
-  assert len(fake_executors) == 2
   assert created_sessions == [
     (str(Path("/models/visual.mlmodelc")), "all"),
     (str(Path("/models/visual.mlmodelc")), "all"),

@@ -8,12 +8,13 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Deque, Iterable, Iterator, List, NamedTuple, Optional, Tuple, TypedDict, cast
 
 import numpy as np
+import numpy.typing as npt
 from tqdm import tqdm
 import PIL
-from PIL import Image
 
 from rclip import db, fs, model
 from rclip.const import IMAGE_EXT, IMAGE_RAW_EXT
+from rclip.utils.preprocess import preprocess
 from rclip.utils.preview import preview
 from rclip.utils.snap import check_snap_permissions, is_snap, get_snap_permission_error
 from rclip.utils import helpers
@@ -36,9 +37,21 @@ def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
   return meta["modified_at"] == image["modified_at"] and meta["size"] == image["size"]
 
 
+def _read_and_preprocess(path: str) -> npt.NDArray[np.float32]:
+  """Reads an image and runs the CLIP preprocessing on it. Runs on the loader
+  threads so that the decoding and resizing happen in parallel and only the
+  model forward pass is left for the consumer."""
+  return preprocess(helpers.read_image(path))
+
+
 class RClip:
   EXCLUDE_DIRS_DEFAULT = ["@eaDir", "node_modules", ".git"]
   DB_IMAGES_BEFORE_COMMIT = 50_000
+  # how many indexing batches to keep loading ahead of the model; preprocessed
+  # images are small (a few hundred KB each), so a few batches of look-ahead
+  # cost little memory.
+  LOOKAHEAD_BATCHES = 3
+  MAX_IMAGE_LOADING_WORKERS = 16
 
   class SearchResult(NamedTuple):
     filepath: str
@@ -64,7 +77,7 @@ class RClip:
     self._exclude_dir_regex = re.compile(f"^.+\\{os.path.sep}({excluded_dirs})(\\{os.path.sep}.+)?$")
 
     self._image_loading_executor: Optional[ThreadPoolExecutor] = None
-    self._image_loading_workers = max(1, min(8, os.cpu_count() or 1))
+    self._image_loading_workers = max(1, min(self.MAX_IMAGE_LOADING_WORKERS, os.cpu_count() or 1))
 
   def _get_image_loading_executor(self) -> ThreadPoolExecutor:
     if self._image_loading_executor is None:
@@ -82,26 +95,20 @@ class RClip:
 
   def _load_images(
     self, items: Iterable[Tuple[str, ImageMeta]]
-  ) -> Iterator[Tuple[str, ImageMeta, Image.Image]]:
-    """Loads images in parallel, keeping a bounded look-ahead so decoding overlaps with whatever the
-    consumer does between iterations (model inference). Yields successfully loaded (path, meta, image)
-    tuples in input order; images that fail to load are skipped.
-
-    Only image loading runs on worker threads here; the model and the database are driven by the
-    consumer on the calling thread, so neither is ever touched concurrently."""
+  ) -> Iterator[Tuple[str, ImageMeta, npt.NDArray[np.float32]]]:
     helpers._ensure_image_loading_configured()
     executor = self._get_image_loading_executor()
-    # keep at least a full next batch in flight so it can decode while the model processes the
-    # current one, while holding only ~one extra batch of decoded images in memory.
-    max_in_flight = self._indexing_batch_size + self._image_loading_workers
+    # keep a few full batches in flight so they preprocess while the model
+    # processes the current one.
+    max_in_flight = max(self.LOOKAHEAD_BATCHES * self._indexing_batch_size, self._image_loading_workers)
     items_iter = iter(items)
-    in_flight: Deque[Tuple[str, ImageMeta, Future[Image.Image]]] = deque()
+    in_flight: Deque[Tuple[str, ImageMeta, Future[npt.NDArray[np.float32]]]] = deque()
 
     def submit_next() -> None:
       item = next(items_iter, None)
       if item is not None:
         path, meta = item
-        in_flight.append((path, meta, executor.submit(helpers.read_image, path)))
+        in_flight.append((path, meta, executor.submit(_read_and_preprocess, path)))
 
     for _ in range(max_in_flight):
       submit_next()
@@ -119,7 +126,7 @@ class RClip:
   def _index_images(self, items: Iterable[Tuple[str, ImageMeta]]) -> None:
     paths: List[str] = []
     metas: List[ImageMeta] = []
-    images: List[Image.Image] = []
+    images: List[npt.NDArray[np.float32]] = []
 
     def flush() -> None:
       if images:
@@ -136,9 +143,11 @@ class RClip:
         flush()
     flush()
 
-  def _store_image_features(self, paths: List[str], metas: List[ImageMeta], images: List[Image.Image]) -> None:
+  def _store_image_features(
+    self, paths: List[str], metas: List[ImageMeta], images: List[npt.NDArray[np.float32]]
+  ) -> None:
     try:
-      features = self._model.compute_image_features(images, for_indexing=True)
+      features = self._model.compute_preprocessed_image_features(images, for_indexing=True)
     except Exception as ex:
       print("error computing features:", ex, file=sys.stderr)
       return
