@@ -238,11 +238,13 @@ def read_raw_image_file(path: str):
     # Fall back to postprocess otherwise.
     try:
       thumb = raw.extract_thumb()
-      if thumb.format == rawpy.ThumbFormat.JPEG:
+      # rawpy re-exports these from its compiled extension via
+      # globals().update, so ty can't see them.
+      if thumb.format == rawpy.ThumbFormat.JPEG:  # ty: ignore[unresolved-attribute]
         image = Image.open(io.BytesIO(thumb.data))
         if min(image.size) >= preprocess.IMAGE_SIZE:
           return image
-    except rawpy.LibRawNoThumbnailError:
+    except rawpy.LibRawNoThumbnailError:  # ty: ignore[unresolved-attribute]
       pass
     rgb = raw.postprocess(half_size=True)
   return Image.fromarray(np.array(rgb))
