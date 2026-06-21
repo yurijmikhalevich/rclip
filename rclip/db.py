@@ -55,10 +55,12 @@ class DB:
     if db_version == self.VERSION:
       return
     if db_version > self.VERSION:
-      raise Exception(
+      print(
         "found index version newer than this version of rclip can support;"
         " please, update rclip: https://github.com/yurijmikhalevich/rclip/blob/main/README.md#installation",
+        file=sys.stderr,
       )
+      sys.exit(1)
     if db_version < 3 and self._has_cached_vectors():
       if not allow_vector_cache_reset:
         raise Exception(
