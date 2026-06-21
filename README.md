@@ -198,6 +198,26 @@ search even more.
 rclip -n cat
 ```
 
+## Command-line options
+
+Run `rclip --help` (or `rclip -h`) to see this list in your terminal. The positional `query` and all options are summarized below:
+
+| Option | Description |
+| --- | --- |
+| `query` | A text query or a path/URL to an image file. A relative path must be prefixed with `./` (e.g. `./cat.jpg`). Any query can be prefixed with a multiplier, e.g. `2:cat` or `0.5:./cat.jpg`. |
+| `--add`, `-a`, `+` `QUERY` | A text query or a path/URL to an image file to add to the "original" query. Can be used multiple times. |
+| `--subtract`, `--sub`, `-s`, `-` `QUERY` | A text query or a path/URL to an image file to subtract from the "original" query. Can be used multiple times. |
+| `--top`, `-t` `N` | Number of top results to display. Default: `10`. |
+| `--preview`, `-p` | Preview results in the terminal (supported in iTerm2, Konsole 22.04+, wezterm, Mintty, mlterm). Mutually exclusive with `--filepath-only`. |
+| `--filepath-only`, `-f` | Output only filepaths, without scores or the header. Mutually exclusive with `--preview`. |
+| `--preview-height`, `-H` `PX` | Preview height in pixels. Default: `400`. |
+| `--no-indexing`, `--skip-index`, `--skip-indexing`, `-n` | Skip updating the index. Use only when no images were added, changed, or removed since the last run. |
+| `--indexing-batch-size`, `-b` `N` | The size of the image batch used when updating the search index. Larger values may slightly improve indexing speed on some hardware but increase RAM usage. Default: `8`. |
+| `--exclude-dir` `DIR` | Directory to exclude from search. Can be used multiple times. Specifying this overrides the default of `@eaDir`, `node_modules`, and `.git`. |
+| `--experimental-raw-support` | Enable support for RAW images (`arw`, `cr2`, and `dng` are supported). |
+| `--version`, `-v` | Print the **rclip** version and exit. |
+| `--help`, `-h` | Show the help message and exit. |
+
 ## Get help
 
 https://github.com/yurijmikhalevich/rclip/discussions/new/choose
