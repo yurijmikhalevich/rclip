@@ -23,13 +23,13 @@ _image_loading_configured = False
 
 
 def _ensure_image_loading_configured() -> None:
-  """Configures PIL for reading the images rclip works with. Imports pillow_heif (which loads the
+  """Configures PIL for reading the images rclip works with. Imports pi_heif (which loads the
   native libheif) lazily so runs that never open an image don't pay for it."""
   global _image_loading_configured
   if _image_loading_configured:
     return
   from PIL import ImageFile
-  from pillow_heif import register_heif_opener
+  from pi_heif import register_heif_opener
 
   setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
   register_heif_opener()
