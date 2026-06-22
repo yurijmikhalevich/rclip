@@ -11,6 +11,7 @@ import numpy as np
 import numpy.typing as npt
 from tqdm import tqdm
 import PIL
+import PIL.Image
 
 from rclip import db, fs, model
 from rclip.const import IMAGE_EXT, IMAGE_RAW_EXT
@@ -35,6 +36,15 @@ def get_image_meta(entry: os.DirEntry[str]) -> ImageMeta:
 
 def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
   return meta["modified_at"] == image["modified_at"] and meta["size"] == image["size"]
+
+
+def _too_large_message(path: str, pixels: int, limit: int) -> str:
+  size = f" ({pixels / 1_000_000:.0f} MP)" if pixels else ""
+  return (
+    f"skipping {path}: it is too large to process{size};"
+    f" the limit is {limit / 1_000_000:.0f} MP."
+    ' Raise or disable it with "--max-image-megapixels" if you want to index this image'
+  )
 
 
 def _read_and_preprocess(path: str) -> npt.NDArray[np.float32]:
@@ -64,6 +74,7 @@ class RClip:
     indexing_batch_size: int,
     exclude_dirs: Optional[List[str]],
     enable_raw_support: bool = False,
+    max_image_pixels: helpers.MaxImagePixels = helpers.AUTO_MAX_IMAGE_PIXELS,
   ):
     self._model = model_instance
     self._db = database
@@ -78,6 +89,7 @@ class RClip:
 
     self._image_loading_executor: Optional[ThreadPoolExecutor] = None
     self._image_loading_workers = max(1, min(self.MAX_IMAGE_LOADING_WORKERS, os.cpu_count() or 1))
+    helpers.configure_max_image_pixels(max_image_pixels, self._image_loading_workers)
 
   def _get_image_loading_executor(self) -> ThreadPoolExecutor:
     if self._image_loading_executor is None:
@@ -118,10 +130,19 @@ class RClip:
       submit_next()  # refill so the window stays full while the consumer is busy
       try:
         yield path, meta, future.result()
+      except helpers.ImageTooLargeError as ex:
+        print(_too_large_message(path, ex.pixels, ex.limit), file=sys.stderr)
+      except (PIL.Image.DecompressionBombError, PIL.Image.DecompressionBombWarning) as ex:
+        # backstop for formats whose true size only surfaces while decoding in the worker
+        print(
+          _too_large_message(path, helpers._parse_bomb_pixels(ex), helpers.get_max_image_pixels() or 0), file=sys.stderr
+        )
+      except MemoryError:
+        print(f"skipping {path}: ran out of memory while processing it", file=sys.stderr)
       except PIL.UnidentifiedImageError:
-        pass
+        print(f"skipping {path}: it is not a readable image", file=sys.stderr)
       except Exception as ex:
-        print(f"error loading image {path}:", ex, file=sys.stderr)
+        print(f"skipping {path}: {ex}", file=sys.stderr)
 
   def _index_images(self, items: Iterable[Tuple[str, ImageMeta]]) -> None:
     paths: List[str] = []
@@ -276,6 +297,7 @@ def init_rclip(
   exclude_dir: Optional[List[str]] = None,
   no_indexing: bool = False,
   enable_raw_support: bool = False,
+  max_image_pixels: helpers.MaxImagePixels = helpers.AUTO_MAX_IMAGE_PIXELS,
 ):
   datadir = helpers.get_app_datadir()
   db_path = datadir / "db.sqlite3"
@@ -289,6 +311,7 @@ def init_rclip(
     indexing_batch_size=indexing_batch_size,
     exclude_dirs=exclude_dir,
     enable_raw_support=enable_raw_support,
+    max_image_pixels=max_image_pixels,
   )
 
   if not no_indexing:
@@ -337,6 +360,7 @@ def main():
     args.exclude_dir,
     args.no_indexing,
     args.experimental_raw_support,
+    args.max_image_megapixels,
   )
 
   try:
