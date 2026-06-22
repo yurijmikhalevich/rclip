@@ -3,7 +3,8 @@ import io
 import os
 import pathlib
 import textwrap
-from typing import IO, cast
+import warnings
+from typing import IO, Optional, Union, cast
 from PIL import Image, UnidentifiedImageError
 import re
 import numpy as np
@@ -19,7 +20,88 @@ DOWNLOAD_TIMEOUT_SECONDS = 60
 WIN_ABSOLUTE_FILE_PATH_REGEX = re.compile(r"^[a-z]:\\", re.I)
 DEFAULT_TERMINAL_TEXT_WIDTH = 100
 
+# PIL's historic decompression-bomb limit; we never set our cap below this so that
+# ordinary large photos (high-MP panoramas, scans) always index.
+MIN_MAX_IMAGE_PIXELS = 89_478_485
+# the memory-aware default caps a single decoded image at this fraction of total RAM,
+# divided across the concurrent loader threads so that several big images can decode at once.
+_MAX_IMAGE_PIXELS_MEMORY_FRACTION = 0.5
+# a decoded pixel costs ~3 bytes (RGB), but decoding and our preprocessing keep extra copies
+# around, so we budget conservatively.
+_DECODED_BYTES_PER_PIXEL = 4
+
+# "auto" means "compute the memory-aware default"; an int is an explicit cap; None disables the
+# cap entirely (for power users indexing a trusted tree of gigapixel images).
+AUTO_MAX_IMAGE_PIXELS = "auto"
+MaxImagePixels = Union[str, int, None]
+
 _image_loading_configured = False
+_max_image_pixels: Optional[int] = MIN_MAX_IMAGE_PIXELS
+
+
+class ImageTooLargeError(Exception):
+  """Raised when an image's pixel count exceeds the configured limit, before it gets decoded."""
+
+  def __init__(self, path: str, pixels: int, limit: int):
+    self.path = path
+    self.pixels = pixels
+    self.limit = limit
+    super().__init__(f"{path} has {pixels} pixels, which exceeds the limit of {limit} pixels")
+
+
+def _get_total_memory_bytes() -> Optional[int]:
+  """Best-effort total physical RAM, cross-platform; returns None if it can't be determined."""
+  try:
+    if IS_WINDOWS:
+      import ctypes
+
+      class MEMORYSTATUSEX(ctypes.Structure):
+        _fields_ = [
+          ("dwLength", ctypes.c_ulong),
+          ("dwMemoryLoad", ctypes.c_ulong),
+          ("ullTotalPhys", ctypes.c_ulonglong),
+          ("ullAvailPhys", ctypes.c_ulonglong),
+          ("ullTotalPageFile", ctypes.c_ulonglong),
+          ("ullAvailPageFile", ctypes.c_ulonglong),
+          ("ullTotalVirtual", ctypes.c_ulonglong),
+          ("ullAvailVirtual", ctypes.c_ulonglong),
+          ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+        ]
+
+      stat = MEMORYSTATUSEX()
+      stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+      # windll only exists on Windows; getattr keeps the type checker happy on other platforms
+      getattr(ctypes, "windll").kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+      return int(stat.ullTotalPhys)
+    return os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
+  except (ValueError, OSError, AttributeError):
+    return None
+
+
+def compute_default_max_image_pixels(workers: int) -> int:
+  """Picks a decompression-bomb cap from the machine's RAM so we attempt only images we can
+  reasonably decode, never going below MIN_MAX_IMAGE_PIXELS so normal large photos still index."""
+  total = _get_total_memory_bytes()
+  if not total:
+    return MIN_MAX_IMAGE_PIXELS
+  estimate = int(total * _MAX_IMAGE_PIXELS_MEMORY_FRACTION / (max(1, workers) * _DECODED_BYTES_PER_PIXEL))
+  return max(MIN_MAX_IMAGE_PIXELS, estimate)
+
+
+def get_max_image_pixels() -> Optional[int]:
+  return _max_image_pixels
+
+
+def configure_max_image_pixels(value: MaxImagePixels, workers: int) -> None:
+  """Resolves and applies the image pixel cap. ``value`` is "auto" (memory-aware default),
+  an explicit int, or None to disable the cap. Also mirrors it onto PIL as a defense-in-depth
+  backstop for formats that don't expose their size before decoding."""
+  global _max_image_pixels
+  if value == AUTO_MAX_IMAGE_PIXELS:
+    _max_image_pixels = compute_default_max_image_pixels(workers)
+  else:
+    _max_image_pixels = cast(Optional[int], value)
+  Image.MAX_IMAGE_PIXELS = _max_image_pixels
 
 
 def _ensure_image_loading_configured() -> None:
@@ -33,6 +115,11 @@ def _ensure_image_loading_configured() -> None:
 
   setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
   register_heif_opener()
+  # PIL only *warns* at MAX_IMAGE_PIXELS and *raises* at 2x; turn the warning into an error so we
+  # get a single, clean threshold (the cap) with no raw PIL warning text leaking to the console.
+  warnings.filterwarnings("error", category=Image.DecompressionBombWarning)
+  # apply the cap onto PIL even if configure_max_image_pixels was never called (e.g. URL queries)
+  Image.MAX_IMAGE_PIXELS = _max_image_pixels
   _image_loading_configured = True
 
 
@@ -83,6 +170,20 @@ def positive_int_arg_type(arg: str) -> int:
   if arg_int < 1:
     raise argparse.ArgumentTypeError("should be >0")
   return arg_int
+
+
+def max_image_megapixels_arg_type(arg: str) -> MaxImagePixels:
+  """Parses the --max-image-megapixels value (in megapixels) into an internal pixel count;
+  returns AUTO_MAX_IMAGE_PIXELS for "auto" and None for the "disable the limit" keywords.
+  argparse also runs this on the string default, so "auto" must pass through cleanly."""
+  if arg.lower() == AUTO_MAX_IMAGE_PIXELS:
+    return AUTO_MAX_IMAGE_PIXELS
+  if arg.lower() in ("none", "off", "disable", "disabled", "0"):
+    return None
+  megapixels = float(arg)
+  if megapixels <= 0:
+    raise argparse.ArgumentTypeError('should be >0, "auto", or "none" to disable the limit')
+  return round(megapixels * 1_000_000)
 
 
 def get_terminal_text_width() -> int:
@@ -206,6 +307,15 @@ def init_arg_parser() -> argparse.ArgumentParser:
     default=False,
     help="enables support for RAW images (ARW, CR2, and DNG are supported)",
   )
+  parser.add_argument(
+    "--max-image-megapixels",
+    metavar="MP",
+    type=max_image_megapixels_arg_type,
+    default=AUTO_MAX_IMAGE_PIXELS,
+    help="maximum size, in megapixels, an image may have to be indexed; larger images are skipped to"
+    " avoid running out of memory on huge or maliciously crafted images;"
+    ' pass "none" to disable the limit; default: chosen automatically based on available memory',
+  )
   return parser
 
 
@@ -250,6 +360,15 @@ def read_raw_image_file(path: str):
   return Image.fromarray(np.array(rgb))
 
 
+_BOMB_PIXELS_RE = re.compile(r"Image size \((\d+) pixels\)")
+
+
+def _parse_bomb_pixels(error: Exception) -> int:
+  """Pulls the pixel count out of PIL's decompression-bomb message; 0 if it can't be parsed."""
+  match = _BOMB_PIXELS_RE.search(str(error))
+  return int(match.group(1)) if match else 0
+
+
 def read_image(query: str) -> Image.Image:
   _ensure_image_loading_configured()
   path = str.removeprefix(query, "file://")
@@ -258,11 +377,17 @@ def read_image(query: str) -> Image.Image:
     if file_ext in IMAGE_RAW_EXT:
       image = read_raw_image_file(path)
     else:
+      # Image.open only reads the header and runs PIL's decompression-bomb check there, so oversized
+      # images are rejected before we ever decode and allocate memory for them.
       image = Image.open(path)
   except UnidentifiedImageError as e:
     # by default the filename on the UnidentifiedImageError is None
     e.filename = path
     raise e
+  except (Image.DecompressionBombError, Image.DecompressionBombWarning) as e:
+    # we turn PIL's warning into an error too (see _ensure_image_loading_configured), so this catches
+    # both PIL tiers; re-raise as our own type so callers get a clean, friendly message.
+    raise ImageTooLargeError(path, _parse_bomb_pixels(e), _max_image_pixels or 0) from e
   return image
 
 

@@ -18,6 +18,12 @@ def _fail_on_b(path: str) -> Image.Image:
   return Image.new("RGB", (1, 1))
 
 
+def _too_large_on_b(path: str) -> Image.Image:
+  if path == "b.jpg":
+    raise helpers.ImageTooLargeError(path, 200_000_000, 100_000_000)
+  return Image.new("RGB", (1, 1))
+
+
 def test_load_images_preserves_order_and_skips_failures(monkeypatch):
   monkeypatch.setattr(helpers, "_ensure_image_loading_configured", lambda: None)
   monkeypatch.setattr(helpers, "read_image", _fail_on_b)
@@ -36,6 +42,29 @@ def test_load_images_preserves_order_and_skips_failures(monkeypatch):
   assert [(path, meta) for path, meta, _image in loaded] == [("a.jpg", meta_a), ("c.jpg", meta_c)]
   # the loader threads preprocess the images, so it yields ready-to-encode CLIP tensors
   assert all(isinstance(image, np.ndarray) and image.shape == (3, 256, 256) for _path, _meta, image in loaded)
+
+
+def test_load_images_skips_images_that_are_too_large(monkeypatch, capsys):
+  monkeypatch.setattr(helpers, "_ensure_image_loading_configured", lambda: None)
+  monkeypatch.setattr(helpers, "read_image", _too_large_on_b)
+
+  meta_a = ImageMeta(modified_at=1.0, size=100)
+  meta_b = ImageMeta(modified_at=2.0, size=200)
+  meta_c = ImageMeta(modified_at=3.0, size=300)
+
+  rclip = _make_rclip(Mock(), Mock())
+  try:
+    loaded = list(rclip._load_images([("a.jpg", meta_a), ("b.jpg", meta_b), ("c.jpg", meta_c)]))
+  finally:
+    rclip.close()
+
+  # the too-large image is dropped, the rest survive in order
+  assert [path for path, _meta, _image in loaded] == ["a.jpg", "c.jpg"]
+  # the user gets a friendly, actionable message naming the file and the limit
+  err = capsys.readouterr().err
+  assert "skipping b.jpg" in err
+  assert "too large" in err
+  assert "--max-image-megapixels" in err
 
 
 def test_index_images_keeps_meta_aligned_when_an_image_fails_to_load(monkeypatch):
