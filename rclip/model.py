@@ -148,9 +148,14 @@ class Model:
       file_multipliers, file_paths = zip(*files) if files else ((), ())
       url_multipliers, url_paths = zip(*urls) if urls else ((), ())
       try:
-        images = [helpers.download_image(url_path) for url_path in url_paths] + [
-          helpers.read_image(file_path) for file_path in file_paths
+        # query images are explicitly chosen by the user and decoded one at a time, so the indexing
+        # memory cap doesn't apply; read them as trusted (bypassing the cap) and only fail on a
+        # genuine out-of-memory while decoding.
+        images = [helpers.download_image(url_path, trusted=True) for url_path in url_paths] + [
+          helpers.read_image(file_path, trusted=True) for file_path in file_paths
         ]
+        image_multipliers = np.array(url_multipliers + file_multipliers)
+        image_features = np.add.reduce(self.compute_image_features(images) * image_multipliers.reshape(-1, 1))
       except FileNotFoundError as error:
         print(f'File "{error.filename}" not found. Check if you have typos in the filename.')
         import sys
@@ -161,8 +166,11 @@ class Model:
         import sys
 
         sys.exit(1)
-      image_multipliers = np.array(url_multipliers + file_multipliers)
-      image_features = np.add.reduce(self.compute_image_features(images) * image_multipliers.reshape(-1, 1))
+      except (MemoryError, Image.DecompressionBombError, Image.DecompressionBombWarning):
+        print("A query image is too large to process: ran out of memory while decoding it.")
+        import sys
+
+        sys.exit(1)
 
     if phrases:
       phrase_multipliers, phrase_queries = zip(*phrases)

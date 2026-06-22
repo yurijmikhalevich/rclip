@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import io
 import os
 import pathlib
@@ -70,8 +71,10 @@ def _get_total_memory_bytes() -> Optional[int]:
 
       stat = MEMORYSTATUSEX()
       stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
-      # windll only exists on Windows; getattr keeps the type checker happy on other platforms
-      getattr(ctypes, "windll").kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+      # windll only exists on Windows; getattr keeps the type checker happy on other platforms.
+      # GlobalMemoryStatusEx returns 0 on failure, in which case stat is left uninitialized.
+      if not getattr(ctypes, "windll").kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+        return None
       return int(stat.ullTotalPhys)
     return os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
   except (ValueError, OSError, AttributeError):
@@ -320,7 +323,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
 
 
 # See: https://meta.wikimedia.org/wiki/User-Agent_policy
-def download_image(url: str) -> Image.Image:
+def download_image(url: str, *, trusted: bool = False) -> Image.Image:
   import requests
 
   _ensure_image_loading_configured()
@@ -329,9 +332,12 @@ def download_image(url: str) -> Image.Image:
   if length := check_size.headers.get("Content-Length"):
     if int(length) > MAX_DOWNLOAD_SIZE_BYTES:
       raise ValueError(f"Avoiding download of large ({length} byte) file.")
-  img = Image.open(
-    cast(IO[bytes], requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS).raw)
-  )
+  # a query image URL is chosen by the user, so bypass the cap when trusted (see read_image)
+  limit_ctx = image_pixel_limit_disabled() if trusted else contextlib.nullcontext()
+  with limit_ctx:
+    img = Image.open(
+      cast(IO[bytes], requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS).raw)
+    )
   return img
 
 
@@ -363,23 +369,40 @@ def read_raw_image_file(path: str):
 _BOMB_PIXELS_RE = re.compile(r"Image size \((\d+) pixels\)")
 
 
-def _parse_bomb_pixels(error: Exception) -> int:
+def parse_bomb_pixels(error: Exception) -> int:
   """Pulls the pixel count out of PIL's decompression-bomb message; 0 if it can't be parsed."""
   match = _BOMB_PIXELS_RE.search(str(error))
   return int(match.group(1)) if match else 0
 
 
-def read_image(query: str) -> Image.Image:
+@contextlib.contextmanager
+def image_pixel_limit_disabled():
+  """Temporarily lifts the decompression-bomb cap. Used for images the user explicitly chose as a
+  query: they are trusted and decoded one at a time, so the indexing memory cap doesn't apply.
+  Only safe on the single-threaded query path, since Image.MAX_IMAGE_PIXELS is process-global."""
+  previous = Image.MAX_IMAGE_PIXELS
+  Image.MAX_IMAGE_PIXELS = None
+  try:
+    yield
+  finally:
+    Image.MAX_IMAGE_PIXELS = previous
+
+
+def read_image(query: str, *, trusted: bool = False) -> Image.Image:
   _ensure_image_loading_configured()
   path = str.removeprefix(query, "file://")
+  # an explicit query image is chosen by the user and decoded one at a time, so the indexing memory
+  # cap doesn't apply; read it as trusted and bypass the cap so any size the user points at works.
+  limit_ctx = image_pixel_limit_disabled() if trusted else contextlib.nullcontext()
   try:
-    file_ext = get_file_extension(path)
-    if file_ext in IMAGE_RAW_EXT:
-      image = read_raw_image_file(path)
-    else:
-      # Image.open only reads the header and runs PIL's decompression-bomb check there, so oversized
-      # images are rejected before we ever decode and allocate memory for them.
-      image = Image.open(path)
+    with limit_ctx:
+      file_ext = get_file_extension(path)
+      if file_ext in IMAGE_RAW_EXT:
+        image = read_raw_image_file(path)
+      else:
+        # Image.open only reads the header and runs PIL's decompression-bomb check there, so oversized
+        # images are rejected before we ever decode and allocate memory for them.
+        image = Image.open(path)
   except UnidentifiedImageError as e:
     # by default the filename on the UnidentifiedImageError is None
     e.filename = path
@@ -387,7 +410,7 @@ def read_image(query: str) -> Image.Image:
   except (Image.DecompressionBombError, Image.DecompressionBombWarning) as e:
     # we turn PIL's warning into an error too (see _ensure_image_loading_configured), so this catches
     # both PIL tiers; re-raise as our own type so callers get a clean, friendly message.
-    raise ImageTooLargeError(path, _parse_bomb_pixels(e), _max_image_pixels or 0) from e
+    raise ImageTooLargeError(path, parse_bomb_pixels(e), _max_image_pixels or 0) from e
   return image
 
 

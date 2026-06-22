@@ -135,7 +135,7 @@ class RClip:
       except (PIL.Image.DecompressionBombError, PIL.Image.DecompressionBombWarning) as ex:
         # backstop for formats whose true size only surfaces while decoding in the worker
         print(
-          _too_large_message(path, helpers._parse_bomb_pixels(ex), helpers.get_max_image_pixels() or 0), file=sys.stderr
+          _too_large_message(path, helpers.parse_bomb_pixels(ex), helpers.get_max_image_pixels() or 0), file=sys.stderr
         )
       except MemoryError:
         print(f"skipping {path}: ran out of memory while processing it", file=sys.stderr)

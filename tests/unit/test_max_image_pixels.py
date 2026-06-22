@@ -40,6 +40,23 @@ def test_cap_allows_images_within_the_limit(tmp_path):
   assert helpers.read_image(path).size == (5, 5)
 
 
+def test_trusted_read_bypasses_the_cap_and_restores_it(tmp_path):
+  helpers.configure_max_image_pixels(100, workers=1)
+  path = str(tmp_path / "big.png")
+  Image.new("RGB", (50, 50)).save(path)  # 2500 px > 100
+
+  # a normal (untrusted) read is rejected
+  with pytest.raises(helpers.ImageTooLargeError):
+    helpers.read_image(path)
+
+  # a trusted read (an explicit query image) opens regardless of the cap
+  assert helpers.read_image(path, trusted=True).size == (50, 50)
+
+  # and the cap is left untouched afterwards
+  assert helpers.get_max_image_pixels() == 100
+  assert Image.MAX_IMAGE_PIXELS == 100
+
+
 def test_disabled_cap_opens_any_image(tmp_path):
   helpers.configure_max_image_pixels(None, workers=1)
   assert helpers.get_max_image_pixels() is None
