@@ -60,10 +60,13 @@ jobs:
           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
           echo >> /home/runner/.bashrc
           echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /home/runner/.bashrc
-      - run: brew update && brew upgrade
+      - run: |
+          brew update
+          brew install yurijmikhalevich/tap/rclip
+          # upgrade only rclip and its dependencies to test with latest packages
+          brew upgrade $(brew deps --include-build yurijmikhalevich/tap/rclip) yurijmikhalevich/tap/rclip
         env:
           HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
-      - run: brew install yurijmikhalevich/tap/rclip
         # overriding shell to ensure it reads `.bashrc`
         shell: bash -ieo pipefail {0}
       - uses: ./.github/actions/test-system-rclip
