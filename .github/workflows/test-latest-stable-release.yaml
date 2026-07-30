@@ -64,7 +64,7 @@ jobs:
           brew update
           brew install yurijmikhalevich/tap/rclip
           # upgrade only rclip and its dependencies to test with latest packages
-          brew upgrade $(brew deps --include-build yurijmikhalevich/tap/rclip) yurijmikhalevich/tap/rclip
+          brew upgrade $(brew deps yurijmikhalevich/tap/rclip) yurijmikhalevich/tap/rclip
         env:
           HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
         # overriding shell to ensure it reads `.bashrc`
