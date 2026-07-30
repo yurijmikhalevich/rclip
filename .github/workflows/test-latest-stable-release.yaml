@@ -43,7 +43,7 @@ jobs:
   brew:
     needs: get_last_release_tag
     env:
-      HOMEBREW_NO_REQUIRE_TAP_TRUST: 1
+      HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
     strategy:
       matrix:
         # FIXME: the test fails on linuxbrew because it rclip from linuxbrew
