@@ -61,9 +61,9 @@ jobs:
           echo >> /home/runner/.bashrc
           echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /home/runner/.bashrc
       - run: brew update && brew upgrade
-      - run: brew install yurijmikhalevich/tap/rclip
         env:
           HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
+      - run: brew install yurijmikhalevich/tap/rclip
         # overriding shell to ensure it reads `.bashrc`
         shell: bash -ieo pipefail {0}
       - uses: ./.github/actions/test-system-rclip
