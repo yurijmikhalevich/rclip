@@ -166,8 +166,13 @@ class Model:
         import sys
 
         sys.exit(1)
-      except (MemoryError, Image.DecompressionBombError, Image.DecompressionBombWarning):
-        print("A query image is too large to process: ran out of memory while decoding it.")
+      except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        print("A query image is too large to process.")
+        import sys
+
+        sys.exit(1)
+      except MemoryError:
+        print("Ran out of memory while decoding a query image.")
         import sys
 
         sys.exit(1)

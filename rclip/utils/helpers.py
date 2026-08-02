@@ -183,7 +183,10 @@ def max_image_megapixels_arg_type(arg: str) -> MaxImagePixels:
     return AUTO_MAX_IMAGE_PIXELS
   if arg.lower() in ("none", "off", "disable", "disabled", "0"):
     return None
-  megapixels = float(arg)
+  try:
+    megapixels = float(arg)
+  except ValueError:
+    raise argparse.ArgumentTypeError('should be a number, "auto", or "none" to disable the limit')
   if megapixels <= 0:
     raise argparse.ArgumentTypeError('should be >0, "auto", or "none" to disable the limit')
   return round(megapixels * 1_000_000)
@@ -335,9 +338,10 @@ def download_image(url: str, *, trusted: bool = False) -> Image.Image:
   # a query image URL is chosen by the user, so bypass the cap when trusted (see read_image)
   limit_ctx = image_pixel_limit_disabled() if trusted else contextlib.nullcontext()
   with limit_ctx:
-    img = Image.open(
-      cast(IO[bytes], requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS).raw)
-    )
+    response = requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS)
+    img = Image.open(cast(IO[bytes], response.raw))
+    img.load()
+  response.close()
   return img
 
 
