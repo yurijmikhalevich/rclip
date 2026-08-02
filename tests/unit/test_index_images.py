@@ -130,13 +130,13 @@ def test_rename_reuses_vector_without_recomputing(monkeypatch):
     )
     database.commit()
 
-    # The "renamed" file produces the same hash
+    # The "renamed" file produces the same hash and has the same size as the old one
     monkeypatch.setattr(helpers, "compute_file_hash", lambda path: old_hash)
 
     model = Mock()
     rclip = _make_rclip(model, database)
     try:
-      rclip._index_images([("/new/path/renamed_cat.jpg", ImageMeta(modified_at=2.0, size=200))])
+      rclip._index_images([("/new/path/renamed_cat.jpg", ImageMeta(modified_at=2.0, size=100))])
     finally:
       rclip.close()
 
@@ -147,6 +147,52 @@ def test_rename_reuses_vector_without_recomputing(monkeypatch):
     new_record = database.get_image(filepath="/new/path/renamed_cat.jpg")
     assert new_record is not None
     assert new_record["vector"] == old_vector
+    assert new_record["hash"] == old_hash
+
+    database.close()
+
+
+def test_same_hash_different_size_reindexes(monkeypatch):
+  monkeypatch.setattr(helpers, "_ensure_image_loading_configured", lambda: None)
+  monkeypatch.setattr(helpers, "read_image", lambda path: Image.new("RGB", (1, 1)))
+
+  with tempfile.TemporaryDirectory() as tmp_dir:
+    database = DB(Path(tmp_dir) / "test.db")
+
+    # Pre-populate with an "old" image (simulates prior indexing run)
+    old_hash = "abc123"
+    old_vector = b"\x01\x02\x03\x04"
+    database.upsert_image(
+      NewImage(
+        filepath="/old/path/cat.jpg",
+        modified_at=1.0,
+        size=100,
+        vector=old_vector,
+        hash=old_hash,
+      )
+    )
+    database.commit()
+
+    # A file with the same hash but different size is NOT a rename -> recompute the vector
+    monkeypatch.setattr(helpers, "compute_file_hash", lambda path: old_hash)
+
+    new_vector = np.zeros(4, dtype=np.float32)
+    model = Mock()
+    model.compute_preprocessed_image_features.return_value = [new_vector]
+    rclip = _make_rclip(model, database)
+    try:
+      rclip._index_images([("/new/path/edited_cat.jpg", ImageMeta(modified_at=2.0, size=200))])
+    finally:
+      rclip.close()
+
+    # Model was called because size differs, so the vector was recomputed
+    model.compute_preprocessed_image_features.assert_called_once()
+
+    # New path has the recomputed vector, not the old one
+    new_record = database.get_image(filepath="/new/path/edited_cat.jpg")
+    assert new_record is not None
+    assert new_record["vector"] == new_vector.tobytes()
+    assert new_record["vector"] != old_vector
     assert new_record["hash"] == old_hash
 
     database.close()
