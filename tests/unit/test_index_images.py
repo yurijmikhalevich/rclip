@@ -1,9 +1,12 @@
+from pathlib import Path
 from unittest.mock import Mock
+import tempfile
 
 import numpy as np
 import PIL
 from PIL import Image
 
+from rclip.db import DB, NewImage
 from rclip.main import ImageMeta, RClip
 from rclip.utils import helpers
 
@@ -104,3 +107,42 @@ def test_index_images_keeps_meta_aligned_when_an_image_fails_to_load(monkeypatch
     ("a.jpg", meta_a["modified_at"], meta_a["size"]),
     ("c.jpg", meta_c["modified_at"], meta_c["size"]),
   }
+
+
+def test_rename_reuses_vector_without_recomputing(monkeypatch):
+  monkeypatch.setattr(helpers, "_ensure_image_loading_configured", lambda: None)
+  monkeypatch.setattr(helpers, "read_image", lambda path: Image.new("RGB", (1, 1)))
+
+  with tempfile.TemporaryDirectory() as tmp_dir:
+    database = DB(Path(tmp_dir) / "test.db")
+
+    # Pre-populate with an "old" image (simulates prior indexing run)
+    old_hash = "abc123"
+    old_vector = b"\x01\x02\x03\x04"
+    database.upsert_image(NewImage(
+      filepath="/old/path/cat.jpg",
+      modified_at=1.0, size=100,
+      vector=old_vector, hash=old_hash,
+    ))
+    database.commit()
+
+    # The "renamed" file produces the same hash
+    monkeypatch.setattr(helpers, "compute_file_hash", lambda path: old_hash)
+
+    model = Mock()
+    rclip = _make_rclip(model, database)
+    try:
+      rclip._index_images([("/new/path/renamed_cat.jpg", ImageMeta(modified_at=2.0, size=200))])
+    finally:
+      rclip.close()
+
+    # Core assertion: model was never called (vector was reused)
+    model.compute_preprocessed_image_features.assert_not_called()
+
+    # New path has the old vector
+    new_record = database.get_image(filepath="/new/path/renamed_cat.jpg")
+    assert new_record is not None
+    assert new_record["vector"] == old_vector
+    assert new_record["hash"] == old_hash
+
+    database.close()
