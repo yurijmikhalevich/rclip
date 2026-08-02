@@ -377,4 +377,4 @@ def test_can_read_dng_images(
 def test_unicode_filepaths(
   test_dir_with_unicode_filenames: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
 ):
-   execute_query(test_dir_with_unicode_filenames, monkeypatch, shared_model_cache_dir, "鳥")
+  execute_query(test_dir_with_unicode_filenames, monkeypatch, shared_model_cache_dir, "鳥")

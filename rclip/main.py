@@ -169,7 +169,7 @@ class RClip:
       renamed_items.clear()
 
     for path, meta, file_hash, image in self._load_images(items):
-      existing_images_with_hash = self._db.get_images_by_hash(file_hash)
+      existing_images_with_hash = self._db.get_images_by_hash(file_hash, meta["size"])
       if existing_images_with_hash:
         vector = existing_images_with_hash[0]["vector"]
         renamed_items.append((path, meta, file_hash, vector))

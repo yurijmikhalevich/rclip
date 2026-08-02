@@ -152,10 +152,10 @@ class DB:
     cur = self._con.execute(f"SELECT * FROM images WHERE {query} LIMIT 1", kwargs)
     return cur.fetchone()
 
-  def get_images_by_hash(self, hash_value: str) -> list[Image]:
+  def get_images_by_hash(self, hash_value: str, file_size: int) -> list[Image]:
     cur = self._con.execute(
-      "SELECT * FROM images WHERE hash = ? AND deleted IS NULL",
-      (hash_value,),
+      "SELECT * FROM images WHERE hash = ? AND size = ? AND deleted IS NULL",
+      (hash_value, file_size),
     )
     return cast(list[Image], [dict(row) for row in cur.fetchall()])
 

@@ -374,7 +374,7 @@ def read_raw_image_file(path: str):
 def compute_file_hash(path: str) -> str:
   """Compute SHA-256 fingerprint of first 1MB + last 1KB of a file for rename/duplicate detection.
 
-  This is O(1) with respect to file size. Combined with file size check, collision probability is essentially zero.
+  This is O(1) with respect to file size.
   """
   hasher = hashlib.sha256()
   with open(path, "rb") as f:
