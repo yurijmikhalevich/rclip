@@ -2,7 +2,7 @@ import os.path
 import pathlib
 import sqlite3
 import sys
-from typing import Any, Optional, TypedDict, Union
+from typing import Any, Optional, TypedDict, Union, cast
 
 
 class ImageOmittable(TypedDict, total=False):
@@ -14,6 +14,7 @@ class NewImage(ImageOmittable):
   modified_at: float
   size: int
   vector: bytes
+  hash: Optional[str]
 
 
 class Image(NewImage):
@@ -21,7 +22,7 @@ class Image(NewImage):
 
 
 class DB:
-  VERSION = 3
+  VERSION = 4
 
   def __init__(self, filename: Union[str, pathlib.Path], allow_vector_cache_reset: bool = True):
     self._con = sqlite3.connect(filename)
@@ -78,6 +79,11 @@ class DB:
       # all embeddings must be recomputed.
       self._con.execute("DELETE FROM images")
       db_version = 3
+    if db_version < 4:
+      # Add hash column for rename/duplicate detection
+      self._con.execute("ALTER TABLE images ADD COLUMN hash TEXT")
+      self._con.execute("CREATE INDEX IF NOT EXISTS hash_index ON images(hash) WHERE deleted IS NULL")
+      db_version = 4
     if db_version < self.VERSION:
       raise Exception("migration to a newer index version isn't implemented")
     if db_version_entry:
@@ -106,10 +112,10 @@ class DB:
   def upsert_image(self, image: NewImage, commit: bool = True):
     self._con.execute(
       """
-      INSERT INTO images(deleted, indexing, filepath, modified_at, size, vector)
-      VALUES (:deleted, :indexing, :filepath, :modified_at, :size, :vector)
+      INSERT INTO images(deleted, indexing, filepath, modified_at, size, vector, hash)
+      VALUES (:deleted, :indexing, :filepath, :modified_at, :size, :vector, :hash)
       ON CONFLICT(filepath) DO UPDATE SET
-        deleted=:deleted, indexing=:indexing, modified_at=:modified_at, size=:size, vector=:vector
+        deleted=:deleted, indexing=:indexing, modified_at=:modified_at, size=:size, vector=:vector, hash=:hash
     """,
       {"deleted": None, "indexing": None, **image},
     )
@@ -145,6 +151,13 @@ class DB:
     query = " AND ".join(f"{key}=:{key}" for key in kwargs)
     cur = self._con.execute(f"SELECT * FROM images WHERE {query} LIMIT 1", kwargs)
     return cur.fetchone()
+
+  def get_images_by_hash(self, hash_value: str) -> list[Image]:
+    cur = self._con.execute(
+      "SELECT * FROM images WHERE hash = ? AND deleted IS NULL",
+      (hash_value,),
+    )
+    return cast(list[Image], [dict(row) for row in cur.fetchall()])
 
   def get_image_vectors_by_dir_path(self, path: str) -> sqlite3.Cursor:
     return self._con.execute(

@@ -378,3 +378,67 @@ def test_unicode_filepaths(
   test_dir_with_unicode_filenames: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
 ):
   execute_query(test_dir_with_unicode_filenames, monkeypatch, shared_model_cache_dir, "鳥")
+
+
+def test_handles_renamed_images(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
+  """Test that renamed images are detected and don't require re-indexing."""
+  import shutil
+  from rclip.main import init_rclip
+
+  with tempfile.TemporaryDirectory() as temp_dir:
+    temp_path = Path(temp_dir)
+
+    cat_image = temp_path / "cat.jpg"
+    shutil.copy2(test_images_dir / "cat.jpg", cat_image)
+
+    rclip, _, db = init_rclip(str(temp_path), 8)
+
+    cat_record = db.get_image(filepath=str(cat_image))
+    assert cat_record is not None, "cat.jpg should be indexed"
+    cat_hash = cat_record["hash"]
+    assert cat_hash is not None, "cat.jpg should have a hash"
+
+    db.close()
+    rclip.close()
+
+    renamed_cat = temp_path / "renamed_cat.jpg"
+    cat_image.rename(renamed_cat)
+
+    rclip, _, db = init_rclip(str(temp_path), 8)
+
+    renamed_cat_record = db.get_image(filepath=str(renamed_cat))
+    assert renamed_cat_record is not None, "Renamed cat should be indexed"
+    assert renamed_cat_record["hash"] == cat_hash, "Renamed image should have same hash"
+
+    old_cat_record = db.get_image(filepath=str(cat_image))
+    assert old_cat_record is None or old_cat_record["deleted"] is not None, "Old filepath should be deleted"
+
+    db.close()
+    rclip.close()
+
+
+def test_handles_duplicate_images(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
+  """Test that duplicate images are detected and reuse vectors."""
+  import shutil
+  from rclip.main import init_rclip
+
+  with tempfile.TemporaryDirectory() as temp_dir:
+    temp_path = Path(temp_dir)
+
+    cat_image1 = temp_path / "cat1.jpg"
+    cat_image2 = temp_path / "cat2.jpg"
+    shutil.copy2(test_images_dir / "cat.jpg", cat_image1)
+    shutil.copy2(test_images_dir / "cat.jpg", cat_image2)
+
+    rclip, _, db = init_rclip(str(temp_path), 8)
+
+    cat_record1 = db.get_image(filepath=str(cat_image1))
+    cat_record2 = db.get_image(filepath=str(cat_image2))
+
+    assert cat_record1 is not None, "cat1.jpg should be indexed"
+    assert cat_record2 is not None, "cat2.jpg should be indexed"
+    assert cat_record1["hash"] == cat_record2["hash"], "Duplicate images should have same hash"
+    assert cat_record1["vector"] == cat_record2["vector"], "Duplicate images should reuse vector"
+
+    db.close()
+    rclip.close()

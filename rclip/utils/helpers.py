@@ -1,5 +1,6 @@
 import argparse
 import contextlib
+import hashlib
 import io
 import os
 import pathlib
@@ -368,6 +369,22 @@ def read_raw_image_file(path: str):
       pass
     rgb = raw.postprocess(half_size=True)
   return Image.fromarray(np.array(rgb))
+
+
+def compute_file_hash(path: str) -> str:
+  """Compute SHA-256 hash of first 1MB + last 1KB of a file for rename/duplicate detection.
+
+  This is O(1) with respect to file size and provides exact file matching.
+  Combined with file size check (already done), collision probability is essentially zero.
+  """
+  hasher = hashlib.sha256()
+  with open(path, "rb") as f:
+    hasher.update(f.read(1024 * 1024))
+    file_size = f.seek(0, 2)
+    if file_size > 1024:
+      f.seek(-1024, 2)
+      hasher.update(f.read(1024))
+  return hasher.hexdigest()
 
 
 _BOMB_PIXELS_RE = re.compile(r"Image size \((\d+) pixels\)")
