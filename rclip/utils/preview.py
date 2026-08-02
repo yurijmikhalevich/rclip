@@ -46,7 +46,9 @@ def _get_preview_dimensions(width_px: int, height_px: int) -> tuple[str, str]:
 
 
 def preview(filepath: str, img_height_px: int):
-  with read_image(filepath) as img:
+  # preview images are displayed one at a time and the user opted into viewing them, so the
+  # indexing memory cap doesn't apply; read as trusted like query images.
+  with read_image(filepath, trusted=True) as img:
     if img_height_px >= img.height:
       width_px, height_px = img.width, img.height
     else:

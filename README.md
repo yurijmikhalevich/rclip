@@ -215,6 +215,7 @@ Run `rclip --help` (or `rclip -h`) to see this list in your terminal. The positi
 | `--indexing-batch-size`, `-b` `N` | The size of the image batch used when updating the search index. Larger values may slightly improve indexing speed on some hardware but increase RAM usage. Default: `8`. |
 | `--exclude-dir` `DIR` | Directory to exclude from search. Can be used multiple times. Specifying this overrides the default of `@eaDir`, `node_modules`, and `.git`. |
 | `--experimental-raw-support` | Enable support for RAW images (`arw`, `cr2`, and `dng` are supported). |
+| `--max-image-megapixels` `MP` | Maximum size, in megapixels, an image may have to be indexed. Larger images are skipped to avoid running out of memory on huge or maliciously crafted images. Pass `none` to disable the limit. Default: chosen automatically based on the available memory. |
 | `--version`, `-v` | Print the **rclip** version and exit. |
 | `--help`, `-h` | Show the help message and exit. |
 
