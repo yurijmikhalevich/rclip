@@ -4,7 +4,7 @@ from rclip.db import DB, NewImage
 
 
 def _new_image(filepath: str) -> NewImage:
-  return NewImage(filepath=filepath, modified_at=0.0, size=1, vector=b"x")
+  return NewImage(filepath=filepath, modified_at=0.0, size=1, vector=b"x", hash=None)
 
 
 def test_get_image_vectors_by_dir_path_matches_windows_drive_root_prefix():
