@@ -7,7 +7,7 @@ from rclip.utils import preview as preview_module
 
 
 def test_preview_uses_terminal_cell_dimensions_when_available(monkeypatch, capsys):
-  monkeypatch.setattr(preview_module, "read_image", lambda _filepath: Image.new("RGB", (200, 100), "red"))
+  monkeypatch.setattr(preview_module, "read_image", lambda _filepath, **_kw: Image.new("RGB", (200, 100), "red"))
   monkeypatch.setattr(preview_module, "_get_preview_dimensions", lambda _width, _height: ("10", "5"))
 
   preview_module.preview("cat.jpg", 50)
