@@ -119,11 +119,15 @@ def test_rename_reuses_vector_without_recomputing(monkeypatch):
     # Pre-populate with an "old" image (simulates prior indexing run)
     old_hash = "abc123"
     old_vector = b"\x01\x02\x03\x04"
-    database.upsert_image(NewImage(
-      filepath="/old/path/cat.jpg",
-      modified_at=1.0, size=100,
-      vector=old_vector, hash=old_hash,
-    ))
+    database.upsert_image(
+      NewImage(
+        filepath="/old/path/cat.jpg",
+        modified_at=1.0,
+        size=100,
+        vector=old_vector,
+        hash=old_hash,
+      )
+    )
     database.commit()
 
     # The "renamed" file produces the same hash
