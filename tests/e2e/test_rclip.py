@@ -385,6 +385,8 @@ def test_handles_renamed_images(test_images_dir: Path, monkeypatch: pytest.Monke
   import shutil
   from rclip.main import init_rclip
 
+  monkeypatch.setenv("RCLIP_MODEL_CACHE_DIR", shared_model_cache_dir)
+
   with tempfile.TemporaryDirectory() as temp_dir:
     temp_path = Path(temp_dir)
 
@@ -421,6 +423,8 @@ def test_handles_duplicate_images(test_images_dir: Path, monkeypatch: pytest.Mon
   """Test that duplicate images are detected and reuse vectors."""
   import shutil
   from rclip.main import init_rclip
+
+  monkeypatch.setenv("RCLIP_MODEL_CACHE_DIR", shared_model_cache_dir)
 
   with tempfile.TemporaryDirectory() as temp_dir:
     temp_path = Path(temp_dir)
