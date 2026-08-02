@@ -26,7 +26,7 @@ class ImageMeta(TypedDict):
   size: int
 
 
-PathMetaVector = Tuple[str, ImageMeta, model.FeatureVector]
+PathMetaVector = Tuple[str, ImageMeta, str, model.FeatureVector]
 
 
 def get_image_meta(entry: os.DirEntry[str]) -> ImageMeta:
@@ -47,11 +47,13 @@ def _too_large_message(path: str, pixels: int, limit: int) -> str:
   )
 
 
-def _read_and_preprocess(path: str) -> npt.NDArray[np.float32]:
-  """Reads an image and runs the CLIP preprocessing on it. Runs on the loader
+def _read_and_preprocess(path: str) -> Tuple[str, str, npt.NDArray[np.float32]]:
+  """Reads an image, computes its hash, and runs the CLIP preprocessing on it. Runs on the loader
   threads so that the decoding and resizing happen in parallel and only the
   model forward pass is left for the consumer."""
-  return preprocess(helpers.read_image(path))
+  file_hash = helpers.compute_file_hash(path)
+  preprocessed = preprocess(helpers.read_image(path))
+  return path, file_hash, preprocessed
 
 
 class RClip:
@@ -107,14 +109,14 @@ class RClip:
 
   def _load_images(
     self, items: Iterable[Tuple[str, ImageMeta]]
-  ) -> Iterator[Tuple[str, ImageMeta, npt.NDArray[np.float32]]]:
+  ) -> Iterator[Tuple[str, ImageMeta, str, npt.NDArray[np.float32]]]:
     helpers._ensure_image_loading_configured()
     executor = self._get_image_loading_executor()
     # keep a few full batches in flight so they preprocess while the model
     # processes the current one.
     max_in_flight = max(self.LOOKAHEAD_BATCHES * self._indexing_batch_size, self._image_loading_workers)
     items_iter = iter(items)
-    in_flight: Deque[Tuple[str, ImageMeta, Future[npt.NDArray[np.float32]]]] = deque()
+    in_flight: Deque[Tuple[str, ImageMeta, Future[Tuple[str, str, npt.NDArray[np.float32]]]]] = deque()
 
     def submit_next() -> None:
       item = next(items_iter, None)
@@ -129,7 +131,8 @@ class RClip:
       path, meta, future = in_flight.popleft()
       submit_next()  # refill so the window stays full while the consumer is busy
       try:
-        yield path, meta, future.result()
+        _, file_hash, preprocessed = future.result()
+        yield path, meta, file_hash, preprocessed
       except helpers.ImageTooLargeError as ex:
         print(_too_large_message(path, ex.pixels, ex.limit), file=sys.stderr)
       except (PIL.Image.DecompressionBombError, PIL.Image.DecompressionBombWarning) as ex:
@@ -147,34 +150,51 @@ class RClip:
   def _index_images(self, items: Iterable[Tuple[str, ImageMeta]]) -> None:
     paths: List[str] = []
     metas: List[ImageMeta] = []
+    hashes: List[str] = []
     images: List[npt.NDArray[np.float32]] = []
+    renamed_items: List[Tuple[str, ImageMeta, str, bytes]] = []
 
     def flush() -> None:
       if images:
-        self._store_image_features(paths, metas, images)
+        self._store_image_features(paths, metas, hashes, images)
         paths.clear()
         metas.clear()
+        hashes.clear()
         images.clear()
+      for path, meta, file_hash, vector in renamed_items:
+        self._db.upsert_image(
+          db.NewImage(filepath=path, modified_at=meta["modified_at"], size=meta["size"], vector=vector, hash=file_hash),
+          commit=False,
+        )
+      renamed_items.clear()
 
-    for path, meta, image in self._load_images(items):
-      paths.append(path)
-      metas.append(meta)
-      images.append(image)
+    for path, meta, file_hash, image in self._load_images(items):
+      existing_images_with_hash = self._db.get_images_by_hash(file_hash, meta["size"])
+      if existing_images_with_hash:
+        vector = existing_images_with_hash[0]["vector"]
+        renamed_items.append((path, meta, file_hash, vector))
+      else:
+        paths.append(path)
+        metas.append(meta)
+        hashes.append(file_hash)
+        images.append(image)
       if len(images) >= self._indexing_batch_size:
         flush()
     flush()
 
   def _store_image_features(
-    self, paths: List[str], metas: List[ImageMeta], images: List[npt.NDArray[np.float32]]
+    self, paths: List[str], metas: List[ImageMeta], hashes: List[str], images: List[npt.NDArray[np.float32]]
   ) -> None:
     try:
       features = self._model.compute_preprocessed_image_features(images, for_indexing=True)
     except Exception as ex:
       print("error computing features:", ex, file=sys.stderr)
       return
-    for path, meta, vector in cast(Iterable[PathMetaVector], zip(paths, metas, features)):
+    for path, meta, file_hash, vector in cast(Iterable[PathMetaVector], zip(paths, metas, hashes, features)):
       self._db.upsert_image(
-        db.NewImage(filepath=path, modified_at=meta["modified_at"], size=meta["size"], vector=vector.tobytes()),
+        db.NewImage(
+          filepath=path, modified_at=meta["modified_at"], size=meta["size"], vector=vector.tobytes(), hash=file_hash
+        ),
         commit=False,
       )
 
