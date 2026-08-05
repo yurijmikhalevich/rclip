@@ -1,0 +1,16 @@
+schema_version = 1
+
+[rawpy]
+version = "0.26.1"
+repository = "https://github.com/letmaik/rawpy.git"
+revision = "v0.26.1"
+commit = "a411daac7d5bf1ab07f6285164e41596a205393e"
+libraw_version = "0.22.0"
+excluded_submodules = [
+  "external/LibRaw-demosaic-pack-GPL2",
+  "external/LibRaw-demosaic-pack-GPL3",
+]
+
+[rawpy.submodules]
+"external/LibRaw" = "0b56545a4f828743f28a4345cdfdd4c49f9f9a2a"
+"external/LibRaw-cmake" = "6e26c9e73677dc04f9eb236a97c6a4dc225ba7e8"

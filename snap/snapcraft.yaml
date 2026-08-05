@@ -31,3 +31,15 @@ parts:
     source: .
     build-snaps:
       - astral-uv/latest/stable
+    override-build: |
+      craftctl default
+      "$CRAFT_PART_INSTALL/bin/python" -m rclip._compliance collect \
+        --root "$CRAFT_PART_INSTALL" \
+        --output "$CRAFT_PART_INSTALL/share/doc/rclip" \
+        --policy "$CRAFT_PART_SRC/compliance/policy.toml" \
+        --common-notices "$CRAFT_PART_SRC/compliance/notices"
+      "$CRAFT_PART_INSTALL/bin/python" -m rclip._compliance verify \
+        --root "$CRAFT_PART_INSTALL" \
+        --legal-dir "$CRAFT_PART_INSTALL/share/doc/rclip" \
+        --policy "$CRAFT_PART_SRC/compliance/policy.toml" \
+        --output "$CRAFT_PART_INSTALL/share/doc/rclip/snap-compliance.json"

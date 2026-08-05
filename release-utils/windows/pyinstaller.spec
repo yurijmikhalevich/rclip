@@ -12,6 +12,7 @@ a = Analysis(
     binaries=[],
     datas=[
         *collect_data_files('onnxruntime'),
+        ('build/legal', 'legal'),
     ],
     # rclip imports onnxruntime dynamically, so PyInstaller won't see it unless we
     # declare it explicitly.

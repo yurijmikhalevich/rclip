@@ -64,11 +64,12 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   pypi-build:
-    needs: lint
+    needs: [lint, parse_tag]
     if: github.event_name == 'push' || inputs.pypi
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-syft
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
@@ -76,10 +77,20 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
       - run: uv build
+      - name: Generate wheel SBOM
+        run: |
+          mkdir -p build/compliance
+          syft scan file:dist/rclip-${{ needs.parse_tag.outputs.version }}-py3-none-any.whl \
+            -o cyclonedx-json=build/compliance/rclip-wheel.cdx.json
       - uses: actions/upload-artifact@v7
         with:
           name: pypi
           path: dist/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pypi-compliance
+          path: build/compliance/*
           if-no-files-found: error
 
   pypi-test:
@@ -153,13 +164,32 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - uses: ./.github/actions/setup-syft
       - uses: canonical/setup-lxd@main
       - run: sudo snap install snapcraft --classic
       - run: snapcraft --use-lxd --build-for ${{ matrix.arch }}
+      - name: Audit assembled Snap
+        run: |
+          unsquashfs -d snap-root rclip_*.snap
+          syft scan dir:snap-root \
+            -o syft-json=snap-syft.json \
+            -o cyclonedx-json=rclip-${{ matrix.arch }}-snap.cdx.json
+          python -m rclip._compliance verify \
+            --root snap-root \
+            --legal-dir snap-root/share/doc/rclip \
+            --policy compliance/policy.toml \
+            --syft-json snap-syft.json \
+            --output snap-${{ matrix.arch }}-compliance.json
       - uses: actions/upload-artifact@v7
         with:
           name: snap-${{ matrix.arch }}
-          path: rclip_*.snap
+          path: |
+            rclip_*.snap
+            rclip-${{ matrix.arch }}-snap.cdx.json
+            snap-${{ matrix.arch }}-compliance.json
           if-no-files-found: error
 
   snap-test:
@@ -209,6 +239,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-syft
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
@@ -227,10 +258,27 @@ jobs:
         env:
           APP_VERSION: ${{ needs.parse_tag.outputs.version }}
         run: bash ./release-utils/appimage/build_appimage.sh
+      - name: Audit assembled AppImage
+        run: |
+          chmod +x rclip-*.AppImage
+          appimage_path=(./rclip-*.AppImage)
+          "${appimage_path[0]}" --appimage-extract >/dev/null
+          syft scan dir:squashfs-root \
+            -o syft-json=appimage-syft.json \
+            -o cyclonedx-json=rclip-${{ needs.parse_tag.outputs.version }}-appimage.cdx.json
+          python -m rclip._compliance verify \
+            --root squashfs-root \
+            --legal-dir squashfs-root/usr/share/doc/rclip \
+            --policy compliance/policy.toml \
+            --syft-json appimage-syft.json \
+            --output appimage-compliance.json
       - uses: actions/upload-artifact@v7
         with:
           name: appimage
-          path: rclip-*.AppImage
+          path: |
+            rclip-*.AppImage
+            rclip-*-appimage.cdx.json
+            appimage-compliance.json
           if-no-files-found: error
 
   appimage-test:
@@ -256,6 +304,7 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-syft
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
@@ -263,6 +312,18 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --no-dev
       - run: make build-windows
+      - name: Audit assembled Windows application
+        shell: bash
+        run: |
+          syft scan dir:dist/rclip \
+            -o syft-json=build/windows-syft.json \
+            -o cyclonedx-json=build/rclip-windows.cdx.json
+          python -m rclip._compliance verify \
+            --root dist/rclip \
+            --legal-dir dist/rclip/legal \
+            --policy compliance/policy.toml \
+            --syft-json build/windows-syft.json \
+            --output build/windows-compliance.json
       - name: Install Advinst
         uses: caphyon/advinst-github-action@main
         with:
@@ -288,7 +349,30 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: windows
-          path: artifacts/rclip-*.msi
+          path: |
+            artifacts/rclip-*.msi
+            build/rclip-windows.cdx.json
+            build/windows-compliance.json
+          if-no-files-found: error
+
+  source-bundle:
+    needs: lint
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Build LibRaw corresponding source bundle
+        run: |
+          mkdir -p source
+          python -m rclip._compliance source-bundle \
+            --manifest compliance/sources.toml \
+            --output source/rawpy-0.26.1-corresponding-source.tar.gz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: corresponding-source
+          path: source/*
           if-no-files-found: error
 
   windows-test:
@@ -306,7 +390,7 @@ jobs:
       - uses: ./.github/actions/test-system-rclip
 
   create_release:
-    needs: [parse_tag, pypi-release, snap-release, appimage-test, windows-test]
+    needs: [parse_tag, pypi-release, snap-release, appimage-test, windows-test, source-bundle]
     # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
     if: ${{ github.event_name == 'push' && !cancelled() }}
     runs-on: ubuntu-22.04
@@ -353,7 +437,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           name: ${{ github.ref_name }}
-          artifacts: artifacts/pypi/rclip-*,artifacts/snap-amd64/rclip-*.snap,artifacts/snap-arm64/rclip-*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows/rclip-*.msi
+          artifacts: artifacts/pypi/rclip-*,artifacts/snap-amd64/rclip-*.snap,artifacts/snap-arm64/rclip-*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows/rclip-*.msi,artifacts/**/*.cdx.json,artifacts/**/*compliance.json,artifacts/corresponding-source/*
           generateReleaseNotes: true
           generateReleaseNotesPreviousTag: ${{ steps.previous_release.outputs.tag }}
           prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}

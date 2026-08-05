@@ -1,0 +1,94 @@
+name: compliance deep audit
+
+on:
+  pull_request:
+    paths:
+      - .github/actions/setup-syft/**
+      - .github/workflows/compliance-deep-audit.yaml
+      - .github/workflows/release.yaml
+      - compliance/**
+      - pyproject.toml
+      - uv.lock
+      - release-utils/**
+      - snap/**
+  schedule:
+    - cron: '31 14 * * 1'
+  workflow_dispatch:
+
+jobs:
+  dependencies:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - name: Install production dependencies and ScanCode
+        run: |
+          UV_PROJECT_ENVIRONMENT=.compliance-venv uv sync --locked --no-dev
+          python -m pip install scancode-toolkit==32.5.0
+      - name: Collect legal materials
+        run: |
+          .compliance-venv/bin/python -m rclip._compliance collect \
+            --root .compliance-venv \
+            --output .compliance-legal \
+            --policy compliance/policy.toml \
+            --common-notices compliance/notices
+      - name: Deep licence and package scan
+        run: |
+          scancode --license --package --copyright --json-pp scancode-dependencies.json .compliance-venv
+          python -m rclip._compliance normalize-scancode \
+            --input scancode-dependencies.json \
+            --output scancode-dependencies-normalized.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: scancode-dependencies
+          path: |
+            scancode-dependencies.json
+            scancode-dependencies-normalized.json
+          if-no-files-found: error
+
+  latest-release-artifacts:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install ScanCode and extraction tools
+        run: |
+          python -m pip install scancode-toolkit==32.5.0
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full
+      - name: Download latest AppImage and MSI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download --pattern '*.AppImage' --pattern '*.msi' --dir release-artifacts
+      - name: Extract release artifacts
+        run: |
+          mkdir appimage-root msi-root
+          chmod +x release-artifacts/*.AppImage
+          cd appimage-root
+          appimage_path=(../release-artifacts/*.AppImage)
+          "${appimage_path[0]}" --appimage-extract >/dev/null
+          cd ../msi-root
+          7z x ../release-artifacts/*.msi >/dev/null
+      - name: Deep-scan AppImage and MSI payloads
+        run: |
+          scancode --license --package --copyright --json-pp scancode-appimage.json appimage-root/squashfs-root
+          scancode --license --package --copyright --json-pp scancode-msi.json msi-root
+          python -m rclip._compliance normalize-scancode \
+            --input scancode-appimage.json \
+            --output scancode-appimage-normalized.json
+          python -m rclip._compliance normalize-scancode \
+            --input scancode-msi.json \
+            --output scancode-msi-normalized.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: scancode-release-artifacts
+          path: scancode-*.json
+          if-no-files-found: error

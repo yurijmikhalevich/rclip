@@ -31,7 +31,9 @@ build-docker:
 
 # CI runs release-brew as part of the `release` action
 build-windows:
+	uv run --exact --no-dev python -m rclip._compliance collect --root .venv --output build/legal --policy compliance/policy.toml --common-notices compliance/notices
 	uv run --exact --no-dev --with pyinstaller==6.10.0 pyinstaller -y ./release-utils/windows/pyinstaller.spec
+	uv run --exact --no-dev python -m rclip._compliance verify --root dist/rclip --legal-dir dist/rclip/legal --policy compliance/policy.toml --output build/windows-compliance.json
 
 # CI runs release-brew as part of the `release` action
 release-brew:

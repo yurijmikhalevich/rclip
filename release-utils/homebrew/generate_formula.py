@@ -92,6 +92,12 @@ TEMPLATE = env.from_string("""class Rclip < Formula
       end
     end
 {% endif %}
+
+    system libexec/"bin/python", "-m", "rclip._compliance", "collect",
+           "--root", libexec, "--output", share/"doc/rclip"
+    system libexec/"bin/python", "-m", "rclip._compliance", "verify",
+           "--root", libexec, "--legal-dir", share/"doc/rclip",
+           "--output", share/"doc/rclip/homebrew-compliance.json"
   end
 
   test do
