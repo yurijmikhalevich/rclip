@@ -5,10 +5,10 @@ this package must not grow a fallback to libheif/libde265: an unavailable system
 unavailable on that machine.
 """
 
+import errno
 import os
 import sys
 import tempfile
-import errno
 from pathlib import Path
 
 from PIL import Image
@@ -52,10 +52,11 @@ def decode_path(path: str | os.PathLike[str], max_pixels: int | None) -> Image.I
 
 def decode_bytes(data: bytes, max_pixels: int | None) -> Image.Image:
   """Decode in-memory HEIF data through a temporary file accepted by both native APIs."""
-  fd, temporary_path = tempfile.mkstemp(suffix=".heic")
+  temporary_file = tempfile.NamedTemporaryFile(suffix=".heic", delete=False)
+  temporary_path = Path(temporary_file.name)
   try:
-    with os.fdopen(fd, "wb") as temporary_file:
+    with temporary_file:
       temporary_file.write(data)
     return decode_path(temporary_path, max_pixels)
   finally:
-    Path(temporary_path).unlink(missing_ok=True)
+    temporary_path.unlink(missing_ok=True)

@@ -19,11 +19,6 @@ def test_images_dir():
 
 
 @pytest.fixture
-def test_heic_images_dir():
-  return Path(__file__).parent / "images heic"
-
-
-@pytest.fixture
 def test_empty_dir():
   return Path(__file__).parent / "empty_directory"
 
@@ -188,23 +183,28 @@ def test_search_format(
   assert any(expected_ext in result.filepath for result in results)
 
 
-@pytest.mark.skipif(sys.platform not in ("darwin", "win32"), reason="HEIC requires a native macOS or Windows codec")
-@pytest.mark.usefixtures("assert_output_snapshot")
-def test_search_format_heic(
-  test_heic_images_dir: Path,
-  monkeypatch: pytest.MonkeyPatch,
-  shared_model_cache_dir: str,
-):
-  from rclip.utils.native_heif import NativeHeifError, decode_path
+class TestHeic:
+  @pytest.fixture
+  def test_images_dir(self):
+    from rclip.utils.native_heif import NativeHeifError, decode_path
 
-  heic_path = test_heic_images_dir / "bee.heic"
-  try:
-    decode_path(heic_path, None)
-  except NativeHeifError as error:
-    pytest.skip(f"the operating system HEIC codec is unavailable: {error}")
+    images_dir = Path(__file__).parent / "images heic"
+    try:
+      decode_path(images_dir / "bee.heic", None)
+    except NativeHeifError as error:
+      pytest.skip(f"the operating system HEIC codec is unavailable: {error}")
+    return images_dir
 
-  results = execute_query(test_heic_images_dir, monkeypatch, shared_model_cache_dir, "bee")
-  assert {Path(result.filepath).name for result in results} == {"bee.heic", "bee.jpg"}
+  @pytest.mark.skipif(sys.platform not in ("darwin", "win32"), reason="HEIC requires a native macOS or Windows codec")
+  @pytest.mark.usefixtures("assert_output_snapshot")
+  def test_search_format_heic(
+    self,
+    test_images_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    shared_model_cache_dir: str,
+  ):
+    results = execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "bee")
+    assert {Path(result.filepath).name for result in results} == {"bee.heic", "bee.jpg"}
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")

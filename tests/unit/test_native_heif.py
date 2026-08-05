@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+import requests
 from PIL import Image, UnidentifiedImageError
 
 from rclip.utils import helpers, native_heif
@@ -40,21 +41,38 @@ def test_decode_bytes_removes_its_temporary_file(monkeypatch):
 
 def test_read_image_routes_heic_to_native_decoder(monkeypatch):
   expected = Image.new("RGB", (2, 3))
-  monkeypatch.setattr(helpers, "IS_MACOS", True)
-  monkeypatch.setattr(helpers, "IS_WINDOWS", False)
+  monkeypatch.setattr(helpers.sys, "platform", "darwin")
   monkeypatch.setattr(helpers, "_native_heif_path", lambda path: expected)
 
   assert helpers.read_image("photo.heic") is expected
 
 
-def test_read_image_does_not_use_native_decoder_on_linux(monkeypatch):
-  monkeypatch.setattr(helpers, "IS_MACOS", False)
-  monkeypatch.setattr(helpers, "IS_WINDOWS", False)
+@pytest.mark.parametrize("platform", ["linux", "cygwin"])
+def test_read_image_does_not_use_native_decoder_on_unsupported_platform(monkeypatch, platform):
+  monkeypatch.setattr(helpers.sys, "platform", platform)
   monkeypatch.setattr(helpers, "_native_heif_path", lambda path: pytest.fail("native decoder was called"))
   monkeypatch.setattr(helpers.Image, "open", lambda path: (_ for _ in ()).throw(UnidentifiedImageError()))
 
   with pytest.raises(UnidentifiedImageError):
     helpers.read_image("photo.heic")
+
+
+def test_download_image_does_not_use_native_decoder_on_cygwin(monkeypatch):
+  class Response:
+    content = b"heif data"
+    headers = {"Content-Type": "image/heic"}
+
+    def close(self):
+      pass
+
+  monkeypatch.setattr(helpers.sys, "platform", "cygwin")
+  monkeypatch.setattr(requests, "request", lambda *args, **kwargs: Response())
+  monkeypatch.setattr(requests, "get", lambda *args, **kwargs: Response())
+  monkeypatch.setattr(helpers.Image, "open", lambda path: (_ for _ in ()).throw(UnidentifiedImageError()))
+  monkeypatch.setattr(helpers, "_native_heif_bytes", lambda data, url: pytest.fail("native decoder was called"))
+
+  with pytest.raises(UnidentifiedImageError):
+    helpers.download_image("https://example.com/photo.heic")
 
 
 def test_native_pixel_limit_is_reported_as_rclip_error(monkeypatch):

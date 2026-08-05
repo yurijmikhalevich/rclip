@@ -375,7 +375,7 @@ def download_image(url: str, *, trusted: bool = False) -> Image.Image:
         # through the native codec using the bytes that requests has buffered.
         content_type = response.headers.get("Content-Type", "").partition(";")[0].lower()
         url_extension = get_file_extension(urlparse(url).path)
-        if not (IS_MACOS or IS_WINDOWS) or (
+        if sys.platform not in ("darwin", "win32") or (
           url_extension != "heic" and content_type not in {"image/heic", "image/heif"}
         ):
           raise
@@ -457,7 +457,7 @@ def read_image(query: str, *, trusted: bool = False) -> Image.Image:
       file_ext = get_file_extension(path)
       if file_ext in IMAGE_RAW_EXT:
         image = read_raw_image_file(path)
-      elif file_ext == "heic" and (IS_MACOS or IS_WINDOWS):
+      elif file_ext == "heic" and sys.platform in ("darwin", "win32"):
         image = _native_heif_path(path)
       else:
         # Image.open only reads the header and runs PIL's decompression-bomb check there, so oversized
