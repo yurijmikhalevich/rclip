@@ -396,9 +396,9 @@ def _syft_native_matches(data: dict[str, Any], patterns: Iterable[str]) -> list[
     searchable = [name.lower(), str(artifact.get("purl", "")).lower()]
     for location in artifact.get("locations", []):
       if isinstance(location, dict):
-        searchable.extend(
-          str(location.get(key, "")).lower() for key in ("path", "accessPath", "realPath")
-        )
+        searchable.extend(str(location.get(key, "")).lower() for key in ("path", "accessPath", "realPath"))
+    # Deliberately match substrings across package identifiers and paths. False positives stop the release for review;
+    # this fail-closed bias avoids missing versioned, renamed, or unusually located codec packages.
     if any(pattern in value for pattern in patterns for value in searchable):
       description = " ".join(value for value in (name, version) if value)
       matches.append(f"Syft package: {description or '<unnamed>'}")
@@ -477,9 +477,7 @@ def verify_bundle(root: Path, legal_dir: Path, policy_path: Path | None, syft_js
         "Python distributions missing from legal report: "
         + ", ".join(f"{name} {version or '<missing>'}" for name, version in missing_from_report)
       )
-    detections["hevc"].extend(
-      _syft_native_matches(syft_data, hevc_policy.get("forbidden_package_patterns", []))
-    )
+    detections["hevc"].extend(_syft_native_matches(syft_data, hevc_policy.get("forbidden_package_patterns", [])))
     try:
       _review_python_packages(syft_packages, policy)
     except ComplianceError as error:

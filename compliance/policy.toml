@@ -111,7 +111,6 @@ required_notice = "WEBP-PATENTS.txt"
 
 [codecs.hevc]
 allowed = false
-os_provider_allowed = true
 forbidden_filename_patterns = ["libde265", "libx265", "x265.dll"]
 forbidden_package_patterns = ["libde265", "libx265", "x265"]
 forbidden_binary_markers = [

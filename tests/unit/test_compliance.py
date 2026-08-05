@@ -231,9 +231,7 @@ def test_syft_inventory_matches_the_legal_report(tmp_path: Path) -> None:
     encoding="utf-8",
   )
 
-  assert verify_bundle(root, legal, POLICY, syft)["syft_python_packages"] == [
-    {"name": "rclip", "version": "3.3.0"}
-  ]
+  assert verify_bundle(root, legal, POLICY, syft)["syft_python_packages"] == [{"name": "rclip", "version": "3.3.0"}]
 
 
 def test_syft_native_inventory_rejects_hevc_packages(tmp_path: Path) -> None:
