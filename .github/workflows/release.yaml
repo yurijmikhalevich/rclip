@@ -4,6 +4,31 @@ on:
   push:
     tags:
       - v[0-9]+.[0-9]+.[0-9]+*
+  workflow_dispatch:
+    inputs:
+      pypi:
+        description: Build and test PyPI artifacts
+        type: boolean
+        default: true
+      snap:
+        description: Build and test Snap artifacts
+        type: boolean
+        default: true
+      appimage:
+        description: Build and test the AppImage
+        type: boolean
+        default: true
+      windows:
+        description: Build and test the Windows MSI
+        type: boolean
+        default: true
+      sign_windows:
+        description: Sign the Windows MSI (only used when Windows is selected)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 jobs:
   lint:
@@ -18,13 +43,29 @@ jobs:
       is_stable_version: ${{ steps.parse.outputs.is_stable_version }}
       version: ${{ steps.parse.outputs.version }}
     steps:
+      - uses: actions/checkout@v6
+        if: github.event_name == 'workflow_dispatch'
+      - uses: actions/setup-python@v6
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          python-version: '3.11'
       - id: parse
+        shell: bash
         run: |
-          echo "is_stable_version=$([[ $GITHUB_REF_NAME =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo true || echo false)" >> $GITHUB_OUTPUT
-          echo "version=${GITHUB_REF_NAME:1}" >> $GITHUB_OUTPUT
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            is_stable_version=$([[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo true || echo false)
+          else
+            version=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+            is_stable_version=false
+          fi
+
+          echo "is_stable_version=$is_stable_version" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
   pypi-build:
     needs: lint
+    if: github.event_name == 'push' || inputs.pypi
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
@@ -67,6 +108,7 @@ jobs:
 
   pypi-release:
     needs: pypi-test
+    if: github.event_name == 'push'
     runs-on: ubuntu-22.04
     permissions:
       id-token: write
@@ -80,7 +122,7 @@ jobs:
   brew:
     # the Formula references the rclip package published to PyPI
     needs: [parse_tag, pypi-release]
-    if: needs.parse_tag.outputs.is_stable_version == 'true'
+    if: github.event_name == 'push' && needs.parse_tag.outputs.is_stable_version == 'true'
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
@@ -100,6 +142,7 @@ jobs:
 
   snap-build:
     needs: lint
+    if: github.event_name == 'push' || inputs.snap
     strategy:
       matrix:
         include:
@@ -139,6 +182,7 @@ jobs:
 
   snap-release:
     needs: [snap-test, parse_tag]
+    if: github.event_name == 'push'
     runs-on: ubuntu-22.04
     steps:
       - run: sudo snap install snapcraft --classic
@@ -161,6 +205,7 @@ jobs:
 
   appimage-build:
     needs: [lint, parse_tag]
+    if: github.event_name == 'push' || inputs.appimage
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
@@ -205,7 +250,9 @@ jobs:
 
   windows-build:
     needs: [lint, parse_tag]
-    if: needs.parse_tag.outputs.is_stable_version == 'true'
+    if: >-
+      (github.event_name == 'push' && needs.parse_tag.outputs.is_stable_version == 'true') ||
+      (github.event_name == 'workflow_dispatch' && inputs.windows)
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v6
@@ -224,18 +271,24 @@ jobs:
       - run: |
           & ./release-utils/windows/build-msi.ps1 "${{ needs.parse_tag.outputs.version }}"
           mv build-msi/rclip-SetupFiles/rclip.msi build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi
-      - name: Sign MSI
+      - name: Stage unsigned MSI
+        if: github.event_name == 'workflow_dispatch' && !inputs.sign_windows
         run: |
-          mkdir signed
+          mkdir artifacts
+          mv build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi artifacts/
+      - name: Sign MSI
+        if: github.event_name == 'push' || inputs.sign_windows
+        run: |
+          mkdir artifacts
           Invoke-WebRequest -URI https://d1smxttentwwqu.cloudfront.net/wp-content/uploads/2023/11/CodeSignTool-v1.2.7-windows.zip -OutFile CodeSignTool.zip
           if ( ( Get-FileHash -Algorithm SHA256 CodeSignTool.zip ).Hash -ne 'AC9CDBFF6D482DBC1107ABC8789570F57ECF85773332BBA466CB3E00CE0BB841' ) { throw 'hash does not match' }
           Expand-Archive -Path CodeSignTool.zip -DestinationPath .
           cd CodeSignTool-v1.2.7-windows
-          & ./CodeSignTool.bat sign -input_file_path="${env:GITHUB_WORKSPACE}/build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi" -username=${{ secrets.WINDOWS_SIGNING_USERNAME }} -credential_id='${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }}' -password='${{ secrets.WINDOWS_SIGNING_PASSWORD }}' -totp_secret='${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}' -output_dir_path="${env:GITHUB_WORKSPACE}/signed"
+          & ./CodeSignTool.bat sign -input_file_path="${env:GITHUB_WORKSPACE}/build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi" -username=${{ secrets.WINDOWS_SIGNING_USERNAME }} -credential_id='${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }}' -password='${{ secrets.WINDOWS_SIGNING_PASSWORD }}' -totp_secret='${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}' -output_dir_path="${env:GITHUB_WORKSPACE}/artifacts"
       - uses: actions/upload-artifact@v7
         with:
           name: windows
-          path: signed/rclip-*.msi
+          path: artifacts/rclip-*.msi
           if-no-files-found: error
 
   windows-test:
@@ -247,17 +300,21 @@ jobs:
         with:
           name: windows
       - name: Install MSI
-        run: Start-Process msiexec.exe -Wait -ArgumentList '/i rclip-${{ needs.parse_tag.outputs.version }}.msi /quiet'
+        run: |
+          $process = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i rclip-${{ needs.parse_tag.outputs.version }}.msi /quiet /norestart'
+          if ($process.ExitCode -notin 0, 3010) { throw "msiexec failed with exit code $($process.ExitCode)" }
       - uses: ./.github/actions/test-system-rclip
 
   create_release:
     needs: [parse_tag, pypi-release, snap-release, appimage-test, windows-test]
     # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
-    if: ${{ !cancelled() }}
+    if: ${{ github.event_name == 'push' && !cancelled() }}
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
     steps:
       # if any of the needs jobs fail, we don't want to create a release
-      # this is needed because of `if: ${{ !cancelled() }}` above
+      # this is needed because the condition above allows skipped dependencies
       - if: ${{ contains(needs.*.result, 'failure') }}
         run: exit 1
       - uses: actions/checkout@v6
@@ -290,7 +347,7 @@ jobs:
                 | if length == 0 then "" else .[-1].tag_name end
               '
           )
-          echo "tag=$previous_tag" >> $GITHUB_OUTPUT
+          echo "tag=$previous_tag" >> "$GITHUB_OUTPUT"
           echo "Previous public release tag: ${previous_tag:-<none>}"
       - name: Create Release
         uses: ncipollo/release-action@v1
