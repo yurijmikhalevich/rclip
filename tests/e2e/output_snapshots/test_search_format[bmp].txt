@@ -6,6 +6,6 @@ score	filepath
 0.160	"<test_images_dir>magpie.pbm"
 0.152	"<test_images_dir>tree.webp"
 0.138	"<test_images_dir>black cat sleeping on a chair.JPG"
-0.129	"<test_images_dir>bee.heic"
 0.127	"<test_images_dir>black cat at night.jpg"
 0.121	"<test_images_dir>books.jpg"
+0.121	"<test_images_dir>black kitty.jpeg"

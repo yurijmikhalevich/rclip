@@ -7,5 +7,5 @@ score	filepath
 0.159	"<test_images_dir>chessboard with rocks.JPG"
 0.150	"<test_images_dir>boats on a lake.png"
 0.143	"<test_images_dir>kookaburras.pnm"
-0.141	"<test_images_dir>bee.heic"
 0.141	"<test_images_dir>black cat sleeping on a chair.JPG"
+0.135	"<test_images_dir>bee_animated.gif"

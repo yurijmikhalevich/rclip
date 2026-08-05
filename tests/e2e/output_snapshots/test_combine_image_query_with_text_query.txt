@@ -1,7 +1,6 @@
 score	filepath
 0.298	"<test_images_dir>magpie.pbm"
 0.296	"<test_images_dir>bee_animated.gif"
-0.262	"<test_images_dir>bee.heic"
 0.194	"<test_images_dir>tree.webp"
 0.189	"<test_images_dir>bee.jpg"
 0.115	"<test_images_dir>parrot-and-flowers.pgm"
@@ -9,3 +8,4 @@ score	filepath
 0.078	"<test_images_dir>cake.jpg"
 0.077	"<test_images_dir>camera.jpg"
 0.055	"<test_images_dir>camera lens.jpg"
+0.010	"<test_images_dir>kookaburras.pnm"
