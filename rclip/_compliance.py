@@ -122,12 +122,21 @@ def _review_python_packages(records: Iterable[dict[str, Any]], policy: dict[str,
     normalize_python_name(name): {str(version) for version in versions}
     for name, versions in policy.get("reviewed_python_versions", {}).items()
   }
+  unversioned = {normalize_python_name(name) for name in policy.get("unversioned_python_packages", [])}
+  conflicting_version_policy = sorted(reviewed_versions.keys() & unversioned)
+  missing_version_policy = sorted((installed & reviewed) - reviewed_versions.keys() - unversioned)
+  if conflicting_version_policy:
+    errors.append(
+      "Python distributions have both reviewed and unversioned policies: " + ", ".join(conflicting_version_policy)
+    )
+  if missing_version_policy:
+    errors.append("Python distributions without a version policy: " + ", ".join(missing_version_policy))
   version_drift = []
   for record in records:
     expected = reviewed_versions.get(record["name"])
     actual = record.get("version")
-    if expected is not None and actual is not None and str(actual) not in expected:
-      version_drift.append(f"{record['name']} {actual} (reviewed: {', '.join(sorted(expected))})")
+    if expected is not None and str(actual) not in expected:
+      version_drift.append(f"{record['name']} {actual or '<missing>'} (reviewed: {', '.join(sorted(expected))})")
   if version_drift:
     errors.append(f"unreviewed Python versions: {', '.join(sorted(version_drift))}")
   if errors:
@@ -324,14 +333,18 @@ def _native_candidates(root: Path, excluded_root: Path | None = None) -> list[Pa
 
 def _binary_contains(path: Path, markers: Iterable[str]) -> list[str]:
   marker_bytes = [(marker, marker.encode("ascii")) for marker in markers]
+  overlap = max((len(value) for _, value in marker_bytes), default=1) - 1
   found: set[str] = set()
+  previous = b""
   with path.open("rb") as stream:
-    while chunk := stream.read(4 * 1024 * 1024):
+    while current := stream.read(4 * 1024 * 1024):
+      chunk = previous + current
       for marker, value in marker_bytes:
         if marker not in found and value in chunk:
           found.add(marker)
       if len(found) == len(marker_bytes):
         break
+      previous = chunk[-overlap:] if overlap else b""
   return sorted(found)
 
 
@@ -344,8 +357,7 @@ def _notice_present(legal_dir: Path, filename: str, required_text: str | None = 
   return any(required_text in path.read_text(encoding="utf-8", errors="replace") for path in matches)
 
 
-def _syft_python_packages(path: Path) -> list[dict[str, str]]:
-  data = json.loads(path.read_text(encoding="utf-8"))
+def _syft_python_packages(data: dict[str, Any]) -> list[dict[str, str]]:
   packages: dict[tuple[str, str], dict[str, str]] = {}
   for artifact in data.get("artifacts", []):
     artifact_type = str(artifact.get("type", "")).lower()
@@ -358,6 +370,24 @@ def _syft_python_packages(path: Path) -> list[dict[str, str]]:
         version = str(artifact.get("version", ""))
         packages[(normalized_name, version)] = {"name": normalized_name, "version": version}
   return [packages[key] for key in sorted(packages)]
+
+
+def _syft_native_matches(data: dict[str, Any], patterns: Iterable[str]) -> list[str]:
+  patterns = tuple(pattern.lower() for pattern in patterns)
+  matches = []
+  for artifact in data.get("artifacts", []):
+    name = str(artifact.get("name", ""))
+    version = str(artifact.get("version", ""))
+    searchable = [name.lower(), str(artifact.get("purl", "")).lower()]
+    for location in artifact.get("locations", []):
+      if isinstance(location, dict):
+        searchable.extend(
+          str(location.get(key, "")).lower() for key in ("path", "accessPath", "realPath")
+        )
+    if any(pattern in value for pattern in patterns for value in searchable):
+      description = " ".join(value for value in (name, version) if value)
+      matches.append(f"Syft package: {description or '<unnamed>'}")
+  return sorted(set(matches))
 
 
 def verify_bundle(root: Path, legal_dir: Path, policy_path: Path | None, syft_json: Path | None) -> dict[str, Any]:
@@ -411,6 +441,18 @@ def verify_bundle(root: Path, legal_dir: Path, policy_path: Path | None, syft_js
     if "WebPDecode" in found_markers:
       detections["webp"].append(f"{relative} (binary marker)")
 
+  syft_packages: list[dict[str, str]] = []
+  if syft_json is not None:
+    syft_data = json.loads(syft_json.read_text(encoding="utf-8"))
+    syft_packages = _syft_python_packages(syft_data)
+    detections["hevc"].extend(
+      _syft_native_matches(syft_data, hevc_policy.get("forbidden_package_patterns", []))
+    )
+    try:
+      _review_python_packages(syft_packages, policy)
+    except ComplianceError as error:
+      errors.append(str(error))
+
   if detections["hevc"] and not hevc_policy.get("allowed", False):
     errors.append("forbidden HEVC implementation detected: " + ", ".join(sorted(set(detections["hevc"]))))
   for codec in ("av1", "dng", "webp"):
@@ -427,14 +469,6 @@ def verify_bundle(root: Path, legal_dir: Path, policy_path: Path | None, syft_js
     )
     if not shared_libraw:
       errors.append("rawpy/LibRaw detected without a separately replaceable LibRaw shared library")
-
-  syft_packages: list[dict[str, str]] = []
-  if syft_json is not None:
-    syft_packages = _syft_python_packages(syft_json)
-    try:
-      _review_python_packages(syft_packages, policy)
-    except ComplianceError as error:
-      errors.append(str(error))
 
   result = {
     "schema_version": 1,

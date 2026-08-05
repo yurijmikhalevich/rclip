@@ -1,11 +1,14 @@
 import json
 from pathlib import Path
 import tarfile
+import tomllib
 
 import pytest
 
 from rclip._compliance import ComplianceError
+from rclip._compliance import _binary_contains
 from rclip._compliance import _deterministic_tar
+from rclip._compliance import _review_python_packages
 from rclip._compliance import collect_legal_materials
 from rclip._compliance import normalize_scancode
 from rclip._compliance import verify_bundle
@@ -83,6 +86,48 @@ def test_collection_requires_review_for_version_changes(tmp_path: Path) -> None:
     collect_legal_materials(tmp_path, tmp_path / "legal", POLICY, NOTICES)
 
 
+def test_reviewed_package_requires_a_version_policy() -> None:
+  policy = {"reviewed_python_packages": ["example"]}
+
+  with pytest.raises(ComplianceError, match="without a version policy: example"):
+    _review_python_packages([{"name": "example", "version": "1"}], policy)
+
+  policy["unversioned_python_packages"] = ["example"]
+  _review_python_packages([{"name": "example", "version": "1"}], policy)
+
+
+def test_policy_covers_locked_runtime_closure_on_every_platform() -> None:
+  with (REPO_ROOT / "uv.lock").open("rb") as stream:
+    locked_packages = {package["name"]: package for package in tomllib.load(stream)["package"]}
+  with POLICY.open("rb") as stream:
+    policy = tomllib.load(stream)
+
+  closure: set[str] = set()
+  pending = ["rclip"]
+  while pending:
+    name = pending.pop()
+    if name in closure:
+      continue
+    closure.add(name)
+    pending.extend(dependency["name"] for dependency in locked_packages[name].get("dependencies", []))
+
+  reviewed = set(policy["reviewed_python_packages"])
+  assert closure <= reviewed
+  unversioned = set(policy["unversioned_python_packages"])
+  reviewed_versions = policy["reviewed_python_versions"]
+  for name in closure - unversioned:
+    assert locked_packages[name]["version"] in reviewed_versions[name]
+
+
+def test_rawpy_source_manifest_matches_reviewed_runtime_version() -> None:
+  with (REPO_ROOT / "compliance/sources.toml").open("rb") as stream:
+    source_version = tomllib.load(stream)["rawpy"]["version"]
+  with POLICY.open("rb") as stream:
+    reviewed_versions = tomllib.load(stream)["reviewed_python_versions"]
+
+  assert reviewed_versions["rawpy"] == [source_version]
+
+
 def test_av1_requires_aom_patent_notice(tmp_path: Path) -> None:
   root = tmp_path / "runtime"
   root.mkdir()
@@ -126,6 +171,14 @@ def test_rejects_actual_hevc_implementation_but_not_libheif_api(tmp_path: Path) 
     verify_bundle(root, legal, POLICY, None)
 
 
+def test_binary_markers_are_detected_across_read_boundaries(tmp_path: Path) -> None:
+  binary = tmp_path / "codec.so"
+  marker = b"x265_encoder_open"
+  binary.write_bytes(b"x" * (4 * 1024 * 1024 - len(marker) // 2) + marker)
+
+  assert _binary_contains(binary, [marker.decode("ascii")]) == [marker.decode("ascii")]
+
+
 def test_rejects_build_tool_in_runtime(tmp_path: Path) -> None:
   root = tmp_path / "runtime"
   root.mkdir()
@@ -149,6 +202,32 @@ def test_syft_inventory_is_checked_against_dependency_policy(tmp_path: Path) -> 
   )
 
   with pytest.raises(ComplianceError, match="unreviewed Python distributions"):
+    verify_bundle(root, legal, POLICY, syft)
+
+
+def test_syft_native_inventory_rejects_hevc_packages(tmp_path: Path) -> None:
+  root = tmp_path / "runtime"
+  root.mkdir()
+  legal = tmp_path / "legal"
+  write_legal_pack(legal)
+  syft = tmp_path / "syft.json"
+  syft.write_text(
+    json.dumps(
+      {
+        "artifacts": [
+          {
+            "name": "x265",
+            "version": "4.1",
+            "type": "deb",
+            "purl": "pkg:deb/ubuntu/x265@4.1",
+          }
+        ]
+      }
+    ),
+    encoding="utf-8",
+  )
+
+  with pytest.raises(ComplianceError, match="Syft package: x265 4.1"):
     verify_bundle(root, legal, POLICY, syft)
 
 

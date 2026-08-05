@@ -30,7 +30,8 @@ When `uv.lock`, a dependency declaration, or packaging changes:
    native libraries.
 2. Update both `reviewed_python_packages` and `reviewed_python_versions` in
    `policy.toml`. A wheel that omits a required licence needs a version-reviewed
-   file under `license-overrides/`.
+   file under `license-overrides/`. Use `unversioned_python_packages` only for
+   distributions supplied outside rclip's locked runtime dependency closure.
 3. Update `sources.toml` when rawpy or LibRaw changes.
 4. Run `uv run pytest tests/unit/test_compliance.py`.
 

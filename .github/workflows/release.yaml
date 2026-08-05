@@ -357,6 +357,7 @@ jobs:
 
   source-bundle:
     needs: lint
+    if: github.event_name == 'push'
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
@@ -366,9 +367,10 @@ jobs:
       - name: Build LibRaw corresponding source bundle
         run: |
           mkdir -p source
+          rawpy_version=$(python -c 'import tomllib; print(tomllib.load(open("compliance/sources.toml", "rb"))["rawpy"]["version"])')
           python -m rclip._compliance source-bundle \
             --manifest compliance/sources.toml \
-            --output source/rawpy-0.26.1-corresponding-source.tar.gz
+            --output "source/rawpy-${rawpy_version}-corresponding-source.tar.gz"
       - uses: actions/upload-artifact@v7
         with:
           name: corresponding-source
