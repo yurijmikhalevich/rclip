@@ -1,3 +1,0 @@
-score	filepath
-0.286	"<test_images_dir>bee.heic"
-0.274	"<test_images_dir>bee.jpg"

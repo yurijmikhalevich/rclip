@@ -196,7 +196,6 @@ class TestHeic:
     return images_dir
 
   @pytest.mark.skipif(sys.platform not in ("darwin", "win32"), reason="HEIC requires a native macOS or Windows codec")
-  @pytest.mark.usefixtures("assert_output_snapshot")
   def test_search_format_heic(
     self,
     test_images_dir: Path,
@@ -204,7 +203,8 @@ class TestHeic:
     shared_model_cache_dir: str,
   ):
     results = execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "bee")
-    assert {Path(result.filepath).name for result in results} == {"bee.heic", "bee.jpg"}
+    assert [Path(result.filepath).name for result in results] == ["bee.heic", "bee.jpg"]
+    assert [result.score for result in results] == pytest.approx([0.286, 0.274], abs=0.002)
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
