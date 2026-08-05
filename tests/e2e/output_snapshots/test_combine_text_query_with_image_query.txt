@@ -1,6 +1,5 @@
 score	filepath
 0.612	"<test_images_dir>bee.jpg"
-0.532	"<test_images_dir>bee.heic"
 0.519	"<test_images_dir>bee_animated.gif"
 0.356	"<test_images_dir>parrot-looks-into-the-camera.ppm"
 0.322	"<test_images_dir>duck.jp2"
@@ -9,3 +8,4 @@ score	filepath
 0.225	"<test_images_dir>boats on a lake.png"
 0.203	"<test_images_dir>chess-knight.tiff"
 0.197	"<test_images_dir>kookaburras.pnm"
+0.189	"<test_images_dir>books.jpg"

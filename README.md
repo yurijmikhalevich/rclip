@@ -17,7 +17,8 @@
 - **Reverse / image-to-image search** – search by an example image from a local path or a URL.
 - **Combined & arithmetic queries** – mix and weight text and image queries, e.g. `rclip "2:golden retriever" + "./pool.jpg" - fruit`.
 - **Local & private** – works fully offline; your photos never leave your computer.
-- **Wide format support** – `jpg`, `png`, `webp`, `heic`, `tiff`, `gif`, and more, plus experimental RAW (`arw`, `cr2`, `dng`).
+- **Wide format support** – `jpg`, `png`, `webp`, `tiff`, `gif`, and more, plus native HEIC on
+  macOS/Windows and experimental RAW (`arw`, `cr2`, `dng`).
 - **Fast incremental indexing** – only new and changed images are reprocessed on subsequent runs.
 - **Terminal previews** – view images inline in iTerm2, Konsole, wezterm, Mintty, and mlterm.
 - **Cross-platform** – Linux, macOS (Apple Silicon), and Windows.
@@ -138,7 +139,11 @@ If you want to see how these queries perform when executed on the 1.28 million i
 
 ### Which formats does **rclip** support?
 
-**rclip** always indexes the following image formats: `jpg`, `jpeg`, `png`, `webp`, `heic`, `tiff`, `tif`, `bmp`, `gif`, `jp2`, `pnm`, `pbm`, `pgm`, and `ppm`.
+**rclip** always indexes the following image formats: `jpg`, `jpeg`, `png`, `webp`, `tiff`, `tif`, `bmp`, `gif`, `jp2`, `pnm`, `pbm`, `pgm`, and `ppm`.
+
+HEIC images are supported on macOS through Image I/O and on Windows through Windows Imaging
+Component (WIC), when the operating system has an HEIF/HEVC codec installed. rclip does not bundle
+an HEVC codec. HEIC is currently unavailable in Linux distributions of rclip.
 
 RAW formats (`arw`, `cr2`, and `dng`) are supported when you pass the `--experimental-raw-support` flag:
 

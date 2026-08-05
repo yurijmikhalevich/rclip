@@ -148,7 +148,6 @@ WHEEL_PACKAGES: list[WheelPackage] = [
   },
   {"name": "hf-xet", "tag": "abi3"},
   {"name": "onnxruntime", "tag": TARGET_PYTHON_TAG},
-  {"name": "pi-heif", "tag": TARGET_PYTHON_TAG, "patchelf": {"pi_heif.libs/*.so*": "$ORIGIN"}},
 ]
 
 RESOURCE_URL_OVERRIDES = {}

@@ -19,6 +19,11 @@ def test_images_dir():
 
 
 @pytest.fixture
+def test_heic_images_dir():
+  return Path(__file__).parent / "images heic"
+
+
+@pytest.fixture
 def test_empty_dir():
   return Path(__file__).parent / "empty_directory"
 
@@ -57,7 +62,10 @@ def use_shared_datadir(monkeypatch: pytest.MonkeyPatch, shared_datadir: str):
 
 
 def _assert_output_snapshot(
-  images_dir: Path, request: pytest.FixtureRequest, capfd: pytest.CaptureFixture[str], encoding: str | None = None
+  images_dir: Path,
+  request: pytest.FixtureRequest,
+  capfd: pytest.CaptureFixture[str],
+  encoding: str | None = None,
 ):
   out, _ = capfd.readouterr()
   snapshot_path = Path(__file__).parent / "output_snapshots" / f"{request.node.name}.txt"
@@ -158,7 +166,6 @@ def test_search(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_m
   [
     ("tree", "webp"),
     ("boats on a lake", "png"),
-    ("bee", "heic"),
     ("chess knight", "tiff"),
     ("chess pawns", "bmp"),
     ("chess queen", "gif"),
@@ -168,7 +175,7 @@ def test_search(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_m
     ("parrot and flowers", "pgm"),
     ("parrot looks into the camera", "ppm"),
   ],
-  ids=["webp", "png", "heic", "tiff", "bmp", "gif", "jp2", "pnm", "pbm", "pgm", "ppm"],
+  ids=["webp", "png", "tiff", "bmp", "gif", "jp2", "pnm", "pbm", "pgm", "ppm"],
 )
 def test_search_format(
   test_images_dir: Path,
@@ -179,6 +186,25 @@ def test_search_format(
 ):
   results = execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, query)
   assert any(expected_ext in result.filepath for result in results)
+
+
+@pytest.mark.skipif(sys.platform not in ("darwin", "win32"), reason="HEIC requires a native macOS or Windows codec")
+@pytest.mark.usefixtures("assert_output_snapshot")
+def test_search_format_heic(
+  test_heic_images_dir: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  shared_model_cache_dir: str,
+):
+  from rclip.utils.native_heif import NativeHeifError, decode_path
+
+  heic_path = test_heic_images_dir / "bee.heic"
+  try:
+    decode_path(heic_path, None)
+  except NativeHeifError as error:
+    pytest.skip(f"the operating system HEIC codec is unavailable: {error}")
+
+  results = execute_query(test_heic_images_dir, monkeypatch, shared_model_cache_dir, "bee")
+  assert {Path(result.filepath).name for result in results} == {"bee.heic", "bee.jpg"}
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")

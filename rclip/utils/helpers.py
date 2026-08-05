@@ -6,12 +6,13 @@ import os
 import pathlib
 import textwrap
 import warnings
-from typing import IO, Optional, Union, cast
+from typing import Optional, Union, cast
 from PIL import Image, UnidentifiedImageError
 import re
 import numpy as np
 import sys
 from importlib.metadata import version
+from urllib.parse import urlparse
 
 from rclip.const import IMAGE_RAW_EXT, IS_LINUX, IS_MACOS, IS_WINDOWS
 from rclip.utils import preprocess
@@ -109,22 +110,45 @@ def configure_max_image_pixels(value: MaxImagePixels, workers: int) -> None:
 
 
 def _ensure_image_loading_configured() -> None:
-  """Configures PIL for reading the images rclip works with. Imports pi_heif (which loads the
-  native libheif) lazily so runs that never open an image don't pay for it."""
+  """Configure Pillow's safety and compatibility settings once per process."""
   global _image_loading_configured
   if _image_loading_configured:
     return
   from PIL import ImageFile
-  from pi_heif import register_heif_opener
 
   setattr(ImageFile, "LOAD_TRUNCATED_IMAGES", True)
-  register_heif_opener()
   # PIL only *warns* at MAX_IMAGE_PIXELS and *raises* at 2x; turn the warning into an error so we
   # get a single, clean threshold (the cap) with no raw PIL warning text leaking to the console.
   warnings.filterwarnings("error", category=Image.DecompressionBombWarning)
   # apply the cap onto PIL even if configure_max_image_pixels was never called (e.g. URL queries)
   Image.MAX_IMAGE_PIXELS = _max_image_pixels
   _image_loading_configured = True
+
+
+def _native_heif_path(path: str) -> Image.Image:
+  from rclip.utils import native_heif
+
+  try:
+    return native_heif.decode_path(path, Image.MAX_IMAGE_PIXELS)
+  except native_heif.NativeHeifTooLargeError as error:
+    raise ImageTooLargeError(path, error.pixels, error.limit) from error
+  except native_heif.NativeHeifError as error:
+    unidentified = UnidentifiedImageError(str(error))
+    unidentified.filename = path
+    raise unidentified from error
+
+
+def _native_heif_bytes(data: bytes, source: str) -> Image.Image:
+  from rclip.utils import native_heif
+
+  try:
+    return native_heif.decode_bytes(data, Image.MAX_IMAGE_PIXELS)
+  except native_heif.NativeHeifTooLargeError as error:
+    raise ImageTooLargeError(source, error.pixels, error.limit) from error
+  except native_heif.NativeHeifError as error:
+    unidentified = UnidentifiedImageError(str(error))
+    unidentified.filename = source
+    raise unidentified from error
 
 
 def __get_system_datadir() -> pathlib.Path:
@@ -338,12 +362,26 @@ def download_image(url: str, *, trusted: bool = False) -> Image.Image:
       raise ValueError(f"Avoiding download of large ({length} byte) file.")
   # a query image URL is chosen by the user, so bypass the cap when trusted (see read_image)
   limit_ctx = image_pixel_limit_disabled() if trusted else contextlib.nullcontext()
-  with limit_ctx:
-    response = requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS)
-    img = Image.open(cast(IO[bytes], response.raw))
-    img.load()
-  response.close()
-  return img
+  response = requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS)
+  try:
+    with limit_ctx:
+      data = response.content
+      try:
+        img = Image.open(io.BytesIO(data))
+        img.load()
+        return img
+      except UnidentifiedImageError:
+        # WIC and Image I/O accept filenames. If Pillow could not identify a URL response, retry
+        # through the native codec using the bytes that requests has buffered.
+        content_type = response.headers.get("Content-Type", "").partition(";")[0].lower()
+        url_extension = get_file_extension(urlparse(url).path)
+        if not (IS_MACOS or IS_WINDOWS) or (
+          url_extension != "heic" and content_type not in {"image/heic", "image/heif"}
+        ):
+          raise
+        return _native_heif_bytes(data, url)
+  finally:
+    response.close()
 
 
 def get_file_extension(path: str) -> str:
@@ -419,6 +457,8 @@ def read_image(query: str, *, trusted: bool = False) -> Image.Image:
       file_ext = get_file_extension(path)
       if file_ext in IMAGE_RAW_EXT:
         image = read_raw_image_file(path)
+      elif file_ext == "heic" and (IS_MACOS or IS_WINDOWS):
+        image = _native_heif_path(path)
       else:
         # Image.open only reads the header and runs PIL's decompression-bomb check there, so oversized
         # images are rejected before we ever decode and allocate memory for them.
