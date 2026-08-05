@@ -80,8 +80,12 @@ jobs:
       - name: Generate wheel SBOM
         run: |
           mkdir -p build/compliance
-          syft scan file:dist/rclip-${{ needs.parse_tag.outputs.version }}-py3-none-any.whl \
+          python -m zipfile -e \
+            dist/rclip-${{ needs.parse_tag.outputs.version }}-py3-none-any.whl \
+            build/wheel-sbom-root
+          SYFT_FILE_METADATA_SELECTION=none syft scan dir:build/wheel-sbom-root \
             -o cyclonedx-json=build/compliance/rclip-wheel.cdx.json
+          python -c 'import json; components=json.load(open("build/compliance/rclip-wheel.cdx.json"))["components"]; assert any(component.get("name") == "rclip" for component in components)'
       - uses: actions/upload-artifact@v7
         with:
           name: pypi
@@ -346,13 +350,14 @@ jobs:
           Expand-Archive -Path CodeSignTool.zip -DestinationPath .
           cd CodeSignTool-v1.2.7-windows
           & ./CodeSignTool.bat sign -input_file_path="${env:GITHUB_WORKSPACE}/build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi" -username=${{ secrets.WINDOWS_SIGNING_USERNAME }} -credential_id='${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }}' -password='${{ secrets.WINDOWS_SIGNING_PASSWORD }}' -totp_secret='${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}' -output_dir_path="${env:GITHUB_WORKSPACE}/artifacts"
+      - name: Stage Windows compliance artifacts
+        run: |
+          Copy-Item build/rclip-windows.cdx.json artifacts/
+          Copy-Item build/windows-compliance.json artifacts/
       - uses: actions/upload-artifact@v7
         with:
           name: windows
-          path: |
-            artifacts/rclip-*.msi
-            build/rclip-windows.cdx.json
-            build/windows-compliance.json
+          path: artifacts/*
           if-no-files-found: error
 
   source-bundle:

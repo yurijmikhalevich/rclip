@@ -1,9 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import json
+
 from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import copy_metadata
 
 
 block_cipher = None
+
+with open('build/legal/compliance-report.json', encoding='utf-8') as stream:
+    compliance_report = json.load(stream)
+
+distribution_metadata = []
+for component in compliance_report['components']:
+    if component['name'] != 'cpython':
+        distribution_metadata += copy_metadata(component['name'])
 
 
 a = Analysis(
@@ -12,6 +23,7 @@ a = Analysis(
     binaries=[],
     datas=[
         *collect_data_files('onnxruntime'),
+        *distribution_metadata,
         ('build/legal', 'legal'),
     ],
     # rclip imports onnxruntime dynamically, so PyInstaller won't see it unless we
@@ -44,6 +56,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    contents_directory='.',
 )
 coll = COLLECT(
     exe,

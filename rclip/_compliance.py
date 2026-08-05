@@ -372,6 +372,21 @@ def _syft_python_packages(data: dict[str, Any]) -> list[dict[str, str]]:
   return [packages[key] for key in sorted(packages)]
 
 
+def _reported_python_packages(legal_dir: Path) -> list[dict[str, str]]:
+  report_path = legal_dir / "compliance-report.json"
+  if not report_path.is_file():
+    return []
+  data = json.loads(report_path.read_text(encoding="utf-8"))
+  packages: dict[tuple[str, str], dict[str, str]] = {}
+  for component in data.get("components", []):
+    name = normalize_python_name(str(component.get("name", "")))
+    if not name or name == "cpython":
+      continue
+    version = str(component.get("version", ""))
+    packages[(name, version)] = {"name": name, "version": version}
+  return [packages[key] for key in sorted(packages)]
+
+
 def _syft_native_matches(data: dict[str, Any], patterns: Iterable[str]) -> list[str]:
   patterns = tuple(pattern.lower() for pattern in patterns)
   matches = []
@@ -445,6 +460,23 @@ def verify_bundle(root: Path, legal_dir: Path, policy_path: Path | None, syft_js
   if syft_json is not None:
     syft_data = json.loads(syft_json.read_text(encoding="utf-8"))
     syft_packages = _syft_python_packages(syft_data)
+    reported_packages = _reported_python_packages(legal_dir)
+    syft_inventory = {(package["name"], package["version"]) for package in syft_packages}
+    reported_inventory = {(package["name"], package["version"]) for package in reported_packages}
+    if not syft_inventory:
+      errors.append("Syft inventory contains no Python distributions")
+    missing_from_syft = sorted(reported_inventory - syft_inventory)
+    missing_from_report = sorted(syft_inventory - reported_inventory)
+    if missing_from_syft:
+      errors.append(
+        "Python distributions missing from Syft inventory: "
+        + ", ".join(f"{name} {version or '<missing>'}" for name, version in missing_from_syft)
+      )
+    if missing_from_report:
+      errors.append(
+        "Python distributions missing from legal report: "
+        + ", ".join(f"{name} {version or '<missing>'}" for name, version in missing_from_report)
+      )
     detections["hevc"].extend(
       _syft_native_matches(syft_data, hevc_policy.get("forbidden_package_patterns", []))
     )

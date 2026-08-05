@@ -45,7 +45,10 @@ def write_legal_pack(legal_dir: Path) -> None:
     "This product includes DNG technology under license by Adobe.\n",
     encoding="utf-8",
   )
-  (legal_dir / "compliance-report.json").write_text("{}\n", encoding="utf-8")
+  (legal_dir / "compliance-report.json").write_text(
+    json.dumps({"components": [{"name": "rclip", "version": "3.3.0"}]}) + "\n",
+    encoding="utf-8",
+  )
   (legal_dir / "policy.toml").write_bytes(POLICY.read_bytes())
 
 
@@ -203,6 +206,34 @@ def test_syft_inventory_is_checked_against_dependency_policy(tmp_path: Path) -> 
 
   with pytest.raises(ComplianceError, match="unreviewed Python distributions"):
     verify_bundle(root, legal, POLICY, syft)
+
+
+def test_syft_inventory_must_cover_the_legal_report(tmp_path: Path) -> None:
+  root = tmp_path / "runtime"
+  root.mkdir()
+  legal = tmp_path / "legal"
+  write_legal_pack(legal)
+  syft = tmp_path / "syft.json"
+  syft.write_text(json.dumps({"artifacts": []}), encoding="utf-8")
+
+  with pytest.raises(ComplianceError, match="Syft inventory contains no Python distributions"):
+    verify_bundle(root, legal, POLICY, syft)
+
+
+def test_syft_inventory_matches_the_legal_report(tmp_path: Path) -> None:
+  root = tmp_path / "runtime"
+  root.mkdir()
+  legal = tmp_path / "legal"
+  write_legal_pack(legal)
+  syft = tmp_path / "syft.json"
+  syft.write_text(
+    json.dumps({"artifacts": [{"name": "rclip", "version": "3.3.0", "type": "python"}]}),
+    encoding="utf-8",
+  )
+
+  assert verify_bundle(root, legal, POLICY, syft)["syft_python_packages"] == [
+    {"name": "rclip", "version": "3.3.0"}
+  ]
 
 
 def test_syft_native_inventory_rejects_hevc_packages(tmp_path: Path) -> None:
