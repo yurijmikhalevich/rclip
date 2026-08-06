@@ -1,6 +1,6 @@
 # rclip – semantic photo search for the command line
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-6-orange.svg?style=flat-square)](#contributors-)
+[![All Contributors](https://img.shields.io/badge/all_contributors-7-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 
 [[Blog]](https://mikhalevi.ch/rclip-an-ai-powered-command-line-photo-search-tool/) [[Demo on YouTube]](https://www.youtube.com/watch?v=tAJHXOkHidw) [[Paper]](https://www.thinkmind.org/index.php?view=article&articleid=content_2023_1_20_60011)
@@ -265,6 +265,7 @@ Thanks go to these wonderful people and organizations ([emoji key](https://allco
       <td align="center" valign="top" width="14.28%"><a href="https://cl4r1ty.dev"><img src="https://avatars.githubusercontent.com/u/136800640?v=4?s=100" width="100px;" alt="Ben"/><br /><sub><b>Ben</b></sub></a><br /><a href="https://github.com/yurijmikhalevich/rclip/commits?author=Cl4r1ty-1" title="Code">💻</a></td>
       <td align="center" valign="top" width="14.28%"><a href="https://techtracer.pages.dev"><img src="https://avatars.githubusercontent.com/u/48885301?v=4?s=100" width="100px;" alt="Tanmay Chaudhari"/><br /><sub><b>Tanmay Chaudhari</b></sub></a><br /><a href="https://github.com/yurijmikhalevich/rclip/commits?author=tanmayc07" title="Code">💻</a></td>
       <td align="center" valign="top" width="14.28%"><a href="http://leoauri.com"><img src="https://avatars.githubusercontent.com/u/10868855?v=4?s=100" width="100px;" alt="Leo Auri"/><br /><sub><b>Leo Auri</b></sub></a><br /><a href="https://github.com/yurijmikhalevich/rclip/commits?author=leoauri" title="Code">💻</a></td>
+      <td align="center" valign="top" width="14.28%"><a href="https://github.com/SergeyKarleev"><img src="https://avatars.githubusercontent.com/u/8651755?v=4?s=100" width="100px;" alt="SergeyKarleev"/><br /><sub><b>SergeyKarleev</b></sub></a><br /><a href="https://github.com/yurijmikhalevich/rclip/commits?author=SergeyKarleev" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
