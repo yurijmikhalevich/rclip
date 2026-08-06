@@ -57,7 +57,7 @@ def _read_and_preprocess(path: str) -> Tuple[str, str, npt.NDArray[np.float32]]:
 
 
 class RClip:
-  EXCLUDE_DIRS_DEFAULT = ["@eaDir", "node_modules", ".git"]
+  EXCLUDE_DIRS_DEFAULT = ["@eaDir", "node_modules", ".git", "System Volume Information"]
   DB_IMAGES_BEFORE_COMMIT = 50_000
   # how many indexing batches to keep loading ahead of the model; preprocessed
   # images are small (a few hundred KB each), so a few batches of look-ahead
@@ -77,11 +77,13 @@ class RClip:
     exclude_dirs: Optional[List[str]],
     enable_raw_support: bool = False,
     max_image_pixels: helpers.MaxImagePixels = helpers.AUTO_MAX_IMAGE_PIXELS,
+    include_hidden: bool = False,
   ):
     self._model = model_instance
     self._db = database
     self._indexing_batch_size = indexing_batch_size
     self._enable_raw_support = enable_raw_support
+    self._skip_hidden = not include_hidden
 
     supported_image_ext = IMAGE_EXT + (IMAGE_RAW_EXT if enable_raw_support else [])
     self._image_regex = re.compile(f"^.+\\.({'|'.join(supported_image_ext)})$", re.I)
@@ -214,7 +216,7 @@ class RClip:
     """Walks the directory and yields (path, meta) for every image that needs (re)indexing, skipping
     the ones already up to date in the database. Advances the progress bar once per scanned file."""
     images_processed = 0
-    for entry in fs.walk(directory, self._exclude_dir_regex, self._image_regex):
+    for entry in fs.walk(directory, self._exclude_dir_regex, self._image_regex, self._skip_hidden):
       filepath = entry.path
 
       if self._enable_raw_support:
@@ -260,7 +262,7 @@ class RClip:
 
       counter_thread = threading.Thread(
         target=fs.count_files,
-        args=(directory, self._exclude_dir_regex, self._image_regex, update_total_images),
+        args=(directory, self._exclude_dir_regex, self._image_regex, update_total_images, self._skip_hidden),
       )
       counter_thread.start()
 
@@ -318,6 +320,7 @@ def init_rclip(
   no_indexing: bool = False,
   enable_raw_support: bool = False,
   max_image_pixels: helpers.MaxImagePixels = helpers.AUTO_MAX_IMAGE_PIXELS,
+  include_hidden: bool = False,
 ):
   datadir = helpers.get_app_datadir()
   db_path = datadir / "db.sqlite3"
@@ -332,6 +335,7 @@ def init_rclip(
     exclude_dirs=exclude_dir,
     enable_raw_support=enable_raw_support,
     max_image_pixels=max_image_pixels,
+    include_hidden=include_hidden,
   )
 
   if not no_indexing:
@@ -381,6 +385,7 @@ def main():
     args.no_indexing,
     args.experimental_raw_support,
     args.max_image_megapixels,
+    args.include_hidden,
   )
 
   try:

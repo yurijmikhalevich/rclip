@@ -5,11 +5,15 @@ COUNT_FILES_UPDATE_EVERY = 10_000
 
 
 def count_files(
-  directory: str, exclude_dir_re: Pattern[str], file_re: Pattern[str], on_change: Callable[[int], None]
+  directory: str,
+  exclude_dir_re: Pattern[str],
+  file_re: Pattern[str],
+  on_change: Callable[[int], None],
+  skip_hidden: bool = True,
 ) -> None:
   prev_update_count = 0
   count = 0
-  for _ in walk(directory, exclude_dir_re, file_re):
+  for _ in walk(directory, exclude_dir_re, file_re, skip_hidden):
     count += 1
     if count - prev_update_count >= COUNT_FILES_UPDATE_EVERY:
       on_change(count)
@@ -21,6 +25,7 @@ def walk(
   directory: str,
   exclude_dir_re: Pattern[str],
   file_re: Pattern[str],
+  skip_hidden: bool = True,
 ):
   """Walks through a directory recursively and yields files that match the given regex"""
   dirs_to_process = [directory]
@@ -28,6 +33,8 @@ def walk(
     dir = dirs_to_process.pop()
     with os.scandir(dir) as it:
       for entry in it:
+        if skip_hidden and entry.name.startswith("."):
+          continue
         if entry.is_dir():
           if not exclude_dir_re.match(entry.path):
             dirs_to_process.append(entry.path)
