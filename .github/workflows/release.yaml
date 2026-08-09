@@ -85,7 +85,7 @@ jobs:
             build/wheel-sbom-root
           SYFT_FILE_METADATA_SELECTION=none syft scan dir:build/wheel-sbom-root \
             -o cyclonedx-json=build/compliance/rclip-wheel.cdx.json
-          python -c 'import json; components=json.load(open("build/compliance/rclip-wheel.cdx.json"))["components"]; assert any(component.get("name") == "rclip" for component in components)'
+          python -c 'import json; components=json.load(open("build/compliance/rclip-wheel.cdx.json"))["components"]; assert any(component.get("name") == "rclip" for component in components), "rclip not in wheel SBOM"'
       - uses: actions/upload-artifact@v7
         with:
           name: pypi
@@ -175,25 +175,15 @@ jobs:
       - uses: canonical/setup-lxd@main
       - run: sudo snap install snapcraft --classic
       - run: snapcraft --use-lxd --build-for ${{ matrix.arch }}
-      - name: Audit assembled Snap
-        run: |
-          unsquashfs -d snap-root rclip_*.snap
-          syft scan dir:snap-root \
-            -o syft-json=snap-syft.json \
-            -o cyclonedx-json=rclip-${{ matrix.arch }}-snap.cdx.json
-          python -m rclip._compliance augment-cyclonedx \
-            --input rclip-${{ matrix.arch }}-snap.cdx.json \
-            --output rclip-${{ matrix.arch }}-snap.cdx.json \
-            --root snap-root \
-            --legal-dir snap-root/share/doc/rclip \
-            --policy compliance/policy.toml
-          python -m rclip._compliance verify \
-            --root snap-root \
-            --legal-dir snap-root/share/doc/rclip \
-            --policy compliance/policy.toml \
-            --syft-json snap-syft.json \
-            --cyclonedx-json rclip-${{ matrix.arch }}-snap.cdx.json \
-            --output snap-${{ matrix.arch }}-compliance.json
+      - name: Extract assembled Snap
+        run: unsquashfs -d snap-root rclip_*.snap
+      - uses: ./.github/actions/audit-runtime
+        with:
+          root: snap-root
+          legal_dir: snap-root/share/doc/rclip
+          syft_json: snap-syft.json
+          cyclonedx_json: rclip-${{ matrix.arch }}-snap.cdx.json
+          report_output: snap-${{ matrix.arch }}-compliance.json
       - uses: actions/upload-artifact@v7
         with:
           name: snap-${{ matrix.arch }}
@@ -269,27 +259,18 @@ jobs:
         env:
           APP_VERSION: ${{ needs.parse_tag.outputs.version }}
         run: bash ./release-utils/appimage/build_appimage.sh
-      - name: Audit assembled AppImage
+      - name: Extract assembled AppImage
         run: |
           chmod +x rclip-*.AppImage
           appimage_path=(./rclip-*.AppImage)
           "${appimage_path[0]}" --appimage-extract >/dev/null
-          syft scan dir:squashfs-root \
-            -o syft-json=appimage-syft.json \
-            -o cyclonedx-json=rclip-${{ needs.parse_tag.outputs.version }}-appimage.cdx.json
-          python -m rclip._compliance augment-cyclonedx \
-            --input rclip-${{ needs.parse_tag.outputs.version }}-appimage.cdx.json \
-            --output rclip-${{ needs.parse_tag.outputs.version }}-appimage.cdx.json \
-            --root squashfs-root \
-            --legal-dir squashfs-root/usr/share/doc/rclip \
-            --policy compliance/policy.toml
-          python -m rclip._compliance verify \
-            --root squashfs-root \
-            --legal-dir squashfs-root/usr/share/doc/rclip \
-            --policy compliance/policy.toml \
-            --syft-json appimage-syft.json \
-            --cyclonedx-json rclip-${{ needs.parse_tag.outputs.version }}-appimage.cdx.json \
-            --output appimage-compliance.json
+      - uses: ./.github/actions/audit-runtime
+        with:
+          root: squashfs-root
+          legal_dir: squashfs-root/usr/share/doc/rclip
+          syft_json: appimage-syft.json
+          cyclonedx_json: rclip-${{ needs.parse_tag.outputs.version }}-appimage.cdx.json
+          report_output: appimage-compliance.json
       - uses: actions/upload-artifact@v7
         with:
           name: appimage
@@ -330,25 +311,13 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --no-dev
       - run: make build-windows
-      - name: Audit assembled Windows application
-        shell: bash
-        run: |
-          syft scan dir:dist/rclip \
-            -o syft-json=build/windows-syft.json \
-            -o cyclonedx-json=build/rclip-windows.cdx.json
-          python -m rclip._compliance augment-cyclonedx \
-            --input build/rclip-windows.cdx.json \
-            --output build/rclip-windows.cdx.json \
-            --root dist/rclip \
-            --legal-dir dist/rclip/legal \
-            --policy compliance/policy.toml
-          python -m rclip._compliance verify \
-            --root dist/rclip \
-            --legal-dir dist/rclip/legal \
-            --policy compliance/policy.toml \
-            --syft-json build/windows-syft.json \
-            --cyclonedx-json build/rclip-windows.cdx.json \
-            --output build/windows-compliance.json
+      - uses: ./.github/actions/audit-runtime
+        with:
+          root: dist/rclip
+          legal_dir: dist/rclip/legal
+          syft_json: build/windows-syft.json
+          cyclonedx_json: build/rclip-windows.cdx.json
+          report_output: build/windows-compliance.json
       - name: Install Advinst
         uses: caphyon/advinst-github-action@main
         with:
@@ -416,6 +385,27 @@ jobs:
         with:
           name: corresponding-source
           path: source/
+      - name: Get previous public release tag
+        id: previous_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          previous_tag=$(
+            curl -fsSL \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              | jq -r '
+                [
+                  .[]
+                  | select(.draft == false and .published_at != null and .tag_name != env.GITHUB_REF_NAME)
+                ]
+                | sort_by(.published_at)
+                | if length == 0 then "" else .[-1].tag_name end
+              '
+          )
+          echo "tag=$previous_tag" >> "$GITHUB_OUTPUT"
+          echo "Previous public release tag: ${previous_tag:-<none>}"
       - name: Publish corresponding source before binary distributions
         uses: ncipollo/release-action@v1
         with:
@@ -424,7 +414,7 @@ jobs:
           allowUpdates: true
           artifactErrorsFailBuild: true
           generateReleaseNotes: true
-          immutableCreate: true
+          generateReleaseNotesPreviousTag: ${{ steps.previous_release.outputs.tag }}
           prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
           token: ${{ secrets.GITHUB_TOKEN }}
 

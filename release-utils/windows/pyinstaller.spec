@@ -10,8 +10,12 @@ from PyInstaller.utils.hooks import copy_metadata
 block_cipher = None
 project_root = Path(__file__).resolve().parents[2]
 legal_dir = project_root / 'build/legal'
+compliance_report_path = legal_dir / 'compliance-report.json'
 
-with (legal_dir / 'compliance-report.json').open(encoding='utf-8') as stream:
+if not compliance_report_path.is_file():
+    raise RuntimeError('Missing build/legal/compliance-report.json; run `make build-windows` first.')
+
+with compliance_report_path.open(encoding='utf-8') as stream:
     compliance_report = json.load(stream)
 
 distribution_metadata = []

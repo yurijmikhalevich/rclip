@@ -22,6 +22,11 @@ POLICY = REPO_ROOT / "compliance" / "policy.toml"
 NOTICES = REPO_ROOT / "compliance" / "notices"
 
 
+def dng_attribution() -> str:
+  with POLICY.open("rb") as stream:
+    return tomllib.load(stream)["codecs"]["dng"]["required_text"]
+
+
 def write_distribution(root: Path, name: str, version: str = "1.0", include_license: bool = True) -> None:
   dist_info = root / f"{name.replace('-', '_')}-{version}.dist-info"
   dist_info.mkdir(parents=True)
@@ -45,7 +50,7 @@ def write_legal_pack(legal_dir: Path) -> None:
   for notice in NOTICES.glob("*.txt"):
     copy_notice(legal_dir, notice.name)
   (legal_dir / "THIRD_PARTY_NOTICES.txt").write_text(
-    "This product includes DNG technology under license by Adobe.\n",
+    dng_attribution() + "\n",
     encoding="utf-8",
   )
   license_path = legal_dir / "licenses/rclip-3.3.0/LICENSE"
@@ -80,9 +85,7 @@ def test_collects_namespaced_licenses_and_common_notices(tmp_path: Path) -> None
   assert report["components"][0]["name"] == "rclip"
   assert (output / "licenses/rclip-3.3.0/licenses/LICENSE").is_file()
   assert (output / "notices/AOM-PATENT-LICENSE-1.0.txt").is_file()
-  assert "This product includes DNG technology under license by Adobe." in (
-    output / "THIRD_PARTY_NOTICES.txt"
-  ).read_text(encoding="utf-8")
+  assert dng_attribution() in (output / "THIRD_PARTY_NOTICES.txt").read_text(encoding="utf-8")
 
 
 def test_collects_and_indexes_bundled_system_licenses(tmp_path: Path) -> None:
@@ -194,10 +197,18 @@ def test_sdist_includes_homebrew_compliance_inputs(tmp_path: Path) -> None:
   assert len(archives) == 1
 
   with tarfile.open(archives[0]) as archive:
-    names = archive.getnames()
+    names = {Path(name).relative_to(Path(name).parts[0]).as_posix() for name in archive.getnames()}
 
-  assert any(name.endswith("/compliance/policy.toml") for name in names)
-  assert any(name.endswith("/compliance/notices/AOM-PATENT-LICENSE-1.0.txt") for name in names)
+  expected = {
+    "compliance/policy.toml",
+    *{
+      path.relative_to(REPO_ROOT).as_posix()
+      for directory in (REPO_ROOT / "compliance/notices", REPO_ROOT / "compliance/license-overrides")
+      for path in directory.rglob("*")
+      if path.is_file()
+    },
+  }
+  assert expected <= names, f"sdist is missing compliance inputs: {sorted(expected - names)}"
 
 
 def test_av1_requires_aom_patent_notice(tmp_path: Path) -> None:
@@ -261,6 +272,13 @@ def test_binary_markers_are_detected_across_read_boundaries(tmp_path: Path) -> N
   binary.write_bytes(b"x" * (4 * 1024 * 1024 - len(marker) // 2) + marker)
 
   assert _binary_contains(binary, [marker.decode("ascii")]) == [marker.decode("ascii")]
+
+
+def test_binary_markers_can_be_matched_case_insensitively(tmp_path: Path) -> None:
+  binary = tmp_path / "binding.so"
+  binary.write_bytes(b"native LIBRAW_R.SO dependency")
+
+  assert _binary_contains(binary, ["libraw_r.so"], casefold=True) == ["libraw_r.so"]
 
 
 def test_scans_extensionless_native_executables_for_hevc(tmp_path: Path) -> None:

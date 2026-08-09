@@ -24,7 +24,6 @@ import tomllib
 from typing import Any
 
 
-DNG_ATTRIBUTION = "This product includes DNG technology under license by Adobe."
 LEGAL_PREFIXES = (
   "authors",
   "copying",
@@ -81,28 +80,29 @@ def _confined_file(path: Path, parent: Path) -> bool:
   return path.is_file() and _is_inside(path, parent)
 
 
-def _find_policy(root: Path | None = None) -> Path:
+def _find_policy() -> Path:
   source_policy = Path(__file__).resolve().parent.parent / "compliance" / "policy.toml"
   candidates = [Path.cwd() / "compliance" / "policy.toml", source_policy]
-  if root is not None:
-    candidates.extend(
-      path
-      for path in sorted(root.rglob("policy.toml"))
-      if any(part.endswith(".dist-info") for part in path.parts) and "licenses" in path.parts
-    )
   for candidate in candidates:
     if candidate.is_file():
       return candidate
   raise ComplianceError("could not find compliance/policy.toml; pass --policy explicitly")
 
 
-def load_policy(path: Path | None, root: Path | None = None) -> dict[str, Any]:
-  policy_path = path or _find_policy(root)
+def load_policy(path: Path | None) -> dict[str, Any]:
+  policy_path = path or _find_policy()
   with policy_path.open("rb") as stream:
     policy = tomllib.load(stream)
   if policy.get("schema_version") != 1:
     raise ComplianceError(f"unsupported policy schema in {policy_path}")
   return policy
+
+
+def _required_codec_text(policy: dict[str, Any], codec_name: str) -> str:
+  value = policy.get("codecs", {}).get(codec_name, {}).get("required_text")
+  if not isinstance(value, str) or not value:
+    raise ComplianceError(f"{codec_name} policy is missing required_text")
+  return value
 
 
 def _metadata_records(root: Path, excluded_root: Path | None = None) -> list[dict[str, Any]]:
@@ -260,8 +260,8 @@ def collect_legal_materials(
   records = _metadata_records(root, output)
   if not records:
     raise ComplianceError(f"no Python distribution metadata found under {root}")
-  resolved_policy_path = policy_path or _find_policy(root)
-  policy = load_policy(resolved_policy_path, root)
+  resolved_policy_path = policy_path or _find_policy()
+  policy = load_policy(resolved_policy_path)
   _validate_python_packages(records, policy)
 
   if output.exists():
@@ -332,7 +332,7 @@ def collect_legal_materials(
     "rclip third-party notices",
     "=========================",
     "",
-    DNG_ATTRIBUTION,
+    _required_codec_text(policy, "dng"),
     "",
     "Codec patent terms",
     "------------------",
@@ -393,31 +393,18 @@ def _native_candidates(root: Path, excluded_root: Path | None = None) -> list[Pa
   return sorted(candidates)
 
 
-def _binary_contains(path: Path, markers: Iterable[str]) -> list[str]:
-  marker_bytes = [(marker, marker.encode("ascii")) for marker in markers]
+def _binary_contains(path: Path, markers: Iterable[str], *, casefold: bool = False) -> list[str]:
+  marker_bytes = [
+    (marker, marker.encode("ascii").lower() if casefold else marker.encode("ascii")) for marker in markers
+  ]
   overlap = max((len(value) for _, value in marker_bytes), default=1) - 1
   found: set[str] = set()
   previous = b""
   with path.open("rb") as stream:
     while current := stream.read(4 * 1024 * 1024):
       chunk = previous + current
-      for marker, value in marker_bytes:
-        if marker not in found and value in chunk:
-          found.add(marker)
-      if len(found) == len(marker_bytes):
-        break
-      previous = chunk[-overlap:] if overlap else b""
-  return sorted(found)
-
-
-def _binary_contains_casefold(path: Path, markers: Iterable[str]) -> list[str]:
-  marker_bytes = [(marker, marker.encode("ascii").lower()) for marker in markers]
-  overlap = max((len(value) for _, value in marker_bytes), default=1) - 1
-  found: set[str] = set()
-  previous = b""
-  with path.open("rb") as stream:
-    while current := stream.read(4 * 1024 * 1024):
-      chunk = (previous + current).lower()
+      if casefold:
+        chunk = chunk.lower()
       for marker, value in marker_bytes:
         if marker not in found and value in chunk:
           found.add(marker)
@@ -565,7 +552,7 @@ def _has_replaceable_libraw(candidates: Iterable[Path]) -> bool:
   bindings = [path for path in candidates if "_rawpy" in path.name.lower() and _native_file(path)]
   for binding in bindings:
     aliases = sorted({alias for library in libraries for alias in _library_dependency_aliases(library)})
-    if aliases and _binary_contains_casefold(binding, aliases):
+    if aliases and _binary_contains(binding, aliases, casefold=True):
       return True
   return False
 
@@ -582,9 +569,7 @@ def _native_component_evidence(
     for component in codec_policy.get("native_components", [])
   ]
   binary_markers = {
-    str(marker)
-    for _codec_name, component in component_policies
-    for marker in component.get("binary_markers", [])
+    str(marker) for _codec_name, component in component_policies for marker in component.get("binary_markers", [])
   }
   binary_matches = {path: set(_binary_contains(path, binary_markers)) for path in candidates}
   components = []
@@ -622,7 +607,7 @@ def augment_cyclonedx(
     raise ComplianceError(f"unsupported CycloneDX document in {input_path}")
   root = root.resolve()
   legal_dir = legal_dir.resolve()
-  policy = load_policy(policy_path, root)
+  policy = load_policy(policy_path)
   candidates = _native_candidates(root, legal_dir)
   evidence = _native_component_evidence(root, policy, candidates)
   existing = {
@@ -661,17 +646,18 @@ def verify_bundle(
 ) -> dict[str, Any]:
   root = root.resolve()
   legal_dir = legal_dir.resolve()
-  resolved_policy_path = policy_path or _find_policy(root)
-  policy = load_policy(resolved_policy_path, root)
+  resolved_policy_path = policy_path or _find_policy()
+  policy = load_policy(resolved_policy_path)
   errors: list[str] = []
-  detections: dict[str, list[str]] = {"av1": [], "dng": [], "hevc": [], "webp": []}
+  codec_policies = policy.get("codecs", {})
+  detections: dict[str, list[str]] = {codec_name: [] for codec_name in codec_policies}
 
   for filename in ("THIRD_PARTY_NOTICES.txt", "compliance-report.json", "policy.toml"):
     if not (legal_dir / filename).is_file():
       errors.append(f"legal pack is missing {filename}")
   _report, legal_errors = _validate_legal_pack(legal_dir, resolved_policy_path)
   errors.extend(legal_errors)
-  for codec_name, codec_policy in policy.get("codecs", {}).items():
+  for codec_name, codec_policy in codec_policies.items():
     required_notice = codec_policy.get("required_notice")
     if required_notice and not _notice_present(
       legal_dir,
@@ -681,7 +667,8 @@ def verify_bundle(
     ):
       errors.append(f"legal pack is missing {required_notice} for {codec_name}")
   notices_index = legal_dir / "THIRD_PARTY_NOTICES.txt"
-  if notices_index.is_file() and DNG_ATTRIBUTION not in notices_index.read_text(encoding="utf-8", errors="replace"):
+  dng_attribution = _required_codec_text(policy, "dng")
+  if notices_index.is_file() and dng_attribution not in notices_index.read_text(encoding="utf-8", errors="replace"):
     errors.append("third-party notice index is missing the required DNG attribution")
 
   prohibited_files = {name.lower() for name in policy.get("prohibited_runtime_files", [])}
@@ -692,20 +679,21 @@ def verify_bundle(
     if path.name.lower() in prohibited_files or stem in prohibited_files:
       errors.append(f"build-only executable is present: {path.relative_to(root)}")
 
-  hevc_policy = policy["codecs"]["hevc"]
-  filename_patterns = [value.lower() for value in hevc_policy.get("forbidden_filename_patterns", [])]
-  binary_markers = hevc_policy.get("forbidden_binary_markers", [])
   native_candidates = _native_candidates(root, legal_dir)
   native_components = _native_component_evidence(root, policy, native_candidates)
   for component in native_components:
     detections[component["codec"]].extend(component["paths"])
-  for path in native_candidates:
-    relative = path.relative_to(root).as_posix()
-    lower = relative.lower()
-    if any(pattern in lower for pattern in filename_patterns):
-      detections["hevc"].append(relative)
-    if _binary_contains(path, binary_markers):
-      detections["hevc"].append(f"{relative} (binary marker)")
+  for codec_name, codec_policy in codec_policies.items():
+    filename_patterns = [value.lower() for value in codec_policy.get("forbidden_filename_patterns", [])]
+    binary_markers = codec_policy.get("forbidden_binary_markers", [])
+    if not filename_patterns and not binary_markers:
+      continue
+    for path in native_candidates:
+      relative = path.relative_to(root).as_posix()
+      if any(pattern in relative.lower() for pattern in filename_patterns):
+        detections[codec_name].append(relative)
+      if _binary_contains(path, binary_markers):
+        detections[codec_name].append(f"{relative} (binary marker)")
 
   syft_packages: list[dict[str, str]] = []
   if syft_json is not None:
@@ -728,21 +716,23 @@ def verify_bundle(
         "Python distributions missing from legal report: "
         + ", ".join(f"{name} {version or '<missing>'}" for name, version in missing_from_report)
       )
-    detections["hevc"].extend(_syft_native_matches(syft_data, hevc_policy.get("forbidden_package_patterns", [])))
+    for codec_name, codec_policy in codec_policies.items():
+      package_patterns = codec_policy.get("forbidden_package_patterns", [])
+      if package_patterns:
+        detections[codec_name].extend(_syft_native_matches(syft_data, package_patterns))
     try:
       _validate_python_packages(syft_packages, policy)
     except ComplianceError as error:
       errors.append(str(error))
 
-  for codec in ("av1", "dng", "webp", "hevc"):
-    codec_policy = policy["codecs"][codec]
+  for codec, codec_policy in codec_policies.items():
     if detections[codec]:
       if not codec_policy.get("allowed", False):
         errors.append(
           f"forbidden {codec.upper()} implementation detected: " + ", ".join(sorted(set(detections[codec])))
         )
 
-  if detections["dng"] and policy.get("copyleft", {}).get("libraw", {}).get("must_be_shared", False):
+  if detections.get("dng") and policy.get("copyleft", {}).get("libraw", {}).get("must_be_shared", False):
     if not _has_replaceable_libraw(native_candidates):
       errors.append("rawpy/LibRaw detected without a separately replaceable LibRaw shared library")
 
@@ -750,9 +740,10 @@ def verify_bundle(
     (component["codec"], component["name"], component["version"]) for component in native_components
   }
   for codec, codec_paths in detections.items():
-    if not codec_paths or not policy["codecs"][codec].get("allowed", False):
+    codec_policy = codec_policies[codec]
+    if not codec_paths or not codec_policy.get("allowed", False):
       continue
-    for expected in policy["codecs"][codec].get("native_components", []):
+    for expected in codec_policy.get("native_components", []):
       key = (codec, str(expected["name"]), str(expected["version"]))
       if key not in evidenced_components:
         errors.append(f"missing native component evidence for {expected['name']} {expected['version']}")

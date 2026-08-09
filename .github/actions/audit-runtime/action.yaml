@@ -1,0 +1,68 @@
+name: Audit runtime bundle
+description: Generate, augment, and verify an assembled runtime bundle SBOM
+
+inputs:
+  root:
+    description: Assembled runtime root to scan
+    required: true
+  legal_dir:
+    description: Legal pack directory inside the assembled runtime
+    required: true
+  syft_json:
+    description: Output path for the Syft JSON inventory
+    required: true
+  cyclonedx_json:
+    description: Output path for the CycloneDX inventory
+    required: true
+  report_output:
+    description: Output path for the compliance verification report
+    required: true
+  policy:
+    description: Distribution policy to enforce
+    required: false
+    default: compliance/policy.toml
+
+runs:
+  using: composite
+  steps:
+    - name: Generate runtime inventories
+      shell: bash
+      env:
+        AUDIT_ROOT: ${{ inputs.root }}
+        AUDIT_SYFT_JSON: ${{ inputs.syft_json }}
+        AUDIT_CYCLONEDX_JSON: ${{ inputs.cyclonedx_json }}
+      run: |
+        syft scan "dir:$AUDIT_ROOT" \
+          -o "syft-json=$AUDIT_SYFT_JSON" \
+          -o "cyclonedx-json=$AUDIT_CYCLONEDX_JSON"
+    - name: Add declared native components
+      shell: bash
+      env:
+        AUDIT_ROOT: ${{ inputs.root }}
+        AUDIT_LEGAL_DIR: ${{ inputs.legal_dir }}
+        AUDIT_CYCLONEDX_JSON: ${{ inputs.cyclonedx_json }}
+        AUDIT_POLICY: ${{ inputs.policy }}
+      run: |
+        python -m rclip._compliance augment-cyclonedx \
+          --input "$AUDIT_CYCLONEDX_JSON" \
+          --output "$AUDIT_CYCLONEDX_JSON" \
+          --root "$AUDIT_ROOT" \
+          --legal-dir "$AUDIT_LEGAL_DIR" \
+          --policy "$AUDIT_POLICY"
+    - name: Verify runtime bundle
+      shell: bash
+      env:
+        AUDIT_ROOT: ${{ inputs.root }}
+        AUDIT_LEGAL_DIR: ${{ inputs.legal_dir }}
+        AUDIT_SYFT_JSON: ${{ inputs.syft_json }}
+        AUDIT_CYCLONEDX_JSON: ${{ inputs.cyclonedx_json }}
+        AUDIT_REPORT_OUTPUT: ${{ inputs.report_output }}
+        AUDIT_POLICY: ${{ inputs.policy }}
+      run: |
+        python -m rclip._compliance verify \
+          --root "$AUDIT_ROOT" \
+          --legal-dir "$AUDIT_LEGAL_DIR" \
+          --policy "$AUDIT_POLICY" \
+          --syft-json "$AUDIT_SYFT_JSON" \
+          --cyclonedx-json "$AUDIT_CYCLONEDX_JSON" \
+          --output "$AUDIT_REPORT_OUTPUT"
