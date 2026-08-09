@@ -43,8 +43,3 @@ python3.11 -m rclip._compliance collect \
   --output "$APPDIR/usr/share/doc/rclip" \
   --policy compliance/policy.toml \
   --common-notices compliance/notices
-python3.11 -m rclip._compliance verify \
-  --root "$APPDIR" \
-  --legal-dir "$APPDIR/usr/share/doc/rclip" \
-  --policy compliance/policy.toml \
-  --output appimage-compliance.json

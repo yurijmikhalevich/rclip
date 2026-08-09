@@ -8,9 +8,6 @@ readme = "README.md"
 license = "MIT"
 license-files = [
     "LICENSE",
-    "compliance/README.md",
-    "compliance/policy.toml",
-    "compliance/sources.toml",
     "compliance/license-overrides/*/*.txt",
     "compliance/notices/*.txt",
 ]
@@ -75,6 +72,7 @@ default-groups = "all"
 
 [tool.uv.build-backend]
 module-root = ""
+source-exclude = [".DS_Store"]
 
 [build-system]
 requires = ["uv_build>=0.11.12,<0.12.0"]

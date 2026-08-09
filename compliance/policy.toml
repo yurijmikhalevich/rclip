@@ -1,66 +1,22 @@
 schema_version = 1
 
-# Package names are normalized according to Python packaging rules before they
-# are compared with this list. Additions require a dependency and licence
-# review; the audit fails closed for unreviewed Python distributions.
-reviewed_python_packages = [
-  "anyio",
-  "attrs",
-  "cattrs",
-  "certifi",
-  "charset-normalizer",
-  "click",
-  "colorama",
-  "coremltools",
-  "filelock",
-  "flatbuffers",
-  "fsspec",
-  "ftfy",
-  "h11",
-  "hf-xet",
-  "httpcore",
-  "httpx",
-  "huggingface-hub",
-  "idna",
-  "mpmath",
-  "numpy",
-  "onnxruntime",
-  "packaging",
-  "pillow",
-  "pip",
-  "protobuf",
-  "pyaml",
-  "pyyaml",
-  "rawpy",
-  "rclip",
-  "regex",
-  "requests",
-  "setuptools",
-  "sympy",
-  "tqdm",
-  "typing-extensions",
-  "urllib3",
-  "wcwidth",
-  "wheel",
-]
-
 prohibited_python_packages = ["pi-heif"]
 
 # These distributions are supplied by the application itself or by the target
 # Python environment rather than by rclip's locked runtime dependency closure.
-# Keeping the exceptions explicit prevents an allowlisted dependency from
-# silently accepting arbitrary versions.
+# Keeping the exceptions explicit prevents a dependency from silently accepting
+# arbitrary versions.
 unversioned_python_packages = ["pip", "rclip", "setuptools", "wheel"]
 
 # Build tools must not be present in self-contained runtime artifacts. pip,
-# setuptools and wheel remain reviewed because some virtualenv distributors
+# setuptools and wheel remain allowed because some virtualenv distributors
 # install them as ordinary, replaceable Python packages.
 prohibited_runtime_files = ["uv", "uvx"]
 
-# Any change here is a dependency review event. Every installed reviewed
-# distribution must have an entry below unless it is explicitly listed in
-# unversioned_python_packages above.
-[reviewed_python_versions]
+# Package names are normalized according to Python packaging rules. This table,
+# together with unversioned_python_packages, is the complete allowlist. Any
+# change here is a dependency policy change.
+[allowed_python_versions]
 anyio = ["4.14.2"]
 attrs = ["26.1.0"]
 cattrs = ["26.1.0"]

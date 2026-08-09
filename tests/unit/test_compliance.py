@@ -10,7 +10,7 @@ from rclip._compliance import ComplianceError
 from rclip._compliance import augment_cyclonedx
 from rclip._compliance import _binary_contains
 from rclip._compliance import _deterministic_tar
-from rclip._compliance import _review_python_packages
+from rclip._compliance import _validate_python_packages
 from rclip._compliance import build_corresponding_source
 from rclip._compliance import collect_legal_materials
 from rclip._compliance import normalize_scancode
@@ -76,6 +76,7 @@ def test_collects_namespaced_licenses_and_common_notices(tmp_path: Path) -> None
   report = collect_legal_materials(root, output, POLICY, NOTICES)
 
   assert "root" not in report
+  assert "codec_notice_hashes" not in report
   assert report["components"][0]["name"] == "rclip"
   assert (output / "licenses/rclip-3.3.0/licenses/LICENSE").is_file()
   assert (output / "notices/AOM-PATENT-LICENSE-1.0.txt").is_file()
@@ -101,7 +102,7 @@ def test_collects_and_indexes_bundled_system_licenses(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("name", ["unknown-package", "pi-heif"])
-def test_collection_fails_closed_for_unreviewed_or_prohibited_packages(tmp_path: Path, name: str) -> None:
+def test_collection_fails_closed_for_disallowed_or_prohibited_packages(tmp_path: Path, name: str) -> None:
   write_distribution(tmp_path, name)
 
   with pytest.raises(ComplianceError):
@@ -127,21 +128,26 @@ def test_collection_rejects_escaping_declared_license(tmp_path: Path) -> None:
     collect_legal_materials(root, root / "legal", POLICY, NOTICES)
 
 
-def test_collection_requires_review_for_version_changes(tmp_path: Path) -> None:
+def test_collection_rejects_disallowed_version_changes(tmp_path: Path) -> None:
   write_distribution(tmp_path, "anyio", version="999")
 
-  with pytest.raises(ComplianceError, match="unreviewed Python versions"):
+  with pytest.raises(ComplianceError, match="disallowed Python versions"):
     collect_legal_materials(tmp_path, tmp_path / "legal", POLICY, NOTICES)
 
 
-def test_reviewed_package_requires_a_version_policy() -> None:
-  policy = {"reviewed_python_packages": ["example"]}
+def test_unversioned_package_accepts_any_version_but_cannot_also_be_versioned() -> None:
+  policy = {"unversioned_python_packages": ["example"]}
 
-  with pytest.raises(ComplianceError, match="without a version policy: example"):
-    _review_python_packages([{"name": "example", "version": "1"}], policy)
+  _validate_python_packages([{"name": "example", "version": "999"}], policy)
 
-  policy["unversioned_python_packages"] = ["example"]
-  _review_python_packages([{"name": "example", "version": "1"}], policy)
+  with pytest.raises(ComplianceError, match="both versioned and unversioned policies: example"):
+    _validate_python_packages(
+      [{"name": "example", "version": "1"}],
+      {
+        "unversioned_python_packages": ["example"],
+        "allowed_python_versions": {"example": ["1"]},
+      },
+    )
 
 
 def test_policy_covers_locked_runtime_closure_on_every_platform() -> None:
@@ -159,21 +165,20 @@ def test_policy_covers_locked_runtime_closure_on_every_platform() -> None:
     closure.add(name)
     pending.extend(dependency["name"] for dependency in locked_packages[name].get("dependencies", []))
 
-  reviewed = set(policy["reviewed_python_packages"])
-  assert closure <= reviewed
   unversioned = set(policy["unversioned_python_packages"])
-  reviewed_versions = policy["reviewed_python_versions"]
+  allowed_versions = policy["allowed_python_versions"]
+  assert closure <= allowed_versions.keys() | unversioned
   for name in closure - unversioned:
-    assert locked_packages[name]["version"] in reviewed_versions[name]
+    assert locked_packages[name]["version"] in allowed_versions[name]
 
 
-def test_rawpy_source_manifest_matches_reviewed_runtime_version() -> None:
+def test_rawpy_source_manifest_matches_allowed_runtime_version() -> None:
   with (REPO_ROOT / "compliance/sources.toml").open("rb") as stream:
     source = tomllib.load(stream)["rawpy"]
   with POLICY.open("rb") as stream:
     policy = tomllib.load(stream)
 
-  assert policy["reviewed_python_versions"]["rawpy"] == [source["version"]]
+  assert policy["allowed_python_versions"]["rawpy"] == [source["version"]]
   assert policy["codecs"]["dng"]["native_components"][0]["version"] == source["libraw_version"]
 
 
@@ -185,7 +190,7 @@ def test_av1_requires_aom_patent_notice(tmp_path: Path) -> None:
   write_legal_pack(legal)
   (legal / "notices/AOM-PATENT-LICENSE-1.0.txt").unlink()
 
-  with pytest.raises(ComplianceError, match="AV1 detected"):
+  with pytest.raises(ComplianceError, match="AOM-PATENT-LICENSE"):
     verify_bundle(root, legal, POLICY, None)
 
   copy_notice(legal, "AOM-PATENT-LICENSE-1.0.txt")
@@ -273,7 +278,7 @@ def test_syft_inventory_is_checked_against_dependency_policy(tmp_path: Path) -> 
     encoding="utf-8",
   )
 
-  with pytest.raises(ComplianceError, match="unreviewed Python distributions"):
+  with pytest.raises(ComplianceError, match="disallowed Python distributions"):
     verify_bundle(root, legal, POLICY, syft)
 
 
@@ -347,7 +352,7 @@ def test_verification_checks_bundled_policy_contents(tmp_path: Path) -> None:
   write_legal_pack(legal)
   (legal / "policy.toml").write_text("schema_version = 1\n", encoding="utf-8")
 
-  with pytest.raises(ComplianceError, match="differs from the reviewed policy"):
+  with pytest.raises(ComplianceError, match="differs from the distribution policy"):
     verify_bundle(root, legal, POLICY, None)
 
 

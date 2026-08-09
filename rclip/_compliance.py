@@ -49,7 +49,7 @@ PYTHON_NAME_PATTERN = re.compile(r"[-_.]+")
 
 
 class ComplianceError(RuntimeError):
-  """Raised when a bundle does not satisfy the reviewed policy."""
+  """Raised when a bundle does not satisfy the distribution policy."""
 
 
 def normalize_python_name(name: str) -> str:
@@ -128,39 +128,36 @@ def _metadata_records(root: Path, excluded_root: Path | None = None) -> list[dic
   return [records[key] for key in sorted(records)]
 
 
-def _review_python_packages(records: Iterable[dict[str, Any]], policy: dict[str, Any]) -> None:
+def _validate_python_packages(records: Iterable[dict[str, Any]], policy: dict[str, Any]) -> None:
   records = list(records)
-  reviewed = {normalize_python_name(name) for name in policy.get("reviewed_python_packages", [])}
   prohibited = {normalize_python_name(name) for name in policy.get("prohibited_python_packages", [])}
+  allowed_versions = {
+    normalize_python_name(name): {str(version) for version in versions}
+    for name, versions in policy.get("allowed_python_versions", {}).items()
+  }
+  unversioned = {normalize_python_name(name) for name in policy.get("unversioned_python_packages", [])}
+  allowed = allowed_versions.keys() | unversioned
   installed = {record["name"] for record in records}
   rejected = sorted(installed & prohibited)
-  unknown = sorted(installed - reviewed)
+  unknown = sorted(installed - allowed)
   errors = []
   if rejected:
     errors.append(f"prohibited Python distributions: {', '.join(rejected)}")
   if unknown:
-    errors.append(f"unreviewed Python distributions: {', '.join(unknown)}")
-  reviewed_versions = {
-    normalize_python_name(name): {str(version) for version in versions}
-    for name, versions in policy.get("reviewed_python_versions", {}).items()
-  }
-  unversioned = {normalize_python_name(name) for name in policy.get("unversioned_python_packages", [])}
-  conflicting_version_policy = sorted(reviewed_versions.keys() & unversioned)
-  missing_version_policy = sorted((installed & reviewed) - reviewed_versions.keys() - unversioned)
+    errors.append(f"disallowed Python distributions: {', '.join(unknown)}")
+  conflicting_version_policy = sorted(allowed_versions.keys() & unversioned)
   if conflicting_version_policy:
     errors.append(
-      "Python distributions have both reviewed and unversioned policies: " + ", ".join(conflicting_version_policy)
+      "Python distributions have both versioned and unversioned policies: " + ", ".join(conflicting_version_policy)
     )
-  if missing_version_policy:
-    errors.append("Python distributions without a version policy: " + ", ".join(missing_version_policy))
   version_drift = []
   for record in records:
-    expected = reviewed_versions.get(record["name"])
+    expected = allowed_versions.get(record["name"])
     actual = record.get("version")
     if expected is not None and str(actual) not in expected:
-      version_drift.append(f"{record['name']} {actual or '<missing>'} (reviewed: {', '.join(sorted(expected))})")
+      version_drift.append(f"{record['name']} {actual or '<missing>'} (allowed: {', '.join(sorted(expected))})")
   if version_drift:
-    errors.append(f"unreviewed Python versions: {', '.join(sorted(version_drift))}")
+    errors.append(f"disallowed Python versions: {', '.join(sorted(version_drift))}")
   if errors:
     raise ComplianceError("; ".join(errors))
 
@@ -265,7 +262,7 @@ def collect_legal_materials(
     raise ComplianceError(f"no Python distribution metadata found under {root}")
   resolved_policy_path = policy_path or _find_policy(root)
   policy = load_policy(resolved_policy_path, root)
-  _review_python_packages(records, policy)
+  _validate_python_packages(records, policy)
 
   if output.exists():
     shutil.rmtree(output)
@@ -319,11 +316,9 @@ def collect_legal_materials(
   if not notices_source.is_dir():
     raise ComplianceError(f"common notice directory not found: {notices_source}")
   notice_names = []
-  notice_hashes = {}
   for source in sorted(notices_source.glob("*.txt")):
-    copied = _copy_file(source, output / "notices" / source.name)
+    _copy_file(source, output / "notices" / source.name)
     notice_names.append(source.name)
-    notice_hashes[source.name] = copied["sha256"]
   _copy_file(resolved_policy_path, output / "policy.toml")
   sources_path = resolved_policy_path.parent / "sources.toml"
   if not sources_path.is_file():
@@ -376,7 +371,6 @@ def collect_legal_materials(
     "schema_version": 1,
     "components": components,
     "codec_notices": notice_names,
-    "codec_notice_hashes": notice_hashes,
   }
   _json_dump(output / "compliance-report.json", report)
   return report
@@ -489,7 +483,7 @@ def _syft_native_matches(data: dict[str, Any], patterns: Iterable[str]) -> list[
     for location in artifact.get("locations", []):
       if isinstance(location, dict):
         searchable.extend(str(location.get(key, "")).lower() for key in ("path", "accessPath", "realPath"))
-    # Deliberately match substrings across package identifiers and paths. False positives stop the release for review;
+    # Deliberately match substrings across package identifiers and paths. False positives stop the release for inspection;
     # this fail-closed bias avoids missing versioned, renamed, or unusually located codec packages.
     if any(pattern in value for pattern in patterns for value in searchable):
       description = " ".join(value for value in (name, version) if value)
@@ -537,7 +531,7 @@ def _validate_legal_pack(legal_dir: Path, policy_path: Path) -> tuple[dict[str, 
         errors.append(f"legal component {description} has an altered licence file {relative.as_posix()}")
   bundled_policy = legal_dir / "policy.toml"
   if bundled_policy.is_file() and bundled_policy.read_bytes() != policy_path.read_bytes():
-    errors.append("legal pack contains a policy that differs from the reviewed policy")
+    errors.append("legal pack contains a policy that differs from the distribution policy")
   return report, errors
 
 
@@ -559,8 +553,8 @@ def _library_dependency_aliases(path: Path) -> set[str]:
   return aliases
 
 
-def _has_replaceable_libraw(root: Path, legal_dir: Path) -> bool:
-  candidates = _native_candidates(root, legal_dir)
+def _has_replaceable_libraw(candidates: Iterable[Path]) -> bool:
+  candidates = list(candidates)
   libraries = [
     path
     for path in candidates
@@ -576,29 +570,43 @@ def _has_replaceable_libraw(root: Path, legal_dir: Path) -> bool:
   return False
 
 
-def _native_component_evidence(root: Path, legal_dir: Path, policy: dict[str, Any]) -> list[dict[str, Any]]:
-  candidates = _native_candidates(root, legal_dir)
+def _native_component_evidence(
+  root: Path,
+  policy: dict[str, Any],
+  candidates: Iterable[Path],
+) -> list[dict[str, Any]]:
+  candidates = list(candidates)
+  component_policies = [
+    (codec_name, component)
+    for codec_name, codec_policy in policy.get("codecs", {}).items()
+    for component in codec_policy.get("native_components", [])
+  ]
+  binary_markers = {
+    str(marker)
+    for _codec_name, component in component_policies
+    for marker in component.get("binary_markers", [])
+  }
+  binary_matches = {path: set(_binary_contains(path, binary_markers)) for path in candidates}
   components = []
-  for codec_name, codec_policy in policy.get("codecs", {}).items():
-    for component in codec_policy.get("native_components", []):
-      path_markers = component.get("path_markers", [])
-      binary_markers = component.get("binary_markers", [])
-      paths = []
-      for path in candidates:
-        relative = path.relative_to(root).as_posix()
-        path_match = any(marker.lower() in relative.lower() for marker in path_markers)
-        binary_match = bool(binary_markers) and bool(_binary_contains(path, binary_markers))
-        if path_match or binary_match:
-          paths.append(relative)
-      if paths:
-        components.append(
-          {
-            "codec": codec_name,
-            "name": str(component["name"]),
-            "version": str(component["version"]),
-            "paths": sorted(set(paths)),
-          }
-        )
+  for codec_name, component in component_policies:
+    path_markers = [str(marker).lower() for marker in component.get("path_markers", [])]
+    component_binary_markers = {str(marker) for marker in component.get("binary_markers", [])}
+    paths = []
+    for path in candidates:
+      relative = path.relative_to(root).as_posix()
+      path_match = any(marker in relative.lower() for marker in path_markers)
+      binary_match = bool(component_binary_markers & binary_matches[path])
+      if path_match or binary_match:
+        paths.append(relative)
+    if paths:
+      components.append(
+        {
+          "codec": codec_name,
+          "name": str(component["name"]),
+          "version": str(component["version"]),
+          "paths": sorted(set(paths)),
+        }
+      )
   return sorted(components, key=lambda item: (item["name"], item["version"]))
 
 
@@ -612,8 +620,11 @@ def augment_cyclonedx(
   data = json.loads(input_path.read_text(encoding="utf-8"))
   if data.get("bomFormat") != "CycloneDX" or not isinstance(data.get("components"), list):
     raise ComplianceError(f"unsupported CycloneDX document in {input_path}")
+  root = root.resolve()
+  legal_dir = legal_dir.resolve()
   policy = load_policy(policy_path, root)
-  evidence = _native_component_evidence(root.resolve(), legal_dir.resolve(), policy)
+  candidates = _native_candidates(root, legal_dir)
+  evidence = _native_component_evidence(root, policy, candidates)
   existing = {
     (str(item.get("name", "")), str(item.get("version", ""))) for item in data["components"] if isinstance(item, dict)
   }
@@ -684,27 +695,17 @@ def verify_bundle(
   hevc_policy = policy["codecs"]["hevc"]
   filename_patterns = [value.lower() for value in hevc_policy.get("forbidden_filename_patterns", [])]
   binary_markers = hevc_policy.get("forbidden_binary_markers", [])
-  av1_names = ("libaom", "libavif", "_avif")
-  dng_names = ("libraw", "raw_r", "_rawpy")
-  webp_names = ("libwebp", "_webp")
-  for path in _native_candidates(root, legal_dir):
+  native_candidates = _native_candidates(root, legal_dir)
+  native_components = _native_component_evidence(root, policy, native_candidates)
+  for component in native_components:
+    detections[component["codec"]].extend(component["paths"])
+  for path in native_candidates:
     relative = path.relative_to(root).as_posix()
     lower = relative.lower()
     if any(pattern in lower for pattern in filename_patterns):
       detections["hevc"].append(relative)
-    if any(pattern in lower for pattern in av1_names):
-      detections["av1"].append(relative)
-    if any(pattern in lower for pattern in dng_names):
-      detections["dng"].append(relative)
-    if any(pattern in lower for pattern in webp_names):
-      detections["webp"].append(relative)
-    found_markers = _binary_contains(path, [*binary_markers, "aom_codec", "avifDecoder", "WebPDecode"])
-    if any(marker in found_markers for marker in binary_markers):
+    if _binary_contains(path, binary_markers):
       detections["hevc"].append(f"{relative} (binary marker)")
-    if any(marker in found_markers for marker in ("aom_codec", "avifDecoder")):
-      detections["av1"].append(f"{relative} (binary marker)")
-    if "WebPDecode" in found_markers:
-      detections["webp"].append(f"{relative} (binary marker)")
 
   syft_packages: list[dict[str, str]] = []
   if syft_json is not None:
@@ -729,7 +730,7 @@ def verify_bundle(
       )
     detections["hevc"].extend(_syft_native_matches(syft_data, hevc_policy.get("forbidden_package_patterns", [])))
     try:
-      _review_python_packages(syft_packages, policy)
+      _validate_python_packages(syft_packages, policy)
     except ComplianceError as error:
       errors.append(str(error))
 
@@ -740,20 +741,11 @@ def verify_bundle(
         errors.append(
           f"forbidden {codec.upper()} implementation detected: " + ", ".join(sorted(set(detections[codec])))
         )
-        continue
-      notice = codec_policy.get("required_notice")
-      if not notice:
-        continue
-      required_text = codec_policy.get("required_text")
-      required_sha256 = codec_policy.get("required_sha256")
-      if not _notice_present(legal_dir, notice, required_text, required_sha256):
-        errors.append(f"{codec.upper()} detected without required {notice}")
 
   if detections["dng"] and policy.get("copyleft", {}).get("libraw", {}).get("must_be_shared", False):
-    if not _has_replaceable_libraw(root, legal_dir):
+    if not _has_replaceable_libraw(native_candidates):
       errors.append("rawpy/LibRaw detected without a separately replaceable LibRaw shared library")
 
-  native_components = _native_component_evidence(root, legal_dir, policy)
   evidenced_components = {
     (component["codec"], component["name"], component["version"]) for component in native_components
   }
@@ -947,7 +939,7 @@ def build_parser() -> argparse.ArgumentParser:
   verify_parser.add_argument("--cyclonedx-json", type=_path)
   verify_parser.add_argument("--output", type=_path)
 
-  scancode_parser = subparsers.add_parser("normalize-scancode", help="make ScanCode output reviewable")
+  scancode_parser = subparsers.add_parser("normalize-scancode", help="make ScanCode output compact and deterministic")
   scancode_parser.add_argument("--input", type=_path, required=True)
   scancode_parser.add_argument("--output", type=_path, required=True)
 
@@ -955,7 +947,7 @@ def build_parser() -> argparse.ArgumentParser:
   source_parser.add_argument("--manifest", type=_path, default=Path("compliance/sources.toml"))
   source_parser.add_argument("--output", type=_path, required=True)
 
-  cyclonedx_parser = subparsers.add_parser("augment-cyclonedx", help="add reviewed native codec components to an SBOM")
+  cyclonedx_parser = subparsers.add_parser("augment-cyclonedx", help="add declared native codec components to an SBOM")
   cyclonedx_parser.add_argument("--input", type=_path, required=True)
   cyclonedx_parser.add_argument("--output", type=_path, required=True)
   cyclonedx_parser.add_argument("--root", type=_path, required=True)
