@@ -1,6 +1,7 @@
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 import tarfile
 import tomllib
 
@@ -13,7 +14,6 @@ from rclip._compliance import _deterministic_tar
 from rclip._compliance import _validate_python_packages
 from rclip._compliance import build_corresponding_source
 from rclip._compliance import collect_legal_materials
-from rclip._compliance import normalize_scancode
 from rclip._compliance import verify_bundle
 
 
@@ -180,6 +180,24 @@ def test_rawpy_source_manifest_matches_allowed_runtime_version() -> None:
 
   assert policy["allowed_python_versions"]["rawpy"] == [source["version"]]
   assert policy["codecs"]["dng"]["native_components"][0]["version"] == source["libraw_version"]
+
+
+def test_sdist_includes_homebrew_compliance_inputs(tmp_path: Path) -> None:
+  subprocess.run(
+    ["uv", "build", "--sdist", "--out-dir", str(tmp_path)],
+    cwd=REPO_ROOT,
+    check=True,
+    capture_output=True,
+    text=True,
+  )
+  archives = list(tmp_path.glob("rclip-*.tar.gz"))
+  assert len(archives) == 1
+
+  with tarfile.open(archives[0]) as archive:
+    names = archive.getnames()
+
+  assert any(name.endswith("/compliance/policy.toml") for name in names)
+  assert any(name.endswith("/compliance/notices/AOM-PATENT-LICENSE-1.0.txt") for name in names)
 
 
 def test_av1_requires_aom_patent_notice(tmp_path: Path) -> None:
@@ -402,31 +420,6 @@ def test_augments_and_checks_native_cyclonedx_components(tmp_path: Path) -> None
 
   assert ("libaom", "3.14.1") in {(item["name"], item["version"]) for item in result["components"]}
   assert verify_bundle(root, legal, POLICY, None, output)["native_components"]
-
-
-def test_normalizes_scancode_output(tmp_path: Path) -> None:
-  source = tmp_path / "scancode.json"
-  target = tmp_path / "normalized.json"
-  source.write_text(
-    json.dumps(
-      {
-        "packages": [{"name": "Typing_Extensions", "version": "4", "declared_license_expression": "apache-2.0"}],
-        "files": [
-          {
-            "path": "z/LICENSE",
-            "license_detections": [{"license_expression": "apache-2.0"}, {"license_expression": "apache-2.0"}],
-          }
-        ],
-      }
-    ),
-    encoding="utf-8",
-  )
-
-  normalized = normalize_scancode(source, target)
-
-  assert normalized["packages"][0]["name"] == "typing-extensions"
-  assert normalized["file_licenses"][0]["license_expressions"] == ["apache-2.0"]
-  assert json.loads(target.read_text(encoding="utf-8")) == normalized
 
 
 def test_source_archive_is_deterministic_and_excludes_disabled_submodules(tmp_path: Path) -> None:

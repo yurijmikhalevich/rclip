@@ -72,6 +72,7 @@ default-groups = "all"
 
 [tool.uv.build-backend]
 module-root = ""
+source-include = ["compliance/policy.toml"]
 source-exclude = [".DS_Store"]
 
 [build-system]

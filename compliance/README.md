@@ -13,8 +13,8 @@ Builds use `python -m rclip._compliance` to collect dependency licences,
 create a third-party notice index, inspect native codec binaries, enrich and
 verify Syft inventories, and validate every collected legal file by SHA-256.
 Disallowed Python distributions and forbidden codecs fail release policy checks.
-ScanCode output is normalized into a smaller informational report that is
-available for inspection; CI does not interpret it or require separate sign-off.
+Complete ScanCode output is available for human inspection; CI does not
+interpret it or require separate sign-off.
 
 The DNG notice required by Adobe is:
 

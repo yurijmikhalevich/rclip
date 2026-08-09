@@ -39,17 +39,11 @@ jobs:
             --policy compliance/policy.toml \
             --common-notices compliance/notices
       - name: Generate informational ScanCode licence report
-        run: |
-          scancode --license --package --copyright --json-pp scancode-dependencies.json .compliance-venv
-          python -m rclip._compliance normalize-scancode \
-            --input scancode-dependencies.json \
-            --output scancode-dependencies-normalized.json
+        run: scancode --license --package --copyright --json-pp scancode-dependencies.json .compliance-venv
       - uses: actions/upload-artifact@v7
         with:
           name: scancode-dependencies
-          path: |
-            scancode-dependencies.json
-            scancode-dependencies-normalized.json
+          path: scancode-dependencies.json
           if-no-files-found: error
 
   latest-release-artifacts:
@@ -84,12 +78,6 @@ jobs:
         run: |
           scancode --license --package --copyright --json-pp scancode-appimage.json appimage-root/squashfs-root
           scancode --license --package --copyright --json-pp scancode-msi.json msi-root
-          python -m rclip._compliance normalize-scancode \
-            --input scancode-appimage.json \
-            --output scancode-appimage-normalized.json
-          python -m rclip._compliance normalize-scancode \
-            --input scancode-msi.json \
-            --output scancode-msi-normalized.json
       - uses: actions/upload-artifact@v7
         with:
           name: scancode-release-artifacts

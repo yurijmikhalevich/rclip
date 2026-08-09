@@ -792,37 +792,6 @@ def verify_bundle(
   return result
 
 
-def normalize_scancode(input_path: Path, output_path: Path) -> dict[str, Any]:
-  data = json.loads(input_path.read_text(encoding="utf-8"))
-  packages = []
-  for package in data.get("packages", []):
-    packages.append(
-      {
-        "name": normalize_python_name(str(package.get("name", ""))),
-        "version": str(package.get("version", "")),
-        "declared_license_expression": package.get("declared_license_expression"),
-      }
-    )
-  file_licenses = []
-  for file_record in data.get("files", []):
-    expressions = sorted(
-      {
-        str(detection.get("license_expression"))
-        for detection in file_record.get("license_detections", [])
-        if detection.get("license_expression")
-      }
-    )
-    if expressions:
-      file_licenses.append({"path": file_record.get("path", ""), "license_expressions": expressions})
-  normalized = {
-    "schema_version": 1,
-    "packages": sorted(packages, key=lambda item: (item["name"], item["version"])),
-    "file_licenses": sorted(file_licenses, key=lambda item: item["path"]),
-  }
-  _json_dump(output_path, normalized)
-  return normalized
-
-
 def _deterministic_tar(source: Path, output: Path, archive_root: str, excluded: Iterable[Path] = ()) -> None:
   excluded = tuple(excluded)
   output.parent.mkdir(parents=True, exist_ok=True)
@@ -939,10 +908,6 @@ def build_parser() -> argparse.ArgumentParser:
   verify_parser.add_argument("--cyclonedx-json", type=_path)
   verify_parser.add_argument("--output", type=_path)
 
-  scancode_parser = subparsers.add_parser("normalize-scancode", help="make ScanCode output compact and deterministic")
-  scancode_parser.add_argument("--input", type=_path, required=True)
-  scancode_parser.add_argument("--output", type=_path, required=True)
-
   source_parser = subparsers.add_parser("source-bundle", help="build LibRaw corresponding source archive")
   source_parser.add_argument("--manifest", type=_path, default=Path("compliance/sources.toml"))
   source_parser.add_argument("--output", type=_path, required=True)
@@ -970,13 +935,6 @@ def main(argv: list[str] | None = None) -> int:
       display_report = {
         "detections": {name: len(paths) for name, paths in report["detections"].items()},
         "output": args.output.as_posix() if args.output else None,
-      }
-    elif args.command == "normalize-scancode":
-      report = normalize_scancode(args.input, args.output)
-      display_report = {
-        "file_licenses": len(report["file_licenses"]),
-        "output": args.output.as_posix(),
-        "packages": len(report["packages"]),
       }
     elif args.command == "source-bundle":
       build_corresponding_source(args.manifest, args.output)
