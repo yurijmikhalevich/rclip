@@ -70,7 +70,7 @@ binary_markers = ["aom_codec"]
 
 [[codecs.av1.native_components]]
 name = "dav1d"
-version = "1.5.3"
+version = "1.5.3-0-gb546257"
 binary_markers = ["dav1d"]
 
 [codecs.dng]

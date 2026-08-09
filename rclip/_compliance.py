@@ -11,6 +11,7 @@ from collections.abc import Iterable
 import email.parser
 import gzip
 import hashlib
+import importlib
 import json
 from pathlib import Path
 import re
@@ -96,26 +97,115 @@ def _required_string(values: dict[str, Any], key: str, description: str) -> str:
   return value
 
 
+def _reject_unknown_keys(values: dict[str, Any], allowed: set[str], description: str) -> None:
+  unknown = sorted(set(values) - allowed)
+  if unknown:
+    raise ComplianceError(f"{description} has unknown fields: {', '.join(unknown)}")
+
+
+def _string_list(values: dict[str, Any], key: str, description: str, *, required: bool = False) -> list[str]:
+  value = values.get(key)
+  if value is None and not required:
+    return []
+  if (
+    not isinstance(value, list)
+    or (required and not value)
+    or any(not isinstance(item, str) or not item for item in value)
+  ):
+    raise ComplianceError(f"{description} has invalid {key}")
+  return value
+
+
 def load_policy(path: Path | None) -> dict[str, Any]:
   policy_path = path or _find_policy()
   with policy_path.open("rb") as stream:
     policy = tomllib.load(stream)
-  if policy.get("schema_version") != 1:
+  _reject_unknown_keys(
+    policy,
+    {
+      "schema_version",
+      "prohibited_python_packages",
+      "unversioned_python_packages",
+      "prohibited_runtime_files",
+      "allowed_python_versions",
+      "codecs",
+      "copyleft",
+    },
+    f"policy in {policy_path}",
+  )
+  schema_version = policy.get("schema_version")
+  if not isinstance(schema_version, int) or isinstance(schema_version, bool) or schema_version != 1:
     raise ComplianceError(f"unsupported policy schema in {policy_path}")
+  for key in ("prohibited_python_packages", "unversioned_python_packages", "prohibited_runtime_files"):
+    _string_list(policy, key, f"policy in {policy_path}", required=True)
+  allowed_versions = policy.get("allowed_python_versions")
+  if not isinstance(allowed_versions, dict) or not allowed_versions:
+    raise ComplianceError(f"policy in {policy_path} has invalid allowed_python_versions")
+  for package_name in allowed_versions:
+    if not isinstance(package_name, str) or not package_name:
+      raise ComplianceError(f"policy in {policy_path} has an invalid Python package name")
+    _string_list(allowed_versions, package_name, f"{package_name} Python package", required=True)
   codecs = policy.get("codecs")
-  if not isinstance(codecs, dict):
+  if not isinstance(codecs, dict) or not codecs:
     raise ComplianceError(f"policy in {policy_path} is missing codecs")
   for codec_name, codec_policy in codecs.items():
-    if not isinstance(codec_policy, dict):
+    if not isinstance(codec_name, str) or not codec_name or not isinstance(codec_policy, dict):
       raise ComplianceError(f"{codec_name} codec policy must be a table")
+    _reject_unknown_keys(
+      codec_policy,
+      {
+        "allowed",
+        "required_notice",
+        "required_text",
+        "required_sha256",
+        "native_components",
+        "forbidden_filename_patterns",
+        "forbidden_package_patterns",
+        "forbidden_binary_markers",
+      },
+      f"{codec_name} codec policy",
+    )
+    if not isinstance(codec_policy.get("allowed"), bool):
+      raise ComplianceError(f"{codec_name} codec policy has invalid allowed")
+    for key in ("required_notice", "required_text", "required_sha256"):
+      value = codec_policy.get(key)
+      if value is not None and (not isinstance(value, str) or not value):
+        raise ComplianceError(f"{codec_name} codec policy has invalid {key}")
+    required_sha256 = codec_policy.get("required_sha256")
+    if required_sha256 is not None and not re.fullmatch(r"[0-9a-f]{64}", required_sha256):
+      raise ComplianceError(f"{codec_name} codec policy has invalid required_sha256")
+    for key in ("forbidden_filename_patterns", "forbidden_package_patterns", "forbidden_binary_markers"):
+      _string_list(codec_policy, key, f"{codec_name} codec policy")
     native_components = codec_policy.get("native_components", [])
     if not isinstance(native_components, list):
       raise ComplianceError(f"{codec_name} native_components must be an array")
     for component in native_components:
       if not isinstance(component, dict):
         raise ComplianceError(f"{codec_name} native component must be a table")
+      _reject_unknown_keys(
+        component,
+        {"name", "version", "path_markers", "binary_markers"},
+        f"{codec_name} native component",
+      )
       _required_string(component, "name", f"{codec_name} native component")
       _required_string(component, "version", f"{codec_name} native component")
+      path_markers = _string_list(component, "path_markers", f"{codec_name} native component")
+      binary_markers = _string_list(component, "binary_markers", f"{codec_name} native component")
+      if not path_markers and not binary_markers:
+        raise ComplianceError(f"{codec_name} native component has no evidence markers")
+  copyleft = policy.get("copyleft")
+  if not isinstance(copyleft, dict) or not copyleft:
+    raise ComplianceError(f"policy in {policy_path} has invalid copyleft")
+  for component_name, component in copyleft.items():
+    if not isinstance(component_name, str) or not component_name or not isinstance(component, dict):
+      raise ComplianceError(f"{component_name} copyleft policy must be a table")
+    _reject_unknown_keys(
+      component, {"license", "must_be_shared", "source_component"}, f"{component_name} copyleft policy"
+    )
+    _required_string(component, "license", f"{component_name} copyleft policy")
+    _required_string(component, "source_component", f"{component_name} copyleft policy")
+    if not isinstance(component.get("must_be_shared"), bool):
+      raise ComplianceError(f"{component_name} copyleft policy has invalid must_be_shared")
   return policy
 
 
@@ -223,14 +313,18 @@ def _copy_file(source: Path, destination: Path) -> dict[str, Any]:
   return {"path": destination.as_posix(), "sha256": _sha256(destination)}
 
 
-def _system_legal_materials(root: Path, output: Path, excluded_source: Path) -> list[dict[str, Any]]:
+def _system_legal_materials(root: Path, output: Path, excluded_source: Path | None) -> list[dict[str, Any]]:
   """Collect Debian-style copyright files included in self-contained Linux bundles."""
   components = []
   seen: set[str] = set()
-  excluded_path = excluded_source.resolve()
+  excluded_path = excluded_source.resolve() if excluded_source is not None else None
   for source in sorted(root.rglob("share/doc/*/copyright")):
     doc_dir = source.parent
-    if source.resolve() == excluded_path or not _confined_file(source, root) or _is_inside(source, output):
+    if (
+      (excluded_path is not None and source.resolve() == excluded_path)
+      or not _confined_file(source, root)
+      or _is_inside(source, output)
+    ):
       continue
     name = doc_dir.name
     if name in seen:
@@ -269,11 +363,57 @@ def _python_runtime_license(root: Path) -> tuple[str, Path]:
   raise ComplianceError(f"could not find the CPython {version} runtime licence")
 
 
+def _native_component_versions(installed_packages: set[str]) -> list[dict[str, str]]:
+  versions: dict[str, dict[str, str]] = {}
+  if "pillow" in installed_packages:
+    try:
+      avif = importlib.import_module("PIL._avif")
+    except ImportError:
+      pass
+    else:
+      versions["libavif"] = {
+        "name": "libavif",
+        "version": str(avif.libavif_version),
+        "source": "PIL._avif.libavif_version",
+      }
+      for match in re.finditer(r"(?:^|, )([A-Za-z0-9_.+-]+) \[[^]]+\]:([^, ]+)", str(avif.codec_versions())):
+        name, version = match.groups()
+        name = {"aom": "libaom"}.get(name, name)
+        versions[name] = {
+          "name": name,
+          "version": version,
+          "source": "PIL._avif.codec_versions()",
+        }
+    try:
+      webp = importlib.import_module("PIL._webp")
+    except ImportError:
+      pass
+    else:
+      versions["libwebp"] = {
+        "name": "libwebp",
+        "version": str(webp.webpdecoder_version),
+        "source": "PIL._webp.webpdecoder_version",
+      }
+  if "rawpy" in installed_packages:
+    try:
+      rawpy = importlib.import_module("rawpy")
+    except ImportError:
+      pass
+    else:
+      versions["libraw"] = {
+        "name": "libraw",
+        "version": ".".join(str(part) for part in getattr(rawpy, "libraw_version")),
+        "source": "rawpy.libraw_version",
+      }
+  return [versions[name] for name in sorted(versions)]
+
+
 def collect_legal_materials(
   root: Path,
   output: Path,
   policy_path: Path | None,
   common_notices: Path | None,
+  include_python_runtime: bool = False,
 ) -> dict[str, Any]:
   root = root.resolve()
   output = output.resolve()
@@ -314,20 +454,21 @@ def collect_legal_materials(
       }
     )
 
-  python_version, python_license = _python_runtime_license(root)
-  python_target = output / "licenses" / f"cpython-{python_version}" / python_license.name
-  python_copied = _copy_file(python_license, python_target)
-  python_relative = python_target.relative_to(output).as_posix()
-  components.append(
-    {
-      "type": "runtime",
-      "name": "cpython",
-      "version": python_version,
-      "license_files": [python_relative],
-      "license_file_hashes": {python_relative: python_copied["sha256"]},
-    }
-  )
-
+  python_license = None
+  if include_python_runtime:
+    python_version, python_license = _python_runtime_license(root)
+    python_target = output / "licenses" / f"cpython-{python_version}" / python_license.name
+    python_copied = _copy_file(python_license, python_target)
+    python_relative = python_target.relative_to(output).as_posix()
+    components.append(
+      {
+        "type": "runtime",
+        "name": "cpython",
+        "version": python_version,
+        "license_files": [python_relative],
+        "license_file_hashes": {python_relative: python_copied["sha256"]},
+      }
+    )
   components.extend(_system_legal_materials(root, output, python_license))
 
   notices_source = common_notices or resolved_policy_path.parent / "notices"
@@ -393,6 +534,7 @@ def collect_legal_materials(
     "schema_version": 1,
     "components": components,
     "codec_notices": notice_names,
+    "native_component_versions": _native_component_versions({record["name"] for record in records}),
   }
   _json_dump(output / "compliance-report.json", report)
   return report
@@ -482,6 +624,19 @@ def _reported_python_packages(legal_dir: Path) -> list[dict[str, str]]:
   return [packages[key] for key in sorted(packages)]
 
 
+def _reported_native_versions(report: dict[str, Any]) -> dict[str, dict[str, str]]:
+  versions = {}
+  for component in report.get("native_component_versions", []):
+    if not isinstance(component, dict):
+      continue
+    name = component.get("name")
+    version = component.get("version")
+    source = component.get("source")
+    if all(isinstance(value, str) and value for value in (name, version, source)):
+      versions[name] = {"version": version, "source": source}
+  return versions
+
+
 def _syft_native_matches(data: dict[str, Any], patterns: Iterable[str]) -> list[str]:
   patterns = tuple(pattern.lower() for pattern in patterns)
   matches = []
@@ -513,6 +668,11 @@ def _validate_legal_pack(legal_dir: Path, policy_path: Path) -> tuple[dict[str, 
   if report.get("schema_version") != 1 or not isinstance(components, list):
     errors.append("legal pack has an unsupported compliance report schema")
     components = []
+  native_versions = report.get("native_component_versions")
+  if not isinstance(native_versions, list):
+    errors.append("legal pack has no native component version records")
+  elif len(_reported_native_versions(report)) != len(native_versions):
+    errors.append("legal pack contains an invalid native component version record")
   for component in components:
     if not isinstance(component, dict):
       errors.append("legal pack contains an invalid component record")
@@ -583,6 +743,7 @@ def _native_component_evidence(
   root: Path,
   policy: dict[str, Any],
   candidates: Iterable[Path],
+  reported_versions: dict[str, dict[str, str]],
 ) -> list[dict[str, Any]]:
   candidates = list(candidates)
   component_policies = [
@@ -606,11 +767,14 @@ def _native_component_evidence(
       if path_match or binary_match:
         paths.append(relative)
     if paths:
+      name = str(component["name"])
+      reported = reported_versions.get(name, {})
       components.append(
         {
           "codec": codec_name,
-          "name": str(component["name"]),
-          "version": str(component["version"]),
+          "name": name,
+          "version": reported.get("version", ""),
+          "version_source": reported.get("source", ""),
           "paths": sorted(set(paths)),
         }
       )
@@ -630,8 +794,16 @@ def augment_cyclonedx(
   root = root.resolve()
   legal_dir = legal_dir.resolve()
   policy = load_policy(policy_path)
+  report, legal_errors = _validate_legal_pack(legal_dir, policy_path or _find_policy())
+  if legal_errors:
+    raise ComplianceError("\n".join(legal_errors))
   candidates = _native_candidates(root, legal_dir)
-  evidence = _native_component_evidence(root, policy, candidates)
+  evidence = _native_component_evidence(root, policy, candidates, _reported_native_versions(report))
+  incomplete = [component for component in evidence if not component["version"] or not component["version_source"]]
+  if incomplete:
+    raise ComplianceError(
+      "missing collected native versions: " + ", ".join(sorted(component["name"] for component in incomplete))
+    )
   existing = {
     (str(item.get("name", "")), str(item.get("version", ""))) for item in data["components"] if isinstance(item, dict)
   }
@@ -648,6 +820,7 @@ def augment_cyclonedx(
         "purl": f"pkg:generic/{component['name']}@{component['version']}",
         "properties": [
           {"name": "rclip:codec", "value": component["codec"]},
+          {"name": "rclip:version-evidence", "value": component["version_source"]},
           *[{"name": "rclip:evidence", "value": path} for path in component["paths"]],
         ],
       }
@@ -677,7 +850,7 @@ def verify_bundle(
   for filename in ("THIRD_PARTY_NOTICES.txt", "compliance-report.json", "policy.toml"):
     if not (legal_dir / filename).is_file():
       errors.append(f"legal pack is missing {filename}")
-  _report, legal_errors = _validate_legal_pack(legal_dir, resolved_policy_path)
+  report, legal_errors = _validate_legal_pack(legal_dir, resolved_policy_path)
   errors.extend(legal_errors)
   for codec_name, codec_policy in codec_policies.items():
     required_notice = codec_policy.get("required_notice")
@@ -702,7 +875,12 @@ def verify_bundle(
       errors.append(f"build-only executable is present: {path.relative_to(root)}")
 
   native_candidates = _native_candidates(root, legal_dir)
-  native_components = _native_component_evidence(root, policy, native_candidates)
+  native_components = _native_component_evidence(
+    root,
+    policy,
+    native_candidates,
+    _reported_native_versions(report),
+  )
   for component in native_components:
     detections[component["codec"]].extend(component["paths"])
   for codec_name, codec_policy in codec_policies.items():
@@ -758,17 +936,22 @@ def verify_bundle(
     if not _has_replaceable_libraw(native_candidates):
       errors.append("rawpy/LibRaw detected without a separately replaceable LibRaw shared library")
 
-  evidenced_components = {
-    (component["codec"], component["name"], component["version"]) for component in native_components
-  }
+  evidenced_components = {(component["codec"], component["name"]): component for component in native_components}
   for codec, codec_paths in detections.items():
     codec_policy = codec_policies[codec]
     if not codec_paths or not codec_policy.get("allowed", False):
       continue
     for expected in codec_policy.get("native_components", []):
-      key = (codec, str(expected["name"]), str(expected["version"]))
-      if key not in evidenced_components:
+      key = (codec, str(expected["name"]))
+      actual = evidenced_components.get(key)
+      if actual is None:
         errors.append(f"missing native component evidence for {expected['name']} {expected['version']}")
+      elif not actual["version"] or not actual["version_source"]:
+        errors.append(f"missing collected native version for {expected['name']}")
+      elif actual["version"] != str(expected["version"]):
+        errors.append(
+          f"disallowed native version: {expected['name']} {actual['version']} (allowed: {expected['version']})"
+        )
   if cyclonedx_json is not None:
     try:
       cyclonedx = json.loads(cyclonedx_json.read_text(encoding="utf-8"))
@@ -853,13 +1036,21 @@ def build_corresponding_source(manifest_path: Path, output: Path) -> None:
     raise ComplianceError(f"{description} has invalid submodules")
   expected_submodules = {}
   for relative, expected_revision in submodules.items():
-    if not isinstance(expected_revision, str) or not expected_revision:
+    if not isinstance(relative, str) or not relative or not isinstance(expected_revision, str) or not expected_revision:
       raise ComplianceError(f"{description} has invalid submodule {relative}")
+    relative_path = Path(relative)
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+      raise ComplianceError(f"{description} has unsafe submodule {relative}")
     expected_submodules[relative] = expected_revision
-  excluded = rawpy.get("excluded_submodules", [])
-  if not isinstance(excluded, list) or any(not isinstance(relative, str) or not relative for relative in excluded):
-    raise ComplianceError(f"{description} has invalid excluded_submodules")
-  excluded_submodules = [Path(relative) for relative in excluded]
+  excluded_paths = []
+  for key in ("excluded_submodules", "excluded_paths"):
+    values = rawpy.get(key, [])
+    if not isinstance(values, list) or any(not isinstance(relative, str) or not relative for relative in values):
+      raise ComplianceError(f"{description} has invalid {key}")
+    paths = [Path(relative) for relative in values]
+    if any(path.is_absolute() or ".." in path.parts for path in paths):
+      raise ComplianceError(f"{description} has unsafe {key}")
+    excluded_paths.extend(paths)
   with tempfile.TemporaryDirectory(prefix="rclip-source-") as temporary:
     checkout = Path(temporary) / "rawpy"
     subprocess.run(
@@ -913,7 +1104,7 @@ def build_corresponding_source(manifest_path: Path, output: Path) -> None:
       checkout,
       output,
       f"rawpy-{version}-corresponding-source",
-      excluded=excluded_submodules,
+      excluded=excluded_paths,
     )
 
 
@@ -930,6 +1121,11 @@ def build_parser() -> argparse.ArgumentParser:
   collect_parser.add_argument("--output", type=_path, required=True)
   collect_parser.add_argument("--policy", type=_path)
   collect_parser.add_argument("--common-notices", type=_path)
+  collect_parser.add_argument(
+    "--include-python-runtime",
+    action="store_true",
+    help="include the current CPython runtime and its licence",
+  )
 
   verify_parser = subparsers.add_parser("verify", help="inspect an assembled runtime bundle")
   verify_parser.add_argument("--root", type=_path, required=True)
@@ -957,7 +1153,13 @@ def main(argv: list[str] | None = None) -> int:
   display_report: dict[str, object]
   try:
     if args.command == "collect":
-      report = collect_legal_materials(args.root, args.output, args.policy, args.common_notices)
+      report = collect_legal_materials(
+        args.root,
+        args.output,
+        args.policy,
+        args.common_notices,
+        args.include_python_runtime,
+      )
       display_report = {"components": len(report["components"]), "output": args.output.as_posix()}
     elif args.command == "verify":
       report = verify_bundle(args.root, args.legal_dir, args.policy, args.syft_json, args.cyclonedx_json)

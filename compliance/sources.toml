@@ -10,6 +10,15 @@ excluded_submodules = [
   "external/LibRaw-demosaic-pack-GPL2",
   "external/LibRaw-demosaic-pack-GPL3",
 ]
+excluded_paths = [
+  "test/M0054341_01_00005.cr2",
+  "test/RAW_CANON_40D_SRAW_V103.CR2",
+  "test/RAW_CANON_5DMARK2_PREPROD.CR2",
+  "test/RAW_KODAK_DC50_é.KDC",
+  "test/RAW_SIGMA_SD9_SRGB.X3F",
+  "test/iss030e122639.NEF",
+  "test/iss042e297200.NEF",
+]
 
 [rawpy.submodules]
 "external/LibRaw" = "0b56545a4f828743f28a4345cdfdd4c49f9f9a2a"

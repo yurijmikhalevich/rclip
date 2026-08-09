@@ -42,4 +42,5 @@ python3.11 -m rclip._compliance collect \
   --root "$APPDIR" \
   --output "$APPDIR/usr/share/doc/rclip" \
   --policy compliance/policy.toml \
-  --common-notices compliance/notices
+  --common-notices compliance/notices \
+  --include-python-runtime

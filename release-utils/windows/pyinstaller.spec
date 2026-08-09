@@ -8,7 +8,7 @@ from PyInstaller.utils.hooks import copy_metadata
 
 
 block_cipher = None
-project_root = Path(__file__).resolve().parents[2]
+project_root = Path(SPEC).resolve().parents[2]
 legal_dir = project_root / 'build/legal'
 compliance_report_path = legal_dir / 'compliance-report.json'
 

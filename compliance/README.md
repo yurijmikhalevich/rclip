@@ -9,9 +9,11 @@ collected legal materials accurate.
 wheel omits them. Each override must be checked against that exact locked
 dependency version.
 
-Builds use `python -m rclip._compliance` to collect dependency licences,
-create a third-party notice index, inspect native codec binaries, enrich and
-verify Syft inventories, and validate every collected legal file by SHA-256.
+Builds use `python -m rclip._compliance` to collect dependency licences and
+native versions, create a third-party notice index, inspect native codec
+binaries, enrich and verify Syft inventories, and validate every collected
+legal file by SHA-256. Native versions come from the installed bindings'
+runtime APIs and are checked against `policy.toml`.
 Disallowed Python distributions and forbidden codecs fail release policy checks.
 Complete ScanCode output is available for human inspection; CI does not
 interpret it or require separate sign-off.
@@ -22,7 +24,8 @@ The DNG notice required by Adobe is:
 
 The rawpy corresponding-source archive deliberately initializes only LibRaw
 and LibRaw-cmake. The optional GPL2/GPL3 demosaic packs are disabled in the
-wheel build and excluded from the archive.
+wheel build and excluded from the archive. Large test image fixtures, which
+are not needed to build or modify rawpy or LibRaw, are also excluded.
 
 ## Dependency policy workflow
 

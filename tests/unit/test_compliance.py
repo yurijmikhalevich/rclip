@@ -11,6 +11,7 @@ from rclip._compliance import ComplianceError
 from rclip._compliance import augment_cyclonedx
 from rclip._compliance import _binary_contains
 from rclip._compliance import _deterministic_tar
+from rclip._compliance import _native_component_versions
 from rclip._compliance import _validate_python_packages
 from rclip._compliance import build_corresponding_source
 from rclip._compliance import collect_legal_materials
@@ -58,6 +59,13 @@ def write_legal_pack(legal_dir: Path) -> None:
   license_path.parent.mkdir(parents=True)
   license_path.write_text("rclip licence\n", encoding="utf-8")
   relative = license_path.relative_to(legal_dir).as_posix()
+  with POLICY.open("rb") as stream:
+    policy = tomllib.load(stream)
+  native_versions = {
+    component["name"]: component["version"]
+    for codec in policy["codecs"].values()
+    for component in codec.get("native_components", [])
+  }
   report = {
     "schema_version": 1,
     "components": [
@@ -68,6 +76,9 @@ def write_legal_pack(legal_dir: Path) -> None:
         "license_files": [relative],
         "license_file_hashes": {relative: hashlib.sha256(license_path.read_bytes()).hexdigest()},
       }
+    ],
+    "native_component_versions": [
+      {"name": name, "version": version, "source": "test fixture"} for name, version in sorted(native_versions.items())
     ],
   }
   (legal_dir / "compliance-report.json").write_text(json.dumps(report) + "\n", encoding="utf-8")
@@ -117,7 +128,7 @@ def test_does_not_collect_python_runtime_license_twice(tmp_path: Path, monkeypat
   )
   output = root / "usr/share/doc/rclip"
 
-  report = collect_legal_materials(root, output, POLICY, NOTICES)
+  report = collect_legal_materials(root, output, POLICY, NOTICES, include_python_runtime=True)
 
   assert [(component["type"], component["name"]) for component in report["components"]].count(
     ("runtime", "cpython")
@@ -126,6 +137,19 @@ def test_does_not_collect_python_runtime_license_twice(tmp_path: Path, monkeypat
   notices = (output / "THIRD_PARTY_NOTICES.txt").read_text(encoding="utf-8")
   assert notices.count("- cpython 3.11.0") == 1
   assert "- python3.11" not in notices
+
+
+def test_omits_external_python_runtime_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  root = tmp_path / "runtime"
+  write_distribution(root, "rclip", "3.3.0")
+  monkeypatch.setattr(
+    "rclip._compliance._python_runtime_license",
+    lambda _root: pytest.fail("external Python runtime should not be inspected"),
+  )
+
+  report = collect_legal_materials(root, root / "legal", POLICY, NOTICES)
+
+  assert not any(component["name"] == "cpython" for component in report["components"])
 
 
 @pytest.mark.parametrize("name", ["unknown-package", "pi-heif"])
@@ -218,6 +242,42 @@ def test_policy_requires_native_component_fields(tmp_path: Path) -> None:
 
   with pytest.raises(ComplianceError, match="av1 native component is missing name"):
     load_policy(policy)
+
+
+@pytest.mark.parametrize(
+  ("original", "replacement", "error"),
+  [
+    ("schema_version = 1", "schema_version = true", "unsupported policy schema"),
+    ("allowed = true", 'allowed = "false"', "invalid allowed"),
+    ('path_markers = ["libavif", "_avif"]', 'path_markers = "libavif"', "invalid path_markers"),
+    ('required_notice = "AOM-PATENT-LICENSE-1.0.txt"', 'unexpected = "value"', "unknown fields"),
+  ],
+)
+def test_policy_rejects_invalid_field_types_and_unknown_fields(
+  tmp_path: Path,
+  original: str,
+  replacement: str,
+  error: str,
+) -> None:
+  policy = tmp_path / "policy.toml"
+  policy.write_text(POLICY.read_text(encoding="utf-8").replace(original, replacement, 1), encoding="utf-8")
+
+  with pytest.raises(ComplianceError, match=error):
+    load_policy(policy)
+
+
+def test_collects_native_versions_from_runtime_apis() -> None:
+  with POLICY.open("rb") as stream:
+    policy = tomllib.load(stream)
+  expected = {
+    component["name"]: component["version"]
+    for codec in policy["codecs"].values()
+    for component in codec.get("native_components", [])
+  }
+
+  reported = {component["name"]: component["version"] for component in _native_component_versions({"pillow", "rawpy"})}
+
+  assert reported == expected
 
 
 def test_sdist_includes_homebrew_compliance_inputs(tmp_path: Path) -> None:
@@ -475,6 +535,29 @@ def test_augments_and_checks_native_cyclonedx_components(tmp_path: Path) -> None
   assert verify_bundle(root, legal, POLICY, None, output)["native_components"]
 
 
+def test_native_sbom_uses_reported_version_and_rejects_policy_drift(tmp_path: Path) -> None:
+  root = tmp_path / "runtime"
+  root.mkdir()
+  (root / "libaom.so").write_bytes(b"native aom_codec")
+  legal = tmp_path / "legal"
+  write_legal_pack(legal)
+  report_path = legal / "compliance-report.json"
+  report = json.loads(report_path.read_text(encoding="utf-8"))
+  next(component for component in report["native_component_versions"] if component["name"] == "libaom")["version"] = (
+    "999"
+  )
+  report_path.write_text(json.dumps(report), encoding="utf-8")
+  source = tmp_path / "source.cdx.json"
+  output = tmp_path / "output.cdx.json"
+  source.write_text(json.dumps({"bomFormat": "CycloneDX", "components": []}), encoding="utf-8")
+
+  result = augment_cyclonedx(source, output, root, legal, POLICY)
+
+  assert ("libaom", "999") in {(item["name"], item["version"]) for item in result["components"]}
+  with pytest.raises(ComplianceError, match=r"libaom 999 \(allowed: 3\.14\.1\)"):
+    verify_bundle(root, legal, POLICY, None, output)
+
+
 def test_source_archive_is_deterministic_and_excludes_disabled_submodules(tmp_path: Path) -> None:
   source = tmp_path / "source"
   (source / "external/LibRaw").mkdir(parents=True)
@@ -532,5 +615,6 @@ def test_source_manifest_requires_rawpy_fields(tmp_path: Path) -> None:
 def test_pyinstaller_legal_pack_path_uses_project_root() -> None:
   spec = (REPO_ROOT / "release-utils/windows/pyinstaller.spec").read_text(encoding="utf-8")
 
-  assert "project_root = Path(__file__).resolve().parents[2]" in spec
+  assert "project_root = Path(SPEC).resolve().parents[2]" in spec
+  assert "Path(__file__)" not in spec
   assert "(str(legal_dir), 'legal')" in spec

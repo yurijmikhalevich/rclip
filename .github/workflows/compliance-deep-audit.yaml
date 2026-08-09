@@ -3,6 +3,7 @@ name: compliance policy checks and reports
 on:
   pull_request:
     paths:
+      - .github/actions/audit-runtime/**
       - .github/actions/setup-syft/**
       - .github/workflows/compliance-deep-audit.yaml
       - .github/workflows/release.yaml
@@ -17,6 +18,13 @@ on:
   schedule:
     - cron: '31 14 * * 1'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compliance-deep-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   dependencies:
