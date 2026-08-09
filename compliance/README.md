@@ -10,9 +10,11 @@ wheel omits them. Each override must be checked against that exact locked
 dependency version during review.
 
 Builds use `python -m rclip._compliance` to collect dependency licences,
-create a third-party notice index, inspect native codec binaries, and verify
-Syft inventories. ScanCode output is normalized into a smaller review report.
-Unknown Python distributions and forbidden codecs fail the audit.
+create a third-party notice index, inspect native codec binaries, enrich and
+verify Syft inventories, and validate every collected legal file by SHA-256.
+Unknown Python distributions and forbidden codecs fail release policy checks.
+ScanCode output is normalized into a smaller informational report for human
+review; it is not itself a policy gate.
 
 The DNG notice required by Adobe is:
 
@@ -35,7 +37,9 @@ When `uv.lock`, a dependency declaration, or packaging changes:
 3. Update `sources.toml` when rawpy or LibRaw changes.
 4. Run `uv run pytest tests/unit/test_compliance.py`.
 
-Release builds run Syft against each assembled payload and attach CycloneDX
-SBOMs. The deep-audit workflow runs ScanCode on dependency or packaging pull
-requests, every Monday, and against the latest released AppImage and MSI. The
-policy and exact-version checks fail closed before a release is published.
+Release builds run Syft against each assembled payload, add reviewed native
+codec components, and attach CycloneDX SBOMs. The compliance reporting workflow
+runs ScanCode on dependency or packaging pull requests, every Monday, and
+against the latest released AppImage and MSI. The policy and exact-version
+checks fail closed before a release is published; ScanCode artifacts require
+human review when dependencies or packaging change.

@@ -99,15 +99,45 @@ wcwidth = ["0.8.2"]
 [codecs.av1]
 allowed = true
 required_notice = "AOM-PATENT-LICENSE-1.0.txt"
+required_sha256 = "bd05b38492255b08e2f7b16a0755548e969a76d6ff8a1bd4919a5e0312f6f00e"
+
+[[codecs.av1.native_components]]
+name = "libavif"
+version = "1.4.2"
+path_markers = ["libavif", "_avif"]
+binary_markers = ["avifDecoder"]
+
+[[codecs.av1.native_components]]
+name = "libaom"
+version = "3.14.1"
+binary_markers = ["aom_codec"]
+
+[[codecs.av1.native_components]]
+name = "dav1d"
+version = "1.5.3"
+binary_markers = ["dav1d"]
 
 [codecs.dng]
 allowed = true
 required_notice = "ADOBE-DNG-PATENT-LICENSE.txt"
 required_text = "This product includes DNG technology under license by Adobe."
+required_sha256 = "2314c8d717942f3a6a5745633fb60904309c16722696197d456847898e8966e8"
+
+[[codecs.dng.native_components]]
+name = "libraw"
+version = "0.22.0"
+path_markers = ["libraw", "raw_r", "_rawpy"]
 
 [codecs.webp]
 allowed = true
 required_notice = "WEBP-PATENTS.txt"
+required_sha256 = "8ba8ee940cc54a549846b19069996f8bcaa87d28a5a5c4cb0f3f959bde27737b"
+
+[[codecs.webp.native_components]]
+name = "libwebp"
+version = "1.6.0"
+path_markers = ["libwebp", "_webp"]
+binary_markers = ["WebPDecode"]
 
 [codecs.hevc]
 allowed = false

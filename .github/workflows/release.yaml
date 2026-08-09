@@ -136,7 +136,7 @@ jobs:
 
   brew:
     # the Formula references the rclip package published to PyPI
-    needs: [parse_tag, pypi-release]
+    needs: [parse_tag, pypi-release, source-release]
     if: github.event_name == 'push' && needs.parse_tag.outputs.is_stable_version == 'true'
     runs-on: ubuntu-22.04
     steps:
@@ -181,11 +181,18 @@ jobs:
           syft scan dir:snap-root \
             -o syft-json=snap-syft.json \
             -o cyclonedx-json=rclip-${{ matrix.arch }}-snap.cdx.json
+          python -m rclip._compliance augment-cyclonedx \
+            --input rclip-${{ matrix.arch }}-snap.cdx.json \
+            --output rclip-${{ matrix.arch }}-snap.cdx.json \
+            --root snap-root \
+            --legal-dir snap-root/share/doc/rclip \
+            --policy compliance/policy.toml
           python -m rclip._compliance verify \
             --root snap-root \
             --legal-dir snap-root/share/doc/rclip \
             --policy compliance/policy.toml \
             --syft-json snap-syft.json \
+            --cyclonedx-json rclip-${{ matrix.arch }}-snap.cdx.json \
             --output snap-${{ matrix.arch }}-compliance.json
       - uses: actions/upload-artifact@v7
         with:
@@ -215,7 +222,7 @@ jobs:
       - uses: ./.github/actions/test-system-rclip
 
   snap-release:
-    needs: [snap-test, parse_tag]
+    needs: [snap-test, parse_tag, source-release]
     if: github.event_name == 'push'
     runs-on: ubuntu-22.04
     steps:
@@ -270,11 +277,18 @@ jobs:
           syft scan dir:squashfs-root \
             -o syft-json=appimage-syft.json \
             -o cyclonedx-json=rclip-${{ needs.parse_tag.outputs.version }}-appimage.cdx.json
+          python -m rclip._compliance augment-cyclonedx \
+            --input rclip-${{ needs.parse_tag.outputs.version }}-appimage.cdx.json \
+            --output rclip-${{ needs.parse_tag.outputs.version }}-appimage.cdx.json \
+            --root squashfs-root \
+            --legal-dir squashfs-root/usr/share/doc/rclip \
+            --policy compliance/policy.toml
           python -m rclip._compliance verify \
             --root squashfs-root \
             --legal-dir squashfs-root/usr/share/doc/rclip \
             --policy compliance/policy.toml \
             --syft-json appimage-syft.json \
+            --cyclonedx-json rclip-${{ needs.parse_tag.outputs.version }}-appimage.cdx.json \
             --output appimage-compliance.json
       - uses: actions/upload-artifact@v7
         with:
@@ -322,11 +336,18 @@ jobs:
           syft scan dir:dist/rclip \
             -o syft-json=build/windows-syft.json \
             -o cyclonedx-json=build/rclip-windows.cdx.json
+          python -m rclip._compliance augment-cyclonedx \
+            --input build/rclip-windows.cdx.json \
+            --output build/rclip-windows.cdx.json \
+            --root dist/rclip \
+            --legal-dir dist/rclip/legal \
+            --policy compliance/policy.toml
           python -m rclip._compliance verify \
             --root dist/rclip \
             --legal-dir dist/rclip/legal \
             --policy compliance/policy.toml \
             --syft-json build/windows-syft.json \
+            --cyclonedx-json build/rclip-windows.cdx.json \
             --output build/windows-compliance.json
       - name: Install Advinst
         uses: caphyon/advinst-github-action@main
@@ -382,6 +403,31 @@ jobs:
           path: source/*
           if-no-files-found: error
 
+  source-release:
+    needs: [parse_tag, source-bundle, pypi-release, snap-test, appimage-test, windows-test]
+    if: ${{ github.event_name == 'push' && !cancelled() }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - if: ${{ contains(needs.*.result, 'failure') }}
+        run: exit 1
+      - uses: actions/download-artifact@v8
+        with:
+          name: corresponding-source
+          path: source/
+      - name: Publish corresponding source before binary distributions
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ github.ref_name }}
+          artifacts: source/*
+          allowUpdates: true
+          artifactErrorsFailBuild: true
+          generateReleaseNotes: true
+          immutableCreate: true
+          prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   windows-test:
     needs: [parse_tag, windows-build]
     runs-on: windows-2022
@@ -397,7 +443,7 @@ jobs:
       - uses: ./.github/actions/test-system-rclip
 
   create_release:
-    needs: [parse_tag, pypi-release, snap-release, appimage-test, windows-test, source-bundle]
+    needs: [parse_tag, pypi-release, snap-release, appimage-test, windows-test, source-release]
     # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
     if: ${{ github.event_name == 'push' && !cancelled() }}
     runs-on: ubuntu-22.04
@@ -419,33 +465,13 @@ jobs:
           done
       - name: Rename AppImage for GitHub releases page
         run: mv artifacts/appimage/rclip-${{ needs.parse_tag.outputs.version }}-x86_64.AppImage artifacts/appimage/rclip-${{ needs.parse_tag.outputs.version }}-amd64.AppImage
-      - name: Get previous public release tag
-        id: previous_release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          previous_tag=$(
-            curl -fsSL \
-              -H "Authorization: Bearer $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
-              | jq -r '
-                [
-                  .[]
-                  | select(.draft == false and .published_at != null and .tag_name != env.GITHUB_REF_NAME)
-                ]
-                | sort_by(.published_at)
-                | if length == 0 then "" else .[-1].tag_name end
-              '
-          )
-          echo "tag=$previous_tag" >> "$GITHUB_OUTPUT"
-          echo "Previous public release tag: ${previous_tag:-<none>}"
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
           name: ${{ github.ref_name }}
-          artifacts: artifacts/pypi/rclip-*,artifacts/snap-amd64/rclip-*.snap,artifacts/snap-arm64/rclip-*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows/rclip-*.msi,artifacts/**/*.cdx.json,artifacts/**/*compliance.json,artifacts/corresponding-source/*
-          generateReleaseNotes: true
-          generateReleaseNotesPreviousTag: ${{ steps.previous_release.outputs.tag }}
+          artifacts: artifacts/pypi/rclip-*,artifacts/snap-amd64/rclip-*.snap,artifacts/snap-arm64/rclip-*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows/rclip-*.msi,artifacts/**/*.cdx.json,artifacts/**/*compliance.json
+          allowUpdates: true
+          artifactErrorsFailBuild: true
+          omitBodyDuringUpdate: true
           prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
           token: ${{ secrets.GITHUB_TOKEN }}

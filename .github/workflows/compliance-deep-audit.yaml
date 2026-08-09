@@ -1,4 +1,4 @@
-name: compliance deep audit
+name: compliance policy checks and reports
 
 on:
   pull_request:
@@ -38,7 +38,7 @@ jobs:
             --output .compliance-legal \
             --policy compliance/policy.toml \
             --common-notices compliance/notices
-      - name: Deep licence and package scan
+      - name: Generate informational ScanCode licence report
         run: |
           scancode --license --package --copyright --json-pp scancode-dependencies.json .compliance-venv
           python -m rclip._compliance normalize-scancode \
@@ -80,7 +80,7 @@ jobs:
           "${appimage_path[0]}" --appimage-extract >/dev/null
           cd ../msi-root
           7z x ../release-artifacts/*.msi >/dev/null
-      - name: Deep-scan AppImage and MSI payloads
+      - name: Generate informational AppImage and MSI ScanCode reports
         run: |
           scancode --license --package --copyright --json-pp scancode-appimage.json appimage-root/squashfs-root
           scancode --license --package --copyright --json-pp scancode-msi.json msi-root
