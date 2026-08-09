@@ -14,6 +14,7 @@ from rclip._compliance import _deterministic_tar
 from rclip._compliance import _validate_python_packages
 from rclip._compliance import build_corresponding_source
 from rclip._compliance import collect_legal_materials
+from rclip._compliance import load_policy
 from rclip._compliance import verify_bundle
 
 
@@ -104,6 +105,29 @@ def test_collects_and_indexes_bundled_system_licenses(tmp_path: Path) -> None:
   assert not verify_bundle(root, output, POLICY, None)["errors"]
 
 
+def test_does_not_collect_python_runtime_license_twice(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  root = tmp_path / "runtime"
+  write_distribution(root, "rclip", "3.3.0")
+  python_license = root / "usr/share/doc/python3.11/copyright"
+  python_license.parent.mkdir(parents=True)
+  python_license.write_text("CPython licence\n", encoding="utf-8")
+  monkeypatch.setattr(
+    "rclip._compliance._python_runtime_license",
+    lambda _root: ("3.11.0", python_license),
+  )
+  output = root / "usr/share/doc/rclip"
+
+  report = collect_legal_materials(root, output, POLICY, NOTICES)
+
+  assert [(component["type"], component["name"]) for component in report["components"]].count(
+    ("runtime", "cpython")
+  ) == 1
+  assert not (output / "licenses/system/python3.11/copyright").exists()
+  notices = (output / "THIRD_PARTY_NOTICES.txt").read_text(encoding="utf-8")
+  assert notices.count("- cpython 3.11.0") == 1
+  assert "- python3.11" not in notices
+
+
 @pytest.mark.parametrize("name", ["unknown-package", "pi-heif"])
 def test_collection_fails_closed_for_disallowed_or_prohibited_packages(tmp_path: Path, name: str) -> None:
   write_distribution(tmp_path, name)
@@ -183,6 +207,17 @@ def test_rawpy_source_manifest_matches_allowed_runtime_version() -> None:
 
   assert policy["allowed_python_versions"]["rawpy"] == [source["version"]]
   assert policy["codecs"]["dng"]["native_components"][0]["version"] == source["libraw_version"]
+
+
+def test_policy_requires_native_component_fields(tmp_path: Path) -> None:
+  policy = tmp_path / "policy.toml"
+  policy.write_text(
+    POLICY.read_text(encoding="utf-8").replace('name = "libavif"\n', "", 1),
+    encoding="utf-8",
+  )
+
+  with pytest.raises(ComplianceError, match="av1 native component is missing name"):
+    load_policy(policy)
 
 
 def test_sdist_includes_homebrew_compliance_inputs(tmp_path: Path) -> None:
@@ -483,6 +518,14 @@ def test_source_manifest_schema_is_validated(tmp_path: Path) -> None:
   manifest.write_text("schema_version = 999\n", encoding="utf-8")
 
   with pytest.raises(ComplianceError, match="unsupported source manifest schema"):
+    build_corresponding_source(manifest, tmp_path / "source.tar.gz")
+
+
+def test_source_manifest_requires_rawpy_fields(tmp_path: Path) -> None:
+  manifest = tmp_path / "sources.toml"
+  manifest.write_text("schema_version = 1\n[rawpy]\n", encoding="utf-8")
+
+  with pytest.raises(ComplianceError, match="rawpy source manifest .* is missing repository"):
     build_corresponding_source(manifest, tmp_path / "source.tar.gz")
 
 

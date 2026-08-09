@@ -89,12 +89,33 @@ def _find_policy() -> Path:
   raise ComplianceError("could not find compliance/policy.toml; pass --policy explicitly")
 
 
+def _required_string(values: dict[str, Any], key: str, description: str) -> str:
+  value = values.get(key)
+  if not isinstance(value, str) or not value:
+    raise ComplianceError(f"{description} is missing {key}")
+  return value
+
+
 def load_policy(path: Path | None) -> dict[str, Any]:
   policy_path = path or _find_policy()
   with policy_path.open("rb") as stream:
     policy = tomllib.load(stream)
   if policy.get("schema_version") != 1:
     raise ComplianceError(f"unsupported policy schema in {policy_path}")
+  codecs = policy.get("codecs")
+  if not isinstance(codecs, dict):
+    raise ComplianceError(f"policy in {policy_path} is missing codecs")
+  for codec_name, codec_policy in codecs.items():
+    if not isinstance(codec_policy, dict):
+      raise ComplianceError(f"{codec_name} codec policy must be a table")
+    native_components = codec_policy.get("native_components", [])
+    if not isinstance(native_components, list):
+      raise ComplianceError(f"{codec_name} native_components must be an array")
+    for component in native_components:
+      if not isinstance(component, dict):
+        raise ComplianceError(f"{codec_name} native component must be a table")
+      _required_string(component, "name", f"{codec_name} native component")
+      _required_string(component, "version", f"{codec_name} native component")
   return policy
 
 
@@ -202,13 +223,14 @@ def _copy_file(source: Path, destination: Path) -> dict[str, Any]:
   return {"path": destination.as_posix(), "sha256": _sha256(destination)}
 
 
-def _system_legal_materials(root: Path, output: Path) -> list[dict[str, Any]]:
+def _system_legal_materials(root: Path, output: Path, excluded_source: Path) -> list[dict[str, Any]]:
   """Collect Debian-style copyright files included in self-contained Linux bundles."""
   components = []
   seen: set[str] = set()
+  excluded_path = excluded_source.resolve()
   for source in sorted(root.rglob("share/doc/*/copyright")):
     doc_dir = source.parent
-    if not _confined_file(source, root) or _is_inside(source, output):
+    if source.resolve() == excluded_path or not _confined_file(source, root) or _is_inside(source, output):
       continue
     name = doc_dir.name
     if name in seen:
@@ -306,7 +328,7 @@ def collect_legal_materials(
     }
   )
 
-  components.extend(_system_legal_materials(root, output))
+  components.extend(_system_legal_materials(root, output, python_license))
 
   notices_source = common_notices or resolved_policy_path.parent / "notices"
   if not notices_source.is_dir():
@@ -817,7 +839,27 @@ def build_corresponding_source(manifest_path: Path, output: Path) -> None:
     manifest = tomllib.load(stream)
   if manifest.get("schema_version") != 1:
     raise ComplianceError(f"unsupported source manifest schema in {manifest_path}")
-  rawpy = manifest["rawpy"]
+  rawpy = manifest.get("rawpy")
+  if not isinstance(rawpy, dict):
+    raise ComplianceError(f"source manifest in {manifest_path} is missing rawpy")
+  description = f"rawpy source manifest in {manifest_path}"
+  repository = _required_string(rawpy, "repository", description)
+  revision = _required_string(rawpy, "revision", description)
+  commit = _required_string(rawpy, "commit", description)
+  version = _required_string(rawpy, "version", description)
+  libraw_version = _required_string(rawpy, "libraw_version", description)
+  submodules = rawpy.get("submodules", {})
+  if not isinstance(submodules, dict):
+    raise ComplianceError(f"{description} has invalid submodules")
+  expected_submodules = {}
+  for relative, expected_revision in submodules.items():
+    if not isinstance(expected_revision, str) or not expected_revision:
+      raise ComplianceError(f"{description} has invalid submodule {relative}")
+    expected_submodules[relative] = expected_revision
+  excluded = rawpy.get("excluded_submodules", [])
+  if not isinstance(excluded, list) or any(not isinstance(relative, str) or not relative for relative in excluded):
+    raise ComplianceError(f"{description} has invalid excluded_submodules")
+  excluded_submodules = [Path(relative) for relative in excluded]
   with tempfile.TemporaryDirectory(prefix="rclip-source-") as temporary:
     checkout = Path(temporary) / "rawpy"
     subprocess.run(
@@ -825,10 +867,10 @@ def build_corresponding_source(manifest_path: Path, output: Path) -> None:
         "git",
         "clone",
         "--branch",
-        rawpy["revision"],
+        revision,
         "--depth",
         "1",
-        rawpy["repository"],
+        repository,
         str(checkout),
       ],
       check=True,
@@ -839,9 +881,8 @@ def build_corresponding_source(manifest_path: Path, output: Path) -> None:
       capture_output=True,
       text=True,
     ).stdout.strip()
-    if rawpy_commit != rawpy["commit"]:
-      raise ComplianceError(f"rawpy is {rawpy_commit}, expected {rawpy['commit']}")
-    expected_submodules = rawpy.get("submodules", {})
+    if rawpy_commit != commit:
+      raise ComplianceError(f"rawpy is {rawpy_commit}, expected {commit}")
     subprocess.run(
       ["git", "-C", str(checkout), "submodule", "update", "--init", "--depth", "1", "--", *expected_submodules],
       check=True,
@@ -866,13 +907,12 @@ def build_corresponding_source(manifest_path: Path, output: Path) -> None:
         raise ComplianceError(f"could not read {macro} from pinned LibRaw checkout")
       version_parts.append(match.group(1))
     actual_libraw_version = ".".join(version_parts)
-    if actual_libraw_version != rawpy["libraw_version"]:
-      raise ComplianceError(f"LibRaw is {actual_libraw_version}, expected {rawpy['libraw_version']}")
-    excluded_submodules = [Path(relative) for relative in rawpy.get("excluded_submodules", [])]
+    if actual_libraw_version != libraw_version:
+      raise ComplianceError(f"LibRaw is {actual_libraw_version}, expected {libraw_version}")
     _deterministic_tar(
       checkout,
       output,
-      f"rawpy-{rawpy['version']}-corresponding-source",
+      f"rawpy-{version}-corresponding-source",
       excluded=excluded_submodules,
     )
 
@@ -914,7 +954,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
   args = build_parser().parse_args(argv)
-  display_report: object
+  display_report: dict[str, object]
   try:
     if args.command == "collect":
       report = collect_legal_materials(args.root, args.output, args.policy, args.common_notices)
@@ -938,7 +978,6 @@ def main(argv: list[str] | None = None) -> int:
   except (
     ComplianceError,
     json.JSONDecodeError,
-    KeyError,
     OSError,
     subprocess.CalledProcessError,
     tomllib.TOMLDecodeError,
