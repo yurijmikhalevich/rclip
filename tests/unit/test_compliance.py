@@ -376,10 +376,14 @@ def test_binary_markers_can_be_matched_case_insensitively(tmp_path: Path) -> Non
   assert _binary_contains(binary, ["libraw_r.so"], casefold=True) == ["libraw_r.so"]
 
 
-def test_scans_extensionless_native_executables_for_hevc(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+  "magic",
+  (b"\x7fELF", b"\xca\xfe\xba\xbe", b"\xca\xfe\xba\xbf", b"\xbe\xba\xfe\xca", b"\xbf\xba\xfe\xca"),
+)
+def test_scans_extensionless_native_executables_for_hevc(tmp_path: Path, magic: bytes) -> None:
   root = tmp_path / "runtime"
   root.mkdir()
-  (root / "ffmpeg").write_bytes(b"\x7fELF x265_encoder_open")
+  (root / "ffmpeg").write_bytes(magic + b" x265_encoder_open")
   legal = tmp_path / "legal"
   write_legal_pack(legal)
 
