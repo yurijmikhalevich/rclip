@@ -32,8 +32,8 @@ runs:
         $env:Path = "$machinePath;$userPath;$env:Path"
         $executable = (Get-Command rclip -CommandType Application -ErrorAction Stop).Source
         Write-Host "Testing $executable"
-        "RCLIP_TEST_EXECUTABLE=$executable" >> $env:GITHUB_ENV
-        "RCLIP_TEST_SYSTEM_PATH=$env:Path" >> $env:GITHUB_ENV
+        "RCLIP_TEST_EXECUTABLE=$executable" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        "RCLIP_TEST_SYSTEM_PATH=$env:Path" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
         & $executable --version
       shell: powershell
     - uses: actions/setup-python@v6

@@ -126,20 +126,23 @@ def execute_query(
   monkeypatch.setenv("RCLIP_MODEL_CACHE_DIR", shared_model_cache_dir)
 
   environment = os.environ.copy()
+  run_system_rclip = os.getenv("RCLIP_TEST_RUN_SYSTEM_RCLIP")
   executable = os.getenv("RCLIP_TEST_EXECUTABLE")
-  if executable:
+  system_path = os.getenv("RCLIP_TEST_SYSTEM_PATH")
+  if run_system_rclip == "true":
+    if not executable or not system_path:
+      raise ValueError("system rclip tests require RCLIP_TEST_EXECUTABLE and RCLIP_TEST_SYSTEM_PATH")
     executable_path = Path(executable)
     if not executable_path.is_absolute() or not executable_path.is_file():
       raise ValueError("RCLIP_TEST_EXECUTABLE must be an absolute path to a file")
-    system_path = os.getenv("RCLIP_TEST_SYSTEM_PATH")
-    if not system_path:
-      raise ValueError("RCLIP_TEST_SYSTEM_PATH must be set with RCLIP_TEST_EXECUTABLE")
     command = [executable]
     # Do not let the test venv affect the installed artifact or anything it launches.
     environment["PATH"] = system_path
     for variable in ("VIRTUAL_ENV", "PYTHONHOME", "PYTHONPATH"):
       environment.pop(variable, None)
   else:
+    if run_system_rclip is not None or executable or system_path:
+      raise ValueError("system rclip test variables must only be set together with RCLIP_TEST_RUN_SYSTEM_RCLIP=true")
     # Normal tests exercise the checkout with the test environment's interpreter.
     command = [sys.executable, "-m", "rclip"]
   completed_run = subprocess.run([*command, *args], cwd=test_images_dir, env=environment, capture_output=True)
