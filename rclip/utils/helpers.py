@@ -330,7 +330,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
     "--exclude-dir",
     action="append",
     help="dir to exclude from search, can be used multiple times;"
-    ' adding this argument overrides the default of'
+    " adding this argument overrides the default of"
     ' ("@eaDir", "node_modules", ".git", "System Volume Information")',
   )
   parser.add_argument(

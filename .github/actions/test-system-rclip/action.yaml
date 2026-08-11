@@ -14,6 +14,28 @@ inputs:
 runs:
   using: 'composite'
   steps:
+    - name: Record system rclip executable and PATH
+      if: runner.os != 'Windows'
+      run: |
+        executable=$(type -P rclip)
+        echo "Testing $executable"
+        echo "RCLIP_TEST_EXECUTABLE=$executable" >> "$GITHUB_ENV"
+        echo "RCLIP_TEST_SYSTEM_PATH=$PATH" >> "$GITHUB_ENV"
+        "$executable" --version
+      # Read .bashrc so Homebrew-installed rclip is on PATH.
+      shell: bash -ieo pipefail {0}
+    - name: Record system rclip executable and PATH
+      if: runner.os == 'Windows'
+      run: |
+        $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+        $env:Path = "$machinePath;$userPath;$env:Path"
+        $executable = (Get-Command rclip -CommandType Application -ErrorAction Stop).Source
+        Write-Host "Testing $executable"
+        "RCLIP_TEST_EXECUTABLE=$executable" >> $env:GITHUB_ENV
+        "RCLIP_TEST_SYSTEM_PATH=$env:Path" >> $env:GITHUB_ENV
+        & $executable --version
+      shell: powershell
     - uses: actions/setup-python@v6
       with:
         python-version: ${{ inputs.python }}
@@ -24,13 +46,5 @@ runs:
     - name: Install dev dependencies required to run e2e tests
       run: uv sync --locked --only-dev --no-install-project
       shell: bash
-    - name: Print tested rclip version
-      run: |
-        which rclip
-        rclip --version
-      # on Windows, we set the latest PATH to ensure that the action can find
-      # system rclip
-      # on other OSes, we pass -ieo pipefail to bash to ensure it reads the .bashrc
-      shell: ${{ (runner.os != 'Windows' || inputs.force-bash == 'true') && 'bash -ieo pipefail {0}' || 'powershell -NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command "$env:Path = [Environment]::GetEnvironmentVariable(''Path'', ''Machine'') + '';'' + [Environment]::GetEnvironmentVariable(''Path'', ''User'') + '';'' + $env:Path; & {0}"' }}
     - run: make test-system-rclip
       shell: ${{ (runner.os != 'Windows' || inputs.force-bash == 'true') && 'bash -ieo pipefail {0}' || 'powershell -NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command "$env:Path = [Environment]::GetEnvironmentVariable(''Path'', ''Machine'') + '';'' + [Environment]::GetEnvironmentVariable(''Path'', ''User'') + '';'' + $env:Path; & {0}"' }}

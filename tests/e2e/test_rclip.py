@@ -125,10 +125,24 @@ def execute_query(
   without the parent's console re-encoding it."""
   monkeypatch.setenv("RCLIP_MODEL_CACHE_DIR", shared_model_cache_dir)
 
-  # RCLIP_TEST_RUN_SYSTEM_RCLIP runs the installed console script; otherwise run the package under
-  # the current interpreter so the test doesn't depend on rclip being on PATH.
-  command = ["rclip"] if os.getenv("RCLIP_TEST_RUN_SYSTEM_RCLIP") else [sys.executable, "-m", "rclip"]
-  completed_run = subprocess.run([*command, *args], cwd=test_images_dir, capture_output=True)
+  environment = os.environ.copy()
+  executable = os.getenv("RCLIP_TEST_EXECUTABLE")
+  if executable:
+    executable_path = Path(executable)
+    if not executable_path.is_absolute() or not executable_path.is_file():
+      raise ValueError("RCLIP_TEST_EXECUTABLE must be an absolute path to a file")
+    system_path = os.getenv("RCLIP_TEST_SYSTEM_PATH")
+    if not system_path:
+      raise ValueError("RCLIP_TEST_SYSTEM_PATH must be set with RCLIP_TEST_EXECUTABLE")
+    command = [executable]
+    # Do not let the test venv affect the installed artifact or anything it launches.
+    environment["PATH"] = system_path
+    for variable in ("VIRTUAL_ENV", "PYTHONHOME", "PYTHONPATH"):
+      environment.pop(variable, None)
+  else:
+    # Normal tests exercise the checkout with the test environment's interpreter.
+    command = [sys.executable, "-m", "rclip"]
+  completed_run = subprocess.run([*command, *args], cwd=test_images_dir, env=environment, capture_output=True)
 
   sys.stdout.buffer.write(completed_run.stdout)
   sys.stdout.buffer.flush()
