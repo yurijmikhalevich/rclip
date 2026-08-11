@@ -5,9 +5,7 @@ from pathlib import Path
 from rclip import fs
 
 IMAGE_RE = re.compile(r"^.+\.(jpg|jpeg|png)$", re.I)
-EXCLUDE_DIR_RE = re.compile(
-  rf"^.+\{os.path.sep}(@eaDir|node_modules|\.git|System Volume Information)(\{os.path.sep}.+)?$"
-)
+EXCLUDE_DIR_RE = re.compile(rf"^.+\{os.path.sep}(@eaDir|node_modules|\.git|System Volume Information)(\{os.path.sep}.+)?$")
 
 
 def _touch(path: Path):
