@@ -24,7 +24,7 @@ test:
 	uv run pytest tests
 
 test-system-rclip:
-	RCLIP_TEST_RUN_SYSTEM_RCLIP=true uv run --no-sync pytest tests/e2e
+	RCLIP_TEST_RUN_SYSTEM_RCLIP=true uv run --no-sync python -m pytest tests/e2e
 
 build-docker:
 	DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build . -t rclip
