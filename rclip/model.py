@@ -6,7 +6,7 @@ import numpy as np
 import numpy.typing as npt
 from PIL import Image, UnidentifiedImageError
 
-from rclip import model_download
+from rclip import model_download, translate
 from rclip.utils import helpers
 from rclip.utils.preprocess import preprocess
 from rclip.utils.tokenizer import SimpleTokenizer
@@ -21,11 +21,12 @@ FeatureVector = npt.NDArray[np.float32]
 class Model:
   VECTOR_SIZE = 512
 
-  def __init__(self):
+  def __init__(self, forced_lang: Optional[str] = None):
     self._session_text_var: Optional[Any] = None
     self._session_visual_var: Optional[Any] = None
     self._session_visual_index_var: Optional[Any] = None
     self._tokenizer_var: Optional[SimpleTokenizer] = None
+    self._forced_lang = forced_lang
 
   def ensure_downloaded(self) -> None:
     model_download.ensure_downloaded()
@@ -179,6 +180,7 @@ class Model:
 
     if phrases:
       phrase_multipliers, phrase_queries = zip(*phrases)
+      phrase_queries = [translate.translate_to_english(query, self._forced_lang) for query in phrase_queries]
       phrase_multipliers_np = np.array(phrase_multipliers).reshape(-1, 1)
       text_features = np.add.reduce(self.compute_text_features([*phrase_queries]) * phrase_multipliers_np)
 

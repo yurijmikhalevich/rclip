@@ -511,3 +511,87 @@ def test_release_indexing_resources_releases_visual_index_session(monkeypatch: p
     (str(Path("/models/visual.mlmodelc")), "all"),
     (str(Path("/models/visual.mlmodelc")), "all"),
   ]
+
+
+def _stub_compute_text_features(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
+  """Replaces Model.compute_text_features with a stub that records the text batches it was
+  called with and returns a zero vector per input, so tests can inspect what text actually
+  reached the (English-only) CLIP text encoder without needing a real/fake ONNX session."""
+  calls: list[list[str]] = []
+
+  def fake_compute_text_features(self: Model, text: list[str]) -> FeatureBatch:
+    calls.append(list(text))
+    return np.zeros((len(text), Model.VECTOR_SIZE), dtype=np.float32)
+
+  monkeypatch.setattr(Model, "compute_text_features", fake_compute_text_features)
+  return calls
+
+
+def test_compute_features_for_queries_translates_phrase_queries(monkeypatch: pytest.MonkeyPatch):
+  text_calls = _stub_compute_text_features(monkeypatch)
+  monkeypatch.setattr(model_module.translate, "translate_to_english", lambda query, _forced_lang: f"[en] {query}")
+
+  Model().compute_features_for_queries(["un gato en el sofá"])
+
+  assert text_calls == [["[en] un gato en el sofá"]]
+
+
+def test_compute_features_for_queries_passes_forced_lang_to_translator(monkeypatch: pytest.MonkeyPatch):
+  text_calls = _stub_compute_text_features(monkeypatch)
+  calls: list[tuple[str, str | None]] = []
+  monkeypatch.setattr(
+    model_module.translate,
+    "translate_to_english",
+    lambda query, forced_lang: calls.append((query, forced_lang)) or query,
+  )
+
+  Model(forced_lang="es").compute_features_for_queries(["un gato en el sofá"])
+
+  assert calls == [("un gato en el sofá", "es")]
+  assert text_calls == [["un gato en el sofá"]]
+
+
+def test_compute_features_for_queries_does_not_translate_file_path_queries(
+  monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+  image_path = tmp_path / "gato.jpg"
+  Image.new("RGB", (4, 4), color="red").save(image_path)
+
+  translate_calls: list[str] = []
+  monkeypatch.setattr(
+    model_module.translate,
+    "translate_to_english",
+    lambda query, _forced_lang: translate_calls.append(query) or query,
+  )
+  monkeypatch.setattr(
+    Model,
+    "compute_image_features",
+    lambda self, images, for_indexing=False: np.zeros((len(images), Model.VECTOR_SIZE), dtype=np.float32),
+  )
+
+  Model().compute_features_for_queries([str(image_path)])
+
+  # the file-path query must never reach the translator, only phrase queries do
+  assert translate_calls == []
+
+
+def test_compute_features_for_queries_does_not_translate_url_queries(monkeypatch: pytest.MonkeyPatch):
+  translate_calls: list[str] = []
+  monkeypatch.setattr(
+    model_module.translate,
+    "translate_to_english",
+    lambda query, _forced_lang: translate_calls.append(query) or query,
+  )
+  monkeypatch.setattr(
+    Model,
+    "compute_image_features",
+    lambda self, images, for_indexing=False: np.zeros((len(images), Model.VECTOR_SIZE), dtype=np.float32),
+  )
+  monkeypatch.setattr(
+    model_module.helpers, "download_image", lambda url, trusted=False: Image.new("RGB", (4, 4), color="red")
+  )
+
+  Model().compute_features_for_queries(["https://example.com/gato.jpg"])
+
+  # the URL query must never reach the translator, only phrase queries do
+  assert translate_calls == []

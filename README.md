@@ -16,6 +16,7 @@
 - **Natural-language search** – find photos by describing them, e.g. `rclip "two parrots on a branch"`.
 - **Reverse / image-to-image search** – search by an example image from a local path or a URL.
 - **Combined & arithmetic queries** – mix and weight text and image queries, e.g. `rclip "2:golden retriever" + "./pool.jpg" - fruit`.
+- **Non-English queries** – search in your own language, e.g. `rclip "un gato en el sofá"`, with the optional `[translate]` extra.
 - **Local & private** – works fully offline; your photos never leave your computer.
 - **Wide format support** – `jpg`, `png`, `webp`, `tiff`, `gif`, and more, plus native HEIC on
   macOS/Windows and experimental RAW (`arw`, `cr2`, `dng`).
@@ -137,6 +138,30 @@ cd photos && rclip "./racing car.jpg" - "2:sports car" + "2:snow"
 
 If you want to see how these queries perform when executed on the 1.28 million images ImageNet-1k dataset, check out the demo on YouTube: https://www.youtube.com/watch?v=MsTgYdOpgcQ.
 
+### Can I search using a non-English query?
+
+**rclip**'s underlying AI model only understands English text, but you can search in another
+language (Spanish, Japanese, etc.) with the optional `translate` extra installed. The first time,
+tell it what language you're typing in with `--lang`:
+
+```bash
+cd photos && rclip "un gato en el sofá" --lang es
+```
+
+`--lang` downloads a small translation package for that language (a one-time, offline-afterwards
+download) and translates the query to English before the search runs. If you don't remember the
+code, pass `--lang` with no value to use your system locale's language instead (e.g. `es` on a
+system set to `es_ES`); if the code doesn't match any available package, **rclip** suggests close
+matches, e.g. `no translation package found for language "esp"; did you mean: es, pt, eo?`.
+
+Once a language's package is installed, you don't need `--lang` again: later queries that aren't
+plain ASCII are auto-translated based on your system locale, as long as that locale's language
+already has a package installed. If it doesn't, the query just runs as-is (no download, no
+warning) -- repeat it with `--lang` once to install the package.
+
+This works well for concrete queries like "cat on the couch", but idioms and figurative language
+can lose nuance in translation.
+
 ### Which formats does **rclip** support?
 
 **rclip** always indexes the following image formats: `jpg`, `jpeg`, `png`, `webp`, `tiff`, `tif`, `bmp`, `gif`, `jp2`, `pnm`, `pbm`, `pgm`, and `ppm`.
@@ -222,6 +247,7 @@ Run `rclip --help` (or `rclip -h`) to see this list in your terminal. The positi
 | `--include-hidden` | Index dot-prefixed hidden files and directories (e.g. `.DS_Store`, `._IMG_1234.JPG`, `.Spotlight-V100`). Skipped by default since they are usually OS metadata rather than user files. |
 | `--experimental-raw-support` | Enable support for RAW images (`arw`, `cr2`, and `dng` are supported). |
 | `--max-image-megapixels` `MP` | Maximum size, in megapixels, an image may have to be indexed. Larger images are skipped to avoid running out of memory on huge or maliciously crafted images. Pass `none` to disable the limit. Default: chosen automatically based on the available memory. |
+| `--lang` `CODE` | Translate this query to English assuming it's written in `CODE` (ISO 639-1, e.g. `es`), downloading that language's translation package if needed. Bare `--lang` (no `CODE`) uses your system locale's language. Requires the optional `translate` extra. |
 | `--version`, `-v` | Print the **rclip** version and exit. |
 | `--help`, `-h` | Show the help message and exit. |
 
