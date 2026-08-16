@@ -320,6 +320,37 @@ def test_collects_native_versions_from_runtime_apis() -> None:
   assert reported == expected
 
 
+@pytest.mark.parametrize(
+  ("flags", "error"),
+  [
+    (
+      {"DEMOSAIC_PACK_GPL2": True, "DEMOSAIC_PACK_GPL3": False},
+      "rawpy forbidden feature is not disabled: DEMOSAIC_PACK_GPL2=True",
+    ),
+    (
+      {"DEMOSAIC_PACK_GPL2": False, "DEMOSAIC_PACK_GPL3": True},
+      "rawpy forbidden feature is not disabled: DEMOSAIC_PACK_GPL3=True",
+    ),
+    (
+      {"DEMOSAIC_PACK_GPL2": False},
+      "rawpy does not report required feature flag DEMOSAIC_PACK_GPL3",
+    ),
+  ],
+)
+def test_rejects_enabled_or_unreported_rawpy_gpl_features(
+  monkeypatch: pytest.MonkeyPatch, flags: dict[str, bool], error: str
+) -> None:
+  class Rawpy:
+    libraw_version = (0, 22, 0)
+
+  rawpy = Rawpy()
+  rawpy.flags = flags
+  monkeypatch.setattr("rclip._compliance.importlib.import_module", lambda name: rawpy)
+
+  with pytest.raises(ComplianceError, match=error):
+    _native_component_versions({"rawpy"})
+
+
 def test_sdist_includes_homebrew_compliance_inputs(tmp_path: Path) -> None:
   subprocess.run(
     ["uv", "build", "--sdist", "--out-dir", str(tmp_path)],
@@ -617,24 +648,36 @@ def test_native_sbom_uses_reported_version_and_rejects_policy_drift(tmp_path: Pa
     verify_bundle(root, legal, POLICY, None, output)
 
 
-def test_source_archive_is_deterministic_and_excludes_disabled_submodules(tmp_path: Path) -> None:
+def test_source_archive_is_deterministic_and_excludes_every_manifest_path(tmp_path: Path) -> None:
+  with (REPO_ROOT / "compliance/sources.toml").open("rb") as stream:
+    rawpy = tomllib.load(stream)["rawpy"]
+  excluded_submodules = [Path(path) for path in rawpy["excluded_submodules"]]
+  excluded_files = [Path(path) for path in rawpy["excluded_paths"]]
+  excluded = [*excluded_submodules, *excluded_files]
   source = tmp_path / "source"
   (source / "external/LibRaw").mkdir(parents=True)
   (source / "external/LibRaw/COPYRIGHT").write_text("LibRaw\n", encoding="utf-8")
-  disabled = source / "external/LibRaw-demosaic-pack-GPL2"
-  disabled.mkdir()
-  (disabled / "code.c").write_text("unused\n", encoding="utf-8")
+  for relative in excluded_submodules:
+    directory = source / relative
+    directory.mkdir(parents=True)
+    (directory / "code.c").write_text("unused\n", encoding="utf-8")
+  for relative in excluded_files:
+    path = source / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("fixture\n", encoding="utf-8")
   first = tmp_path / "first.tar.gz"
   second = tmp_path / "second.tar.gz"
 
-  _deterministic_tar(source, first, "source", excluded=[Path("external/LibRaw-demosaic-pack-GPL2")])
-  _deterministic_tar(source, second, "source", excluded=[Path("external/LibRaw-demosaic-pack-GPL2")])
+  _deterministic_tar(source, first, "source", excluded=excluded)
+  _deterministic_tar(source, second, "source", excluded=excluded)
 
   assert first.read_bytes() == second.read_bytes()
   with tarfile.open(first) as archive:
-    names = archive.getnames()
-  assert "source/external/LibRaw/COPYRIGHT" in names
-  assert not any("demosaic-pack-GPL2" in name for name in names)
+    archived = [Path(name) for name in archive.getnames()]
+  assert Path("source/external/LibRaw/COPYRIGHT") in archived
+  for relative in excluded:
+    prefix = Path("source") / relative
+    assert not any(path == prefix or prefix in path.parents for path in archived)
 
 
 def test_source_archive_normalizes_non_executable_modes(tmp_path: Path) -> None:

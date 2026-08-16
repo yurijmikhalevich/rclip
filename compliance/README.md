@@ -26,8 +26,10 @@ The DNG notice required by Adobe is:
 
 The rawpy corresponding-source archive deliberately initializes only LibRaw
 and LibRaw-cmake. The optional GPL2/GPL3 demosaic packs are disabled in the
-wheel build and excluded from the archive. Large test image fixtures, which
-are not needed to build or modify rawpy or LibRaw, are also excluded.
+wheel build and excluded from the archive. Release collection fails unless
+rawpy reports both `DEMOSAIC_PACK_GPL2` and `DEMOSAIC_PACK_GPL3` as disabled.
+Large test image fixtures, which are not needed to build or modify rawpy or
+LibRaw, are also excluded.
 
 ## Dependency policy workflow
 

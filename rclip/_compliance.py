@@ -49,6 +49,7 @@ NATIVE_MAGICS = (
   b"\xfe\xed\xfa\xcf",
 )
 PYTHON_NAME_PATTERN = re.compile(r"[-_.]+")
+FORBIDDEN_RAWPY_FEATURES = ("DEMOSAIC_PACK_GPL2", "DEMOSAIC_PACK_GPL3")
 LEGACY_LICENSE_EXPRESSIONS = {
   "3-Clause BSD License": "BSD-3-Clause",
   "Apache 2.0": "Apache-2.0",
@@ -527,6 +528,14 @@ def _native_component_versions(installed_packages: set[str]) -> list[dict[str, s
     except ImportError:
       pass
     else:
+      flags = getattr(rawpy, "flags", None)
+      if not isinstance(flags, dict):
+        raise ComplianceError("rawpy does not report optional feature flags")
+      for feature in FORBIDDEN_RAWPY_FEATURES:
+        if feature not in flags:
+          raise ComplianceError(f"rawpy does not report required feature flag {feature}")
+        if flags[feature] is not False:
+          raise ComplianceError(f"rawpy forbidden feature is not disabled: {feature}={flags[feature]!r}")
       versions["libraw"] = {
         "name": "libraw",
         "version": ".".join(str(part) for part in getattr(rawpy, "libraw_version")),
