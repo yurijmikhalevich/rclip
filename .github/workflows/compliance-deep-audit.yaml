@@ -68,24 +68,29 @@ jobs:
         run: |
           python -m pip install scancode-toolkit==32.5.0
           sudo apt-get update
-          sudo apt-get install -y p7zip-full
-      - name: Download latest AppImage and MSI
+          sudo apt-get install -y p7zip-full squashfs-tools
+      - name: Download latest AppImage, MSI, and Snaps
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download --pattern '*.AppImage' --pattern '*.msi' --dir release-artifacts
+        run: gh release download --pattern '*.AppImage' --pattern '*.msi' --pattern '*.snap' --dir release-artifacts
       - name: Extract release artifacts
         run: |
-          mkdir appimage-root msi-root
+          mkdir appimage-root msi-root snap-amd64-root snap-arm64-root
           chmod +x release-artifacts/*.AppImage
           cd appimage-root
           appimage_path=(../release-artifacts/*.AppImage)
           "${appimage_path[0]}" --appimage-extract >/dev/null
           cd ../msi-root
           7z x ../release-artifacts/*.msi >/dev/null
-      - name: Generate informational AppImage and MSI ScanCode reports
+          cd ..
+          unsquashfs -d snap-amd64-root release-artifacts/*-amd64.snap >/dev/null
+          unsquashfs -d snap-arm64-root release-artifacts/*-arm64.snap >/dev/null
+      - name: Generate informational release artifact ScanCode reports
         run: |
           scancode --license --package --copyright --json-pp scancode-appimage.json appimage-root/squashfs-root
           scancode --license --package --copyright --json-pp scancode-msi.json msi-root
+          scancode --license --package --copyright --json-pp scancode-snap-amd64.json snap-amd64-root
+          scancode --license --package --copyright --json-pp scancode-snap-arm64.json snap-arm64-root
       - uses: actions/upload-artifact@v7
         with:
           name: scancode-release-artifacts
