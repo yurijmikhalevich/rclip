@@ -152,7 +152,7 @@ def test_omits_external_python_runtime_by_default(tmp_path: Path, monkeypatch: p
   assert not any(component["name"] == "cpython" for component in report["components"])
 
 
-@pytest.mark.parametrize("name", ["unknown-package", "pi-heif"])
+@pytest.mark.parametrize("name", ["unknown-package", "pi-heif", "pillow-heif"])
 def test_collection_fails_closed_for_disallowed_or_prohibited_packages(tmp_path: Path, name: str) -> None:
   write_distribution(tmp_path, name)
 

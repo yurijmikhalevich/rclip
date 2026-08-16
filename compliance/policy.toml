@@ -1,6 +1,6 @@
 schema_version = 1
 
-prohibited_python_packages = ["pi-heif"]
+prohibited_python_packages = ["pi-heif", "pillow-heif"]
 
 # These distributions are supplied by the application itself or by the target
 # Python environment rather than by rclip's locked runtime dependency closure.
