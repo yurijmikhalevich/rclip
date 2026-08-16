@@ -13,44 +13,48 @@ unversioned_python_packages = ["pip", "rclip", "setuptools", "wheel"]
 # install them as ordinary, replaceable Python packages.
 prohibited_runtime_files = ["uv", "uvx"]
 
-# Package names are normalized according to Python packaging rules. This table,
-# together with unversioned_python_packages, is the complete allowlist. Any
-# change here is a dependency policy change.
-[allowed_python_versions]
-anyio = ["4.14.2"]
-attrs = ["26.1.0"]
-cattrs = ["26.1.0"]
-certifi = ["2026.7.22"]
-charset-normalizer = ["3.4.9"]
-click = ["8.4.2"]
-colorama = ["0.4.6"]
-coremltools = ["9.0"]
-filelock = ["3.32.2"]
-flatbuffers = ["25.12.19"]
-fsspec = ["2026.7.0"]
-ftfy = ["6.3.1"]
-h11 = ["0.16.0"]
-hf-xet = ["1.5.2"]
-httpcore = ["1.0.9"]
-httpx = ["0.28.1"]
-huggingface-hub = ["1.26.0"]
-idna = ["3.18"]
-mpmath = ["1.3.0"]
-numpy = ["2.1.3"]
-onnxruntime = ["1.28.0"]
-packaging = ["26.2"]
-pillow = ["12.3.0"]
-protobuf = ["7.35.1"]
-pyaml = ["26.7.0"]
-pyyaml = ["6.0.3"]
-rawpy = ["0.26.1"]
-regex = ["2026.4.4"]
-requests = ["2.34.2"]
-sympy = ["1.14.0"]
-tqdm = ["4.70.0"]
-typing-extensions = ["4.16.0"]
-urllib3 = ["2.7.0"]
-wcwidth = ["0.8.2"]
+# Package names are normalized according to Python packaging rules. This table
+# is the complete allowlist and records each reviewed SPDX licence expression.
+# Exact versions come from the runtime dependency closure in uv.lock.
+[approved_python_licenses]
+anyio = "MIT"
+attrs = "MIT"
+cattrs = "MIT"
+certifi = "MPL-2.0"
+charset-normalizer = "MIT"
+click = "BSD-3-Clause"
+colorama = "BSD-3-Clause"
+coremltools = "BSD-3-Clause"
+filelock = "MIT"
+flatbuffers = "Apache-2.0"
+fsspec = "BSD-3-Clause"
+ftfy = "Apache-2.0"
+h11 = "MIT"
+hf-xet = "Apache-2.0"
+httpcore = "BSD-3-Clause"
+httpx = "BSD-3-Clause"
+huggingface-hub = "Apache-2.0"
+idna = "BSD-3-Clause"
+mpmath = "BSD-3-Clause"
+numpy = "BSD-3-Clause"
+onnxruntime = "MIT"
+packaging = "Apache-2.0 OR BSD-2-Clause"
+pillow = "MIT-CMU"
+pip = "MIT"
+protobuf = "BSD-3-Clause"
+pyaml = "WTFPL"
+pyyaml = "MIT"
+rawpy = "MIT"
+rclip = "MIT"
+regex = "Apache-2.0 AND CNRI-Python"
+requests = "Apache-2.0"
+setuptools = "MIT"
+sympy = "BSD-3-Clause"
+tqdm = "MPL-2.0 AND MIT"
+typing-extensions = "PSF-2.0"
+urllib3 = "MIT"
+wcwidth = "MIT"
+wheel = "MIT"
 
 [codecs.av1]
 allowed = true

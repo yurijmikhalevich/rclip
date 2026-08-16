@@ -49,6 +49,24 @@ NATIVE_MAGICS = (
   b"\xfe\xed\xfa\xcf",
 )
 PYTHON_NAME_PATTERN = re.compile(r"[-_.]+")
+LEGACY_LICENSE_EXPRESSIONS = {
+  "3-Clause BSD License": "BSD-3-Clause",
+  "Apache 2.0": "Apache-2.0",
+  "Apache-2.0": "Apache-2.0",
+  "BSD": "BSD-3-Clause",
+  "BSD-3-Clause": "BSD-3-Clause",
+  "MIT": "MIT",
+  "MIT License": "MIT",
+  "MPL-2.0": "MPL-2.0",
+  "MPL-2.0 AND MIT": "MPL-2.0 AND MIT",
+  "WTFPL": "WTFPL",
+}
+LICENSE_CLASSIFIER_EXPRESSIONS = {
+  "License :: OSI Approved :: Apache Software License": "Apache-2.0",
+  "License :: OSI Approved :: BSD License": "BSD-3-Clause",
+  "License :: OSI Approved :: MIT License": "MIT",
+  "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)": "MPL-2.0",
+}
 
 
 class ComplianceError(RuntimeError):
@@ -93,6 +111,15 @@ def _find_policy() -> Path:
   raise ComplianceError("could not find compliance/policy.toml; pass --policy explicitly")
 
 
+def _find_lock(policy_path: Path) -> Path:
+  source_lock = Path(__file__).resolve().parent.parent / "uv.lock"
+  candidates = [policy_path.resolve().parent.parent / "uv.lock", Path.cwd() / "uv.lock", source_lock]
+  for candidate in candidates:
+    if candidate.is_file():
+      return candidate
+  raise ComplianceError("could not find uv.lock next to the distribution policy")
+
+
 def _required_string(values: dict[str, Any], key: str, description: str) -> str:
   value = values.get(key)
   if not isinstance(value, str) or not value:
@@ -130,7 +157,7 @@ def load_policy(path: Path | None) -> dict[str, Any]:
       "prohibited_python_packages",
       "unversioned_python_packages",
       "prohibited_runtime_files",
-      "allowed_python_versions",
+      "approved_python_licenses",
       "codecs",
       "copyleft",
     },
@@ -141,13 +168,25 @@ def load_policy(path: Path | None) -> dict[str, Any]:
     raise ComplianceError(f"unsupported policy schema in {policy_path}")
   for key in ("prohibited_python_packages", "unversioned_python_packages", "prohibited_runtime_files"):
     _string_list(policy, key, f"policy in {policy_path}", required=True)
-  allowed_versions = policy.get("allowed_python_versions")
-  if not isinstance(allowed_versions, dict) or not allowed_versions:
-    raise ComplianceError(f"policy in {policy_path} has invalid allowed_python_versions")
-  for package_name in allowed_versions:
+  approved_licenses = policy.get("approved_python_licenses")
+  if not isinstance(approved_licenses, dict) or not approved_licenses:
+    raise ComplianceError(f"policy in {policy_path} has invalid approved_python_licenses")
+  normalized_names: set[str] = set()
+  for package_name, expression in approved_licenses.items():
     if not isinstance(package_name, str) or not package_name:
       raise ComplianceError(f"policy in {policy_path} has an invalid Python package name")
-    _string_list(allowed_versions, package_name, f"{package_name} Python package", required=True)
+    normalized_name = normalize_python_name(package_name)
+    if normalized_name in normalized_names:
+      raise ComplianceError(f"policy in {policy_path} has duplicate normalized Python package names")
+    normalized_names.add(normalized_name)
+    if not isinstance(expression, str) or not expression:
+      raise ComplianceError(f"{package_name} Python package has invalid approved licence expression")
+  unversioned = {normalize_python_name(name) for name in policy["unversioned_python_packages"]}
+  missing_unversioned = sorted(unversioned - normalized_names)
+  if missing_unversioned:
+    raise ComplianceError(
+      "unversioned Python distributions have no approved licence: " + ", ".join(missing_unversioned)
+    )
   codecs = policy.get("codecs")
   if not isinstance(codecs, dict) or not codecs:
     raise ComplianceError(f"policy in {policy_path} is missing codecs")
@@ -212,6 +251,46 @@ def load_policy(path: Path | None) -> dict[str, Any]:
   return policy
 
 
+def _locked_runtime_versions(path: Path) -> dict[str, set[str]]:
+  with path.open("rb") as stream:
+    data = tomllib.load(stream)
+  packages = data.get("package")
+  if not isinstance(packages, list):
+    raise ComplianceError(f"lock file {path} has no package list")
+  packages_by_name: dict[str, list[dict[str, Any]]] = {}
+  for package in packages:
+    if not isinstance(package, dict):
+      raise ComplianceError(f"lock file {path} has an invalid package")
+    name = package.get("name")
+    version = package.get("version")
+    if not isinstance(name, str) or not name or not isinstance(version, str) or not version:
+      raise ComplianceError(f"lock file {path} has a package without a name or version")
+    packages_by_name.setdefault(normalize_python_name(name), []).append(package)
+  if "rclip" not in packages_by_name:
+    raise ComplianceError(f"lock file {path} has no rclip package")
+
+  versions: dict[str, set[str]] = {}
+  pending = ["rclip"]
+  while pending:
+    name = pending.pop()
+    if name in versions:
+      continue
+    locked = packages_by_name.get(name)
+    if locked is None:
+      raise ComplianceError(f"lock file {path} is missing runtime dependency {name}")
+    versions[name] = {str(package["version"]) for package in locked}
+    for package in locked:
+      dependencies = package.get("dependencies", [])
+      if not isinstance(dependencies, list):
+        raise ComplianceError(f"lock file {path} has invalid dependencies for {name}")
+      for dependency in dependencies:
+        dependency_name = dependency.get("name") if isinstance(dependency, dict) else None
+        if not isinstance(dependency_name, str) or not dependency_name:
+          raise ComplianceError(f"lock file {path} has an invalid dependency for {name}")
+        pending.append(normalize_python_name(dependency_name))
+  return versions
+
+
 def _required_codec_text(policy: dict[str, Any], codec_name: str) -> str:
   value = policy.get("codecs", {}).get(codec_name, {}).get("required_text")
   if not isinstance(value, str) or not value:
@@ -237,41 +316,86 @@ def _metadata_records(root: Path, excluded_root: Path | None = None) -> list[dic
       "version": version,
       "dist_info": metadata_path.parent,
       "declared_license_files": metadata.get_all("License-File", []),
+      "declared_license_expression": metadata.get("License-Expression", ""),
+      "legacy_license": metadata.get("License", ""),
+      "license_classifiers": [
+        value for value in metadata.get_all("Classifier", []) if value.startswith("License ::")
+      ],
     }
     records[(name, version)] = record
   return [records[key] for key in sorted(records)]
 
 
-def _validate_python_packages(records: Iterable[dict[str, Any]], policy: dict[str, Any]) -> None:
+def _approved_python_licenses(policy: dict[str, Any]) -> dict[str, str]:
+  return {
+    normalize_python_name(name): str(expression)
+    for name, expression in policy.get("approved_python_licenses", {}).items()
+  }
+
+
+def _validate_python_packages(
+  records: Iterable[dict[str, Any]], policy: dict[str, Any], locked_versions: dict[str, set[str]]
+) -> None:
   records = list(records)
   prohibited = {normalize_python_name(name) for name in policy.get("prohibited_python_packages", [])}
-  allowed_versions = {
-    normalize_python_name(name): {str(version) for version in versions}
-    for name, versions in policy.get("allowed_python_versions", {}).items()
-  }
+  approved = _approved_python_licenses(policy)
   unversioned = {normalize_python_name(name) for name in policy.get("unversioned_python_packages", [])}
-  allowed = allowed_versions.keys() | unversioned
   installed = {record["name"] for record in records}
   rejected = sorted(installed & prohibited)
-  unknown = sorted(installed - allowed)
+  unknown = sorted(installed - approved.keys())
   errors = []
   if rejected:
     errors.append(f"prohibited Python distributions: {', '.join(rejected)}")
   if unknown:
     errors.append(f"disallowed Python distributions: {', '.join(unknown)}")
-  conflicting_version_policy = sorted(allowed_versions.keys() & unversioned)
-  if conflicting_version_policy:
-    errors.append(
-      "Python distributions have both versioned and unversioned policies: " + ", ".join(conflicting_version_policy)
-    )
+  missing_approvals = sorted(locked_versions.keys() - approved.keys())
+  stale_approvals = sorted(approved.keys() - locked_versions.keys() - unversioned)
+  if missing_approvals:
+    errors.append(f"locked Python distributions have no approved licence: {', '.join(missing_approvals)}")
+  if stale_approvals:
+    errors.append(f"approved Python distributions are absent from the runtime lock: {', '.join(stale_approvals)}")
   version_drift = []
   for record in records:
-    expected = allowed_versions.get(record["name"])
+    expected = None if record["name"] in unversioned else locked_versions.get(record["name"])
     actual = record.get("version")
     if expected is not None and str(actual) not in expected:
-      version_drift.append(f"{record['name']} {actual or '<missing>'} (allowed: {', '.join(sorted(expected))})")
+      version_drift.append(f"{record['name']} {actual or '<missing>'} (locked: {', '.join(sorted(expected))})")
   if version_drift:
     errors.append(f"disallowed Python versions: {', '.join(sorted(version_drift))}")
+  if errors:
+    raise ComplianceError("; ".join(errors))
+
+
+def _declared_license_expression(record: dict[str, Any]) -> str:
+  expression = " ".join(str(record.get("declared_license_expression", "")).split())
+  if expression:
+    return expression
+  legacy = str(record.get("legacy_license", "")).strip()
+  expression = LEGACY_LICENSE_EXPRESSIONS.get(legacy, "")
+  if expression:
+    return expression
+  expressions = {
+    LICENSE_CLASSIFIER_EXPRESSIONS[classifier]
+    for classifier in record.get("license_classifiers", [])
+    if classifier in LICENSE_CLASSIFIER_EXPRESSIONS
+  }
+  return expressions.pop() if len(expressions) == 1 else ""
+
+
+def _validate_python_licenses(records: Iterable[dict[str, Any]], policy: dict[str, Any]) -> None:
+  approved = _approved_python_licenses(policy)
+  errors = []
+  for record in records:
+    expected = approved.get(record["name"])
+    if expected is None:
+      continue
+    actual = _declared_license_expression(record)
+    if not actual:
+      errors.append(f"unknown Python licence declaration: {record['name']} {record['version']}")
+    elif actual != expected:
+      errors.append(
+        f"unapproved Python licence: {record['name']} {record['version']} declares {actual} (approved: {expected})"
+      )
   if errors:
     raise ComplianceError("; ".join(errors))
 
@@ -304,7 +428,7 @@ def _legal_files(record: dict[str, Any], policy_dir: Path) -> list[Path]:
     for path in package_dir.iterdir():
       if _confined_file(path, package_dir) and path.name.lower().startswith(LEGAL_PREFIXES):
         result.add(path)
-  override_dir = policy_dir / "license-overrides" / record["name"]
+  override_dir = policy_dir / "license-overrides" / record["name"] / record["version"]
   if override_dir.is_dir():
     result.update(path for path in override_dir.rglob("*") if _confined_file(path, override_dir))
   return sorted(result)
@@ -427,7 +551,9 @@ def collect_legal_materials(
     raise ComplianceError(f"no Python distribution metadata found under {root}")
   resolved_policy_path = policy_path or _find_policy()
   policy = load_policy(resolved_policy_path)
-  _validate_python_packages(records, policy)
+  locked_versions = _locked_runtime_versions(_find_lock(resolved_policy_path))
+  _validate_python_packages(records, policy, locked_versions)
+  _validate_python_licenses(records, policy)
 
   if output.exists():
     shutil.rmtree(output)
@@ -449,6 +575,7 @@ def collect_legal_materials(
         "type": "python",
         "name": record["name"],
         "version": record["version"],
+        "license_expression": _declared_license_expression(record),
         "license_files": sorted(item["path"].replace(output.as_posix() + "/", "") for item in copied),
         "license_file_hashes": {
           item["path"].replace(output.as_posix() + "/", ""): item["sha256"]
@@ -676,11 +803,23 @@ def _validate_legal_pack(legal_dir: Path, policy_path: Path) -> tuple[dict[str, 
     errors.append("legal pack has no native component version records")
   elif len(_reported_native_versions(report)) != len(native_versions):
     errors.append("legal pack contains an invalid native component version record")
+  approved_licenses = _approved_python_licenses(load_policy(policy_path))
   for component in components:
     if not isinstance(component, dict):
       errors.append("legal pack contains an invalid component record")
       continue
     description = f"{component.get('name', '<unnamed>')} {component.get('version', '')}".rstrip()
+    if component.get("type", "python") == "python":
+      name = normalize_python_name(str(component.get("name", "")))
+      expected_expression = approved_licenses.get(name)
+      actual_expression = component.get("license_expression")
+      if expected_expression is None:
+        errors.append(f"legal component {description} has no approved licence")
+      elif actual_expression != expected_expression:
+        errors.append(
+          f"legal component {description} has unapproved licence {actual_expression or '<missing>'} "
+          f"(approved: {expected_expression})"
+        )
     license_files = component.get("license_files")
     hashes = component.get("license_file_hashes")
     if not isinstance(license_files, list) or not license_files:
@@ -846,6 +985,7 @@ def verify_bundle(
   legal_dir = legal_dir.resolve()
   resolved_policy_path = policy_path or _find_policy()
   policy = load_policy(resolved_policy_path)
+  locked_versions = _locked_runtime_versions(_find_lock(resolved_policy_path))
   errors: list[str] = []
   codec_policies = policy.get("codecs", {})
   detections: dict[str, list[str]] = {codec_name: [] for codec_name in codec_policies}
@@ -855,6 +995,11 @@ def verify_bundle(
       errors.append(f"legal pack is missing {filename}")
   report, legal_errors = _validate_legal_pack(legal_dir, resolved_policy_path)
   errors.extend(legal_errors)
+  reported_packages = _reported_python_packages(legal_dir)
+  try:
+    _validate_python_packages(reported_packages, policy, locked_versions)
+  except ComplianceError as error:
+    errors.append(str(error))
   for codec_name, codec_policy in codec_policies.items():
     required_notice = codec_policy.get("required_notice")
     if required_notice and not _notice_present(
@@ -902,7 +1047,6 @@ def verify_bundle(
   if syft_json is not None:
     syft_data = json.loads(syft_json.read_text(encoding="utf-8"))
     syft_packages = _syft_python_packages(syft_data)
-    reported_packages = _reported_python_packages(legal_dir)
     syft_inventory = {(package["name"], package["version"]) for package in syft_packages}
     reported_inventory = {(package["name"], package["version"]) for package in reported_packages}
     if not syft_inventory:
@@ -924,7 +1068,7 @@ def verify_bundle(
       if package_patterns:
         detections[codec_name].extend(_syft_native_matches(syft_data, package_patterns))
     try:
-      _validate_python_packages(syft_packages, policy)
+      _validate_python_packages(syft_packages, policy, locked_versions)
     except ComplianceError as error:
       errors.append(str(error))
 

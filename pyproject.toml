@@ -69,9 +69,10 @@ default-groups = "all"
 [tool.uv.build-backend]
 module-root = ""
 source-include = [
-    "compliance/license-overrides/*/*.txt",
+    "compliance/license-overrides/*/*/*.txt",
     "compliance/notices/*.txt",
     "compliance/policy.toml",
+    "uv.lock",
 ]
 source-exclude = [".DS_Store"]
 

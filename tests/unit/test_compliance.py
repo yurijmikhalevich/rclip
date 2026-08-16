@@ -11,6 +11,7 @@ from rclip._compliance import ComplianceError
 from rclip._compliance import augment_cyclonedx
 from rclip._compliance import _binary_contains
 from rclip._compliance import _deterministic_tar
+from rclip._compliance import _locked_runtime_versions
 from rclip._compliance import _native_component_versions
 from rclip._compliance import _validate_python_packages
 from rclip._compliance import build_corresponding_source
@@ -29,10 +30,21 @@ def dng_attribution() -> str:
     return tomllib.load(stream)["codecs"]["dng"]["required_text"]
 
 
-def write_distribution(root: Path, name: str, version: str = "1.0", include_license: bool = True) -> None:
+def write_distribution(
+  root: Path,
+  name: str,
+  version: str = "1.0",
+  include_license: bool = True,
+  license_expression: str | None = "MIT",
+  legacy_license: str | None = None,
+) -> None:
   dist_info = root / f"{name.replace('-', '_')}-{version}.dist-info"
   dist_info.mkdir(parents=True)
   metadata = f"Name: {name}\nVersion: {version}\n"
+  if license_expression is not None:
+    metadata += f"License-Expression: {license_expression}\n"
+  if legacy_license is not None:
+    metadata += f"License: {legacy_license}\n"
   if include_license:
     metadata += "License-File: LICENSE\n"
     licenses = dist_info / "licenses"
@@ -73,6 +85,7 @@ def write_legal_pack(legal_dir: Path) -> None:
         "type": "python",
         "name": "rclip",
         "version": "3.3.0",
+        "license_expression": policy["approved_python_licenses"]["rclip"],
         "license_files": [relative],
         "license_file_hashes": {relative: hashlib.sha256(license_path.read_bytes()).hexdigest()},
       }
@@ -95,6 +108,7 @@ def test_collects_namespaced_licenses_and_common_notices(tmp_path: Path) -> None
   assert "root" not in report
   assert "codec_notice_hashes" not in report
   assert report["components"][0]["name"] == "rclip"
+  assert report["components"][0]["license_expression"] == "MIT"
   assert (output / "licenses/rclip-3.3.0/licenses/LICENSE").is_file()
   assert (output / "notices/AOM-PATENT-LICENSE-1.0.txt").is_file()
   assert dng_attribution() in (output / "THIRD_PARTY_NOTICES.txt").read_text(encoding="utf-8")
@@ -167,13 +181,30 @@ def test_collection_requires_a_license_file(tmp_path: Path) -> None:
     collect_legal_materials(tmp_path, tmp_path / "legal", POLICY, NOTICES)
 
 
+def test_collection_uses_only_the_locked_version_license_override(tmp_path: Path) -> None:
+  write_distribution(
+    tmp_path,
+    "flatbuffers",
+    version="25.12.19",
+    include_license=False,
+    license_expression="Apache-2.0",
+  )
+
+  collect_legal_materials(tmp_path, tmp_path / "legal", POLICY, NOTICES)
+
+  assert (tmp_path / "legal/licenses/flatbuffers-25.12.19/LICENSE.txt").is_file()
+
+
 def test_collection_rejects_escaping_declared_license(tmp_path: Path) -> None:
   root = tmp_path / "runtime"
   write_distribution(root, "rclip", include_license=False)
   secret = tmp_path / "secret.txt"
   secret.write_text("build secret\n", encoding="utf-8")
   metadata = root / "rclip-1.0.dist-info/METADATA"
-  metadata.write_text(f"Name: rclip\nVersion: 1.0\nLicense-File: {secret}\n", encoding="utf-8")
+  metadata.write_text(
+    f"Name: rclip\nVersion: 1.0\nLicense-Expression: MIT\nLicense-File: {secret}\n",
+    encoding="utf-8",
+  )
 
   with pytest.raises(ComplianceError, match="unsafe licence file"):
     collect_legal_materials(root, root / "legal", POLICY, NOTICES)
@@ -186,41 +217,48 @@ def test_collection_rejects_disallowed_version_changes(tmp_path: Path) -> None:
     collect_legal_materials(tmp_path, tmp_path / "legal", POLICY, NOTICES)
 
 
-def test_unversioned_package_accepts_any_version_but_cannot_also_be_versioned() -> None:
-  policy = {"unversioned_python_packages": ["example"]}
+def test_collection_rejects_unapproved_or_unknown_licences(tmp_path: Path) -> None:
+  write_distribution(tmp_path, "anyio", version="4.14.2", license_expression="GPL-3.0-only")
+  with pytest.raises(ComplianceError, match="unapproved Python licence"):
+    collect_legal_materials(tmp_path, tmp_path / "legal", POLICY, NOTICES)
 
-  _validate_python_packages([{"name": "example", "version": "999"}], policy)
+  root = tmp_path / "unknown"
+  write_distribution(root, "anyio", version="4.14.2", license_expression=None)
+  with pytest.raises(ComplianceError, match="unknown Python licence declaration"):
+    collect_legal_materials(root, root / "legal", POLICY, NOTICES)
 
-  with pytest.raises(ComplianceError, match="both versioned and unversioned policies: example"):
-    _validate_python_packages(
-      [{"name": "example", "version": "1"}],
-      {
-        "unversioned_python_packages": ["example"],
-        "allowed_python_versions": {"example": ["1"]},
-      },
-    )
+
+def test_collection_normalizes_legacy_licence_metadata(tmp_path: Path) -> None:
+  write_distribution(
+    tmp_path,
+    "coremltools",
+    version="9.0",
+    license_expression=None,
+    legacy_license="BSD",
+  )
+
+  collect_legal_materials(tmp_path, tmp_path / "legal", POLICY, NOTICES)
+
+  report = json.loads((tmp_path / "legal/compliance-report.json").read_text(encoding="utf-8"))
+  assert report["components"][0]["license_expression"] == "BSD-3-Clause"
+
+
+def test_unversioned_package_accepts_any_version() -> None:
+  policy = {
+    "unversioned_python_packages": ["example"],
+    "approved_python_licenses": {"example": "MIT"},
+  }
+
+  _validate_python_packages([{"name": "example", "version": "999"}], policy, {})
 
 
 def test_policy_covers_locked_runtime_closure_on_every_platform() -> None:
-  with (REPO_ROOT / "uv.lock").open("rb") as stream:
-    locked_packages = {package["name"]: package for package in tomllib.load(stream)["package"]}
+  locked_versions = _locked_runtime_versions(REPO_ROOT / "uv.lock")
   with POLICY.open("rb") as stream:
     policy = tomllib.load(stream)
 
-  closure: set[str] = set()
-  pending = ["rclip"]
-  while pending:
-    name = pending.pop()
-    if name in closure:
-      continue
-    closure.add(name)
-    pending.extend(dependency["name"] for dependency in locked_packages[name].get("dependencies", []))
-
   unversioned = set(policy["unversioned_python_packages"])
-  allowed_versions = policy["allowed_python_versions"]
-  assert closure <= allowed_versions.keys() | unversioned
-  for name in closure - unversioned:
-    assert locked_packages[name]["version"] in allowed_versions[name]
+  assert set(policy["approved_python_licenses"]) == locked_versions.keys() | unversioned
 
 
 def test_rawpy_source_manifest_matches_allowed_runtime_version() -> None:
@@ -229,7 +267,8 @@ def test_rawpy_source_manifest_matches_allowed_runtime_version() -> None:
   with POLICY.open("rb") as stream:
     policy = tomllib.load(stream)
 
-  assert policy["allowed_python_versions"]["rawpy"] == [source["version"]]
+  assert _locked_runtime_versions(REPO_ROOT / "uv.lock")["rawpy"] == {source["version"]}
+  assert policy["approved_python_licenses"]["rawpy"] == "MIT"
   assert policy["codecs"]["dng"]["native_components"][0]["version"] == source["libraw_version"]
 
 
@@ -249,6 +288,7 @@ def test_policy_requires_native_component_fields(tmp_path: Path) -> None:
   [
     ("schema_version = 1", "schema_version = true", "unsupported policy schema"),
     ("allowed = true", 'allowed = "false"', "invalid allowed"),
+    ('anyio = "MIT"', 'anyio = ["MIT"]', "invalid approved licence expression"),
     ('path_markers = ["libavif", "_avif"]', 'path_markers = "libavif"', "invalid path_markers"),
     ('required_notice = "AOM-PATENT-LICENSE-1.0.txt"', 'unexpected = "value"', "unknown fields"),
   ],
@@ -296,6 +336,7 @@ def test_sdist_includes_homebrew_compliance_inputs(tmp_path: Path) -> None:
 
   expected = {
     "compliance/policy.toml",
+    "uv.lock",
     *{
       path.relative_to(REPO_ROOT).as_posix()
       for directory in (REPO_ROOT / "compliance/notices", REPO_ROOT / "compliance/license-overrides")
@@ -477,6 +518,20 @@ def test_verification_checks_component_licence_hashes(tmp_path: Path) -> None:
   (legal / "licenses/rclip-3.3.0/LICENSE").write_text("altered\n", encoding="utf-8")
 
   with pytest.raises(ComplianceError, match="altered licence file"):
+    verify_bundle(root, legal, POLICY, None)
+
+
+def test_verification_checks_reviewed_licence_expressions(tmp_path: Path) -> None:
+  root = tmp_path / "runtime"
+  root.mkdir()
+  legal = tmp_path / "legal"
+  write_legal_pack(legal)
+  report_path = legal / "compliance-report.json"
+  report = json.loads(report_path.read_text(encoding="utf-8"))
+  report["components"][0]["license_expression"] = "GPL-3.0-only"
+  report_path.write_text(json.dumps(report), encoding="utf-8")
+
+  with pytest.raises(ComplianceError, match="unapproved licence GPL-3.0-only"):
     verify_bundle(root, legal, POLICY, None)
 
 
