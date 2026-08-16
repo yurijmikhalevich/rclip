@@ -7,17 +7,18 @@ import tomllib
 
 import pytest
 
-from rclip._compliance import ComplianceError
-from rclip._compliance import augment_cyclonedx
-from rclip._compliance import _binary_contains
-from rclip._compliance import _deterministic_tar
-from rclip._compliance import _locked_runtime_versions
-from rclip._compliance import _native_component_versions
-from rclip._compliance import _validate_python_packages
-from rclip._compliance import build_corresponding_source
-from rclip._compliance import collect_legal_materials
-from rclip._compliance import load_policy
-from rclip._compliance import verify_bundle
+from rclip.compliance.common import ComplianceError
+from rclip.compliance.legal import collect_legal_materials
+from rclip.compliance.licenses import _declared_license_expression
+from rclip.compliance.licenses import _validate_python_packages
+from rclip.compliance.native import _binary_contains
+from rclip.compliance.native import _native_component_versions
+from rclip.compliance.policy import _locked_runtime_versions
+from rclip.compliance.policy import load_policy
+from rclip.compliance.sbom import augment_cyclonedx
+from rclip.compliance.source import _deterministic_tar
+from rclip.compliance.source import build_corresponding_source
+from rclip.compliance.verify import verify_bundle
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -137,7 +138,7 @@ def test_does_not_collect_python_runtime_license_twice(tmp_path: Path, monkeypat
   python_license.parent.mkdir(parents=True)
   python_license.write_text("CPython licence\n", encoding="utf-8")
   monkeypatch.setattr(
-    "rclip._compliance._python_runtime_license",
+    "rclip.compliance.legal._python_runtime_license",
     lambda _root: ("3.11.0", python_license),
   )
   output = root / "usr/share/doc/rclip"
@@ -157,7 +158,7 @@ def test_omits_external_python_runtime_by_default(tmp_path: Path, monkeypatch: p
   root = tmp_path / "runtime"
   write_distribution(root, "rclip", "3.3.0")
   monkeypatch.setattr(
-    "rclip._compliance._python_runtime_license",
+    "rclip.compliance.legal._python_runtime_license",
     lambda _root: pytest.fail("external Python runtime should not be inspected"),
   )
 
@@ -241,6 +242,20 @@ def test_collection_normalizes_legacy_licence_metadata(tmp_path: Path) -> None:
 
   report = json.loads((tmp_path / "legal/compliance-report.json").read_text(encoding="utf-8"))
   assert report["components"][0]["license_expression"] == "BSD-3-Clause"
+
+
+@pytest.mark.parametrize(
+  "expression",
+  ["Apache-2.0", "BSD-3-Clause", "MIT", "MPL-2.0", "MPL-2.0 AND MIT", "WTFPL"],
+)
+def test_accepts_spdx_expressions_from_legacy_licence_metadata(expression: str) -> None:
+  record = {
+    "declared_license_expression": "",
+    "legacy_license": expression,
+    "license_classifiers": [],
+  }
+
+  assert _declared_license_expression(record) == expression
 
 
 def test_unversioned_package_accepts_any_version() -> None:
@@ -343,9 +358,11 @@ def test_rejects_enabled_or_unreported_rawpy_gpl_features(
   class Rawpy:
     libraw_version = (0, 22, 0)
 
-  rawpy = Rawpy()
-  rawpy.flags = flags
-  monkeypatch.setattr("rclip._compliance.importlib.import_module", lambda name: rawpy)
+    def __init__(self, feature_flags: dict[str, bool]) -> None:
+      self.flags = feature_flags
+
+  rawpy = Rawpy(flags)
+  monkeypatch.setattr("rclip.compliance.native.importlib.import_module", lambda name: rawpy)
 
   with pytest.raises(ComplianceError, match=error):
     _native_component_versions({"rawpy"})
