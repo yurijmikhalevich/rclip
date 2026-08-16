@@ -13,12 +13,12 @@ import subprocess
 import sys
 import tomllib
 
-from rclip.compliance.common import ComplianceError
-from rclip.compliance.common import _json_dump
-from rclip.compliance.legal import collect_legal_materials
-from rclip.compliance.sbom import augment_cyclonedx
-from rclip.compliance.source import build_corresponding_source
-from rclip.compliance.verify import verify_bundle
+from rclip._compliance.common import ComplianceError
+from rclip._compliance.common import _json_dump
+from rclip._compliance.legal import collect_legal_materials
+from rclip._compliance.sbom import augment_cyclonedx
+from rclip._compliance.source import build_corresponding_source
+from rclip._compliance.verify import verify_bundle
 
 
 def _path(value: str) -> Path:

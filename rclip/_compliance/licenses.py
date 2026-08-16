@@ -5,10 +5,10 @@ import email.parser
 from pathlib import Path
 from typing import Any
 
-from rclip.compliance.common import ComplianceError
-from rclip.compliance.common import _confined_file
-from rclip.compliance.common import _is_inside
-from rclip.compliance.common import normalize_python_name
+from rclip._compliance.common import ComplianceError
+from rclip._compliance.common import _confined_file
+from rclip._compliance.common import _is_inside
+from rclip._compliance.common import normalize_python_name
 
 
 LEGAL_PREFIXES = (

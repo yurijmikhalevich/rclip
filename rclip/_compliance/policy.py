@@ -5,9 +5,9 @@ import re
 import tomllib
 from typing import Any
 
-from rclip.compliance.common import ComplianceError
-from rclip.compliance.common import _required_string
-from rclip.compliance.common import normalize_python_name
+from rclip._compliance.common import ComplianceError
+from rclip._compliance.common import _required_string
+from rclip._compliance.common import normalize_python_name
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

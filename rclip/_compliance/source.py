@@ -10,8 +10,8 @@ import tarfile
 import tempfile
 import tomllib
 
-from rclip.compliance.common import ComplianceError
-from rclip.compliance.common import _required_string
+from rclip._compliance.common import ComplianceError
+from rclip._compliance.common import _required_string
 
 
 def _deterministic_tar(source: Path, output: Path, archive_root: str, excluded: Iterable[Path] = ()) -> None:

@@ -5,22 +5,22 @@ import shutil
 import sys
 from typing import Any
 
-from rclip.compliance.common import ComplianceError
-from rclip.compliance.common import _confined_file
-from rclip.compliance.common import _is_inside
-from rclip.compliance.common import _json_dump
-from rclip.compliance.common import _sha256
-from rclip.compliance.licenses import _declared_license_expression
-from rclip.compliance.licenses import _legal_files
-from rclip.compliance.licenses import _metadata_records
-from rclip.compliance.licenses import _validate_python_licenses
-from rclip.compliance.licenses import _validate_python_packages
-from rclip.compliance.native import _native_component_versions
-from rclip.compliance.policy import _find_lock
-from rclip.compliance.policy import _find_policy
-from rclip.compliance.policy import _locked_runtime_versions
-from rclip.compliance.policy import _required_codec_text
-from rclip.compliance.policy import load_policy
+from rclip._compliance.common import ComplianceError
+from rclip._compliance.common import _confined_file
+from rclip._compliance.common import _is_inside
+from rclip._compliance.common import _json_dump
+from rclip._compliance.common import _sha256
+from rclip._compliance.licenses import _declared_license_expression
+from rclip._compliance.licenses import _legal_files
+from rclip._compliance.licenses import _metadata_records
+from rclip._compliance.licenses import _validate_python_licenses
+from rclip._compliance.licenses import _validate_python_packages
+from rclip._compliance.native import _native_component_versions
+from rclip._compliance.policy import _find_lock
+from rclip._compliance.policy import _find_policy
+from rclip._compliance.policy import _locked_runtime_versions
+from rclip._compliance.policy import _required_codec_text
+from rclip._compliance.policy import load_policy
 
 
 def _copy_file(source: Path, destination: Path) -> dict[str, Any]:

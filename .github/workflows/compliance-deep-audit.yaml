@@ -10,7 +10,7 @@ on:
       - compliance/**
       - Makefile
       - pyproject.toml
-      - rclip/_compliance.py
+      - rclip/_compliance/**
       - tests/unit/test_compliance.py
       - uv.lock
       - release-utils/**

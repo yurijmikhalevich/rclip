@@ -5,15 +5,15 @@ import json
 from pathlib import Path
 from typing import Any
 
-from rclip.compliance.common import ComplianceError
-from rclip.compliance.common import _json_dump
-from rclip.compliance.common import normalize_python_name
-from rclip.compliance.native import _native_candidates
-from rclip.compliance.native import _native_component_evidence
-from rclip.compliance.policy import _find_policy
-from rclip.compliance.policy import load_policy
-from rclip.compliance.report import _reported_native_versions
-from rclip.compliance.report import _validate_legal_pack
+from rclip._compliance.common import ComplianceError
+from rclip._compliance.common import _json_dump
+from rclip._compliance.common import normalize_python_name
+from rclip._compliance.native import _native_candidates
+from rclip._compliance.native import _native_component_evidence
+from rclip._compliance.policy import _find_policy
+from rclip._compliance.policy import load_policy
+from rclip._compliance.report import _reported_native_versions
+from rclip._compliance.report import _validate_legal_pack
 
 
 def _syft_python_packages(data: dict[str, Any]) -> list[dict[str, str]]:

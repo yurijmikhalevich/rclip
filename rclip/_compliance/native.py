@@ -6,8 +6,8 @@ from pathlib import Path
 import re
 from typing import Any
 
-from rclip.compliance.common import ComplianceError
-from rclip.compliance.common import _is_inside
+from rclip._compliance.common import ComplianceError
+from rclip._compliance.common import _is_inside
 
 
 NATIVE_SUFFIXES = {".dll", ".dylib", ".exe", ".pyd", ".so"}

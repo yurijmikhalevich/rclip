@@ -4,11 +4,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from rclip.compliance.common import _confined_file
-from rclip.compliance.common import _sha256
-from rclip.compliance.common import normalize_python_name
-from rclip.compliance.licenses import _approved_python_licenses
-from rclip.compliance.policy import load_policy
+from rclip._compliance.common import _confined_file
+from rclip._compliance.common import _sha256
+from rclip._compliance.common import normalize_python_name
+from rclip._compliance.licenses import _approved_python_licenses
+from rclip._compliance.policy import load_policy
 
 
 def _reported_python_packages(legal_dir: Path) -> list[dict[str, str]]:

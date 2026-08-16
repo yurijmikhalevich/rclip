@@ -4,25 +4,25 @@ import json
 from pathlib import Path
 from typing import Any
 
-from rclip.compliance.common import ComplianceError
-from rclip.compliance.common import _confined_file
-from rclip.compliance.common import _is_inside
-from rclip.compliance.common import _sha256
-from rclip.compliance.licenses import _validate_python_packages
-from rclip.compliance.native import _binary_contains
-from rclip.compliance.native import _has_replaceable_libraw
-from rclip.compliance.native import _native_candidates
-from rclip.compliance.native import _native_component_evidence
-from rclip.compliance.policy import _find_lock
-from rclip.compliance.policy import _find_policy
-from rclip.compliance.policy import _locked_runtime_versions
-from rclip.compliance.policy import _required_codec_text
-from rclip.compliance.policy import load_policy
-from rclip.compliance.report import _reported_native_versions
-from rclip.compliance.report import _reported_python_packages
-from rclip.compliance.report import _validate_legal_pack
-from rclip.compliance.sbom import _syft_native_matches
-from rclip.compliance.sbom import _syft_python_packages
+from rclip._compliance.common import ComplianceError
+from rclip._compliance.common import _confined_file
+from rclip._compliance.common import _is_inside
+from rclip._compliance.common import _sha256
+from rclip._compliance.licenses import _validate_python_packages
+from rclip._compliance.native import _binary_contains
+from rclip._compliance.native import _has_replaceable_libraw
+from rclip._compliance.native import _native_candidates
+from rclip._compliance.native import _native_component_evidence
+from rclip._compliance.policy import _find_lock
+from rclip._compliance.policy import _find_policy
+from rclip._compliance.policy import _locked_runtime_versions
+from rclip._compliance.policy import _required_codec_text
+from rclip._compliance.policy import load_policy
+from rclip._compliance.report import _reported_native_versions
+from rclip._compliance.report import _reported_python_packages
+from rclip._compliance.report import _validate_legal_pack
+from rclip._compliance.sbom import _syft_native_matches
+from rclip._compliance.sbom import _syft_python_packages
 
 
 def _notice_present(
