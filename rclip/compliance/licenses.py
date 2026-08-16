@@ -27,7 +27,7 @@ LEGACY_LICENSE_ALIASES = {
   "BSD": "BSD-3-Clause",
   "MIT License": "MIT",
 }
-LEGACY_SPDX_EXPRESSIONS = {
+ACCEPTED_LEGACY_SPDX_EXPRESSIONS = {
   "Apache-2.0",
   "BSD-3-Clause",
   "MIT",
@@ -115,7 +115,7 @@ def _declared_license_expression(record: dict[str, Any]) -> str:
   if expression:
     return expression
   legacy = str(record.get("legacy_license", "")).strip()
-  if legacy in LEGACY_SPDX_EXPRESSIONS:
+  if legacy in ACCEPTED_LEGACY_SPDX_EXPRESSIONS:
     return legacy
   expression = LEGACY_LICENSE_ALIASES.get(legacy, "")
   if expression:
