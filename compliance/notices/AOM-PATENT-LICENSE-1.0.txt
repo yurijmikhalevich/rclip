@@ -95,7 +95,7 @@ membership and/or participation in the Alliance for Open Media working group
 that developed the Specification.
 
 2.10. Necessary Claims. "Necessary Claims" means all claims of patents or
-patent applications, (a) that currently or at any time in the future are owned
+patent applications, (a) that currently or at any time in the future, are owned
 or controlled by the Licensor, and (b) (i) would be an Essential Claim as
 defined by the W3C Policy as of February 5, 2004
 (https://www.w3.org/Consortium/Patent-Policy-20040205/#def-essential) as if the

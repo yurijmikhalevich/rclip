@@ -55,7 +55,7 @@ wcwidth = ["0.8.2"]
 [codecs.av1]
 allowed = true
 required_notice = "AOM-PATENT-LICENSE-1.0.txt"
-required_sha256 = "bd05b38492255b08e2f7b16a0755548e969a76d6ff8a1bd4919a5e0312f6f00e"
+required_sha256 = "86171cb5019cf1a6999969b649896e2aa5b79bfe2fef310a637ad18d2d44f15b"
 
 [[codecs.av1.native_components]]
 name = "libavif"
@@ -87,7 +87,7 @@ path_markers = ["libraw", "raw_r", "_rawpy"]
 [codecs.webp]
 allowed = true
 required_notice = "WEBP-PATENTS.txt"
-required_sha256 = "8ba8ee940cc54a549846b19069996f8bcaa87d28a5a5c4cb0f3f959bde27737b"
+required_sha256 = "f80f65f5692130b5ea4a3208c9053a551509631d4be2a4d9a600fd684569d61e"
 
 [[codecs.webp.native_components]]
 name = "libwebp"

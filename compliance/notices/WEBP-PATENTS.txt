@@ -21,4 +21,4 @@ patent infringement, then any patent rights granted to you under this License
 for these implementations of WebM shall terminate as of the date such
 litigation is filed.
 
-Source: https://chromium.googlesource.com/webm/libwebp/+/HEAD/PATENTS
+Source: https://chromium.googlesource.com/webm/libwebp/+/refs/tags/v1.6.0/PATENTS
