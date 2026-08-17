@@ -59,13 +59,14 @@ def test_download_coreml_model_materializes_real_package(monkeypatch: pytest.Mon
     return path
 
   monkeypatch.setattr(model_download_module.helpers, "get_app_datadir", fake_get_app_datadir)
+  monkeypatch.setattr(model_download_module, "_install_model_legal_files", lambda _model_dir: None)
   compiled_paths: list[str] = []
   monkeypatch.setattr(model_download_module, "ensure_compiled_coreml_model", fake_ensure_compiled_coreml_model)
 
-  calls: list[dict[str, str | None]] = []
+  calls: list[dict[str, object]] = []
 
   def fake_snapshot_download(
-    *, repo_id: str, allow_patterns: str, cache_dir: str | None = None, local_dir: str, **_kwargs: object
+    *, repo_id: str, allow_patterns: str | list[str], cache_dir: str | None = None, local_dir: str, **_kwargs: object
   ) -> str:
     calls.append({"repo_id": repo_id, "allow_patterns": allow_patterns, "cache_dir": cache_dir, "local_dir": local_dir})
     return local_dir
@@ -80,10 +81,13 @@ def test_download_coreml_model_materializes_real_package(monkeypatch: pytest.Mon
   assert calls == [
     {
       "repo_id": "yurijmikhalevich/rclip-models",
-      "allow_patterns": "ViT-B-32-256-datacomp_s34b_b86k/visual.mlpackage/**",
+      "allow_patterns": [
+        "ViT-B-32-256-datacomp_s34b_b86k/visual.mlpackage/**",
+        *model_download_module.MODEL_LEGAL_FILES,
+      ],
       "cache_dir": None,
       "local_dir": str(Path("/tmp/rclip-datadir")),
-    }
+    },
   ]
   assert compiled_paths == [str(Path("/tmp/rclip-datadir/ViT-B-32-256-datacomp_s34b_b86k/visual.mlpackage"))]
 
@@ -194,6 +198,7 @@ def test_ensure_downloaded_compiles_existing_coreml_packages(monkeypatch: pytest
     model_dir / "textual.onnx",
     model_dir / "visual.mlpackage",
     data_dir / "tokenizer/bpe_simple_vocab_16e6.txt.gz",
+    *(data_dir / filename for filename in model_download_module.MODEL_LEGAL_FILES),
   }
   compiled_paths: list[str] = []
 
@@ -243,6 +248,9 @@ def test_ensure_downloaded_uses_matching_downloader_for_each_runtime(monkeypatch
   def fake_download_coreml_model(tqdm_class: type | None = None) -> str:
     downloaded.append(("coreml", "visual.mlpackage"))
     return "/models/visual.mlpackage"
+
+  def fake_install_model_legal_files(_model_dir: str) -> None:
+    downloaded.append(("legal", "notices"))
 
   class FakeRepoFile:
     def __init__(self, path: str):
@@ -294,6 +302,7 @@ def test_ensure_downloaded_uses_matching_downloader_for_each_runtime(monkeypatch
   monkeypatch.delenv("RCLIP_USE_ONNX_ON_MACOS", raising=False)
   monkeypatch.setattr(model_download_module.os.path, "isdir", fake_isdir)
   monkeypatch.setattr(model_download_module.os.path, "isfile", fake_isfile)
+  monkeypatch.setattr(model_download_module, "_install_model_legal_files", fake_install_model_legal_files)
   monkeypatch.setattr(model_download_module, "download_visual_query_model", fake_download_visual_query_model)
   monkeypatch.setattr(model_download_module, "download_textual_model", fake_download_textual_model)
   monkeypatch.setattr(model_download_module, "download_visual_index_model_package", fake_download_coreml_model)
@@ -307,6 +316,7 @@ def test_ensure_downloaded_uses_matching_downloader_for_each_runtime(monkeypatch
   Model().ensure_downloaded()
 
   assert downloaded == [
+    ("legal", "notices"),
     ("onnx", "visual.onnx"),
     ("onnx", "textual.onnx"),
     ("coreml", "visual.mlpackage"),
@@ -365,7 +375,10 @@ def test_uses_dedicated_model_cache_dir_when_configured(monkeypatch: pytest.Monk
     ) -> str:
       calls.append({"allow_patterns": allow_patterns, "cache_dir": cache_dir, "local_dir": local_dir})
       assert cache_dir == str(Path(tmp_model_cache_dir))
-      if allow_patterns == "ViT-B-32-256-datacomp_s34b_b86k/visual.onnx":
+      if allow_patterns == [
+        "ViT-B-32-256-datacomp_s34b_b86k/visual.onnx",
+        *model_download_module.MODEL_LEGAL_FILES,
+      ]:
         downloaded_path = Path(local_dir) / "ViT-B-32-256-datacomp_s34b_b86k/visual.onnx"
         downloaded_path.parent.mkdir(parents=True, exist_ok=True)
         downloaded_path.touch()
@@ -377,12 +390,19 @@ def test_uses_dedicated_model_cache_dir_when_configured(monkeypatch: pytest.Monk
       Path(tmp_datadir) / "ViT-B-32-256-datacomp_s34b_b86k/visual.onnx"
     )
     assert cache_dir.exists()
+    for filename in model_download_module.MODEL_LEGAL_FILES:
+      assert (Path(tmp_datadir) / filename).read_bytes() == (
+        Path(model_download_module.MODEL_LEGAL_SOURCE) / filename
+      ).read_bytes()
     assert calls == [
       {
-        "allow_patterns": "ViT-B-32-256-datacomp_s34b_b86k/visual.onnx",
+        "allow_patterns": [
+          "ViT-B-32-256-datacomp_s34b_b86k/visual.onnx",
+          *model_download_module.MODEL_LEGAL_FILES,
+        ],
         "cache_dir": str(Path(tmp_model_cache_dir)),
         "local_dir": tmp_datadir,
-      }
+      },
     ]
 
 

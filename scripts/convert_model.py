@@ -31,6 +31,7 @@ PRETRAINED = "datacomp_s34b_b86k"
 IMAGE_SIZE = 256
 CONTEXT_LENGTH = 77
 COREML_VISUAL_BATCH_SIZE = 8
+MODEL_REPOSITORY_METADATA = Path(__file__).resolve().parents[1] / "rclip/model_repository"
 FeatureBatch = npt.NDArray[np.float32]
 
 
@@ -323,6 +324,9 @@ def main() -> None:
   vocab_dst.parent.mkdir(parents=True, exist_ok=True)
   shutil.copy2(vocab_src, vocab_dst)
   print(f"Copied vocab: {vocab_dst}")
+
+  shutil.copytree(MODEL_REPOSITORY_METADATA, args.output_dir, dirs_exist_ok=True)
+  print(f"Copied model repository metadata: {MODEL_REPOSITORY_METADATA}")
 
   if args.upload:
     print(f"Uploading to {args.hf_repo}...")

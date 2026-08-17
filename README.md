@@ -287,6 +287,9 @@ GitHub release also includes CycloneDX SBOMs and the corresponding rawpy/LibRaw
 source archive. The reviewed dependency and codec policy is documented in
 [`compliance/`](compliance/README.md).
 
+The separately downloaded model includes its model card, attribution, and the
+MIT notices for OpenCLIP and the OpenAI CLIP tokenizer and vocabulary.
+
 This product includes DNG technology under license by Adobe.
 
 ## License

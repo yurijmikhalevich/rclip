@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import tarfile
 import tomllib
+import zipfile
 
 import pytest
 
@@ -369,7 +370,7 @@ def test_rejects_enabled_or_unreported_rawpy_gpl_features(
     _native_component_versions({"rawpy"})
 
 
-def test_sdist_includes_homebrew_compliance_inputs(tmp_path: Path) -> None:
+def test_sdist_includes_compliance_inputs(tmp_path: Path) -> None:
   subprocess.run(
     ["uv", "build", "--sdist", "--out-dir", str(tmp_path)],
     cwd=REPO_ROOT,
@@ -388,12 +389,44 @@ def test_sdist_includes_homebrew_compliance_inputs(tmp_path: Path) -> None:
     "uv.lock",
     *{
       path.relative_to(REPO_ROOT).as_posix()
-      for directory in (REPO_ROOT / "compliance/notices", REPO_ROOT / "compliance/license-overrides")
+      for directory in (
+        REPO_ROOT / "compliance/notices",
+        REPO_ROOT / "compliance/license-overrides",
+        REPO_ROOT / "rclip/model_repository",
+      )
       for path in directory.rglob("*")
       if path.is_file()
     },
   }
   assert expected <= names, f"sdist is missing compliance inputs: {sorted(expected - names)}"
+
+
+def test_wheel_includes_clip_legal_files(tmp_path: Path) -> None:
+  subprocess.run(
+    ["uv", "build", "--wheel", "--out-dir", str(tmp_path)],
+    cwd=REPO_ROOT,
+    check=True,
+    capture_output=True,
+    text=True,
+  )
+  wheels = list(tmp_path.glob("rclip-*.whl"))
+  assert len(wheels) == 1
+
+  with zipfile.ZipFile(wheels[0]) as archive:
+    names = set(archive.namelist())
+
+  assert {
+    "rclip/model_repository/LICENSE",
+    "rclip/model_repository/OPENAI-CLIP-MIT.txt",
+    "rclip/model_repository/README.md",
+    "rclip/model_repository/THIRD_PARTY_NOTICES.md",
+  } <= names
+  expected_suffixes = {
+    "/licenses/rclip/model_repository/LICENSE",
+    "/licenses/rclip/model_repository/OPENAI-CLIP-MIT.txt",
+    "/licenses/rclip/model_repository/THIRD_PARTY_NOTICES.md",
+  }
+  assert all(any(name.endswith(suffix) for name in names) for suffix in expected_suffixes)
 
 
 def test_av1_requires_aom_patent_notice(tmp_path: Path) -> None:
