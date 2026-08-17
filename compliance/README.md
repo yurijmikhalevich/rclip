@@ -36,6 +36,12 @@ rawpy reports both `DEMOSAIC_PACK_GPL2` and `DEMOSAIC_PACK_GPL3` as disabled.
 Large test image fixtures, which are not needed to build or modify rawpy or
 LibRaw, are also excluded.
 
+textual-image is redistributed under LGPL-3.0-or-later. Self-contained release
+artifacts include the LGPLv3 and GPLv3 texts, and each GitHub release publishes
+the exact textual-image source archive from `uv.lock`. The release's tagged
+rclip source archive provides the corresponding application code needed to
+modify or relink that library.
+
 ## Dependency policy workflow
 
 When `uv.lock`, a dependency declaration, or packaging changes:
@@ -49,7 +55,8 @@ When `uv.lock`, a dependency declaration, or packaging changes:
    `license-overrides/<package>/<version>/`. Use
    `unversioned_python_packages` only for the rclip project distribution itself
    or distributions supplied outside its locked runtime dependency closure.
-3. Update `sources.toml` when rawpy or LibRaw changes.
+3. Update `sources.toml` when rawpy or LibRaw changes. Keep the textual-image
+   source download and its generated notice aligned with `uv.lock`.
 4. Run `uv run pytest tests/unit/test_compliance.py`.
 
 Release builds run Syft against each assembled payload, add declared native

@@ -46,6 +46,8 @@ dependencies = [
     "pillow>=12.0.0,<13",
     "regex~=2026.4.4",
     "requests~=2.32",
+    "textual>=8.2.8,<9",
+    "textual-image>=0.8.5,<0.9",
     "tqdm>=4.65.0,<5",
     "rawpy>=0.26.1,<0.27",
 ]

@@ -24,8 +24,13 @@ class Image(NewImage):
 class DB:
   VERSION = 4
 
-  def __init__(self, filename: Union[str, pathlib.Path], allow_vector_cache_reset: bool = True):
-    self._con = sqlite3.connect(filename)
+  def __init__(
+    self,
+    filename: Union[str, pathlib.Path],
+    allow_vector_cache_reset: bool = True,
+    allow_cross_thread: bool = False,
+  ):
+    self._con = sqlite3.connect(filename, check_same_thread=not allow_cross_thread)
     self._con.row_factory = sqlite3.Row
     self.ensure_tables()
     self.ensure_version(allow_vector_cache_reset=allow_vector_cache_reset)
@@ -164,3 +169,14 @@ class DB:
       "SELECT filepath, vector FROM images WHERE filepath LIKE ? ESCAPE '\\' AND deleted IS NULL",
       (self._get_dirpath_like_pattern(path),),
     )
+
+  def get_image_filepaths_by_dir_path(self, path: str, limit: int | None = None) -> list[str]:
+    query = (
+      "SELECT filepath FROM images WHERE filepath LIKE ? ESCAPE '\\' AND deleted IS NULL "
+      "ORDER BY modified_at DESC, filepath"
+    )
+    parameters: tuple[str | int, ...] = (self._get_dirpath_like_pattern(path),)
+    if limit is not None:
+      query += " LIMIT ?"
+      parameters += (limit,)
+    return [row["filepath"] for row in self._con.execute(query, parameters)]
