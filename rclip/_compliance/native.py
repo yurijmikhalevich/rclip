@@ -82,7 +82,9 @@ def _native_component_versions(installed_packages: set[str]) -> list[dict[str, s
 def _native_candidates(root: Path, excluded_root: Path | None = None) -> list[Path]:
   candidates = []
   for path in root.rglob("*"):
-    if not path.is_file() or (excluded_root is not None and _is_inside(path, excluded_root)):
+    if not path.is_file() or not _is_inside(path, root):
+      continue
+    if excluded_root is not None and _is_inside(path, excluded_root):
       continue
     lower_name = path.name.lower()
     try:

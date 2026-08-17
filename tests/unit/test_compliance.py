@@ -12,6 +12,7 @@ from rclip._compliance.legal import collect_legal_materials
 from rclip._compliance.licenses import _declared_license_expression
 from rclip._compliance.licenses import _validate_python_packages
 from rclip._compliance.native import _binary_contains
+from rclip._compliance.native import _native_candidates
 from rclip._compliance.native import _native_component_versions
 from rclip._compliance.policy import _locked_runtime_versions
 from rclip._compliance.policy import load_policy
@@ -463,6 +464,24 @@ def test_binary_markers_can_be_matched_case_insensitively(tmp_path: Path) -> Non
   binary.write_bytes(b"native LIBRAW_R.SO dependency")
 
   assert _binary_contains(binary, ["libraw_r.so"], casefold=True) == ["libraw_r.so"]
+
+
+def test_native_candidates_confine_symlink_targets_to_root(tmp_path: Path) -> None:
+  root = tmp_path / "runtime"
+  root.mkdir()
+  bundled = root / "bundled.so"
+  bundled.write_bytes(b"\x7fELFnative")
+  host = tmp_path / "host.so"
+  host.write_bytes(b"\x7fELFnative")
+  bundled_link = root / "bundled-link.so"
+  host_link = root / "host-link.so"
+  try:
+    bundled_link.symlink_to(bundled.name)
+    host_link.symlink_to(host)
+  except OSError:
+    pytest.skip("symlinks are unavailable")
+
+  assert set(_native_candidates(root)) == {bundled, bundled_link}
 
 
 @pytest.mark.parametrize(
