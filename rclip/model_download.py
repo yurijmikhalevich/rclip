@@ -19,7 +19,6 @@ TEXTUAL_ONNX = "textual.onnx"
 VISUAL_COREML = "visual.mlpackage"
 TOKENIZER_VOCAB = "tokenizer/bpe_simple_vocab_16e6.txt.gz"
 MODEL_LEGAL_FILES = ("LICENSE", "OPENAI-CLIP-MIT.txt", "README.md", "THIRD_PARTY_NOTICES.md")
-MODEL_LEGAL_SOURCE = os.path.join(os.path.dirname(__file__), "model_repository")
 USE_ONNX_RUNTIME_ON_MACOS_ENV_VAR = "RCLIP_USE_ONNX_ON_MACOS"
 COREML_VISUAL_BATCH_SIZE = 8
 
@@ -81,19 +80,34 @@ def _get_model_cache_dir() -> Optional[str]:
   return str(model_cache_dir) if model_cache_dir else None
 
 
-def _install_model_legal_files(model_dir: str) -> None:
-  os.makedirs(model_dir, exist_ok=True)
-  for filename in MODEL_LEGAL_FILES:
-    destination = os.path.join(model_dir, filename)
-    if not os.path.isfile(destination):
-      shutil.copyfile(os.path.join(MODEL_LEGAL_SOURCE, filename), destination)
+def _model_legal_files_exist(model_dir: str) -> bool:
+  return all(os.path.isfile(os.path.join(model_dir, filename)) for filename in MODEL_LEGAL_FILES)
+
+
+def download_model_legal_files(tqdm_class: Optional[type] = None) -> str:
+  model_dir = str(helpers.get_app_datadir())
+  if _model_legal_files_exist(model_dir):
+    return model_dir
+
+  from huggingface_hub import snapshot_download
+
+  kwargs = {}
+  if tqdm_class is not None:
+    kwargs["tqdm_class"] = tqdm_class
+
+  return snapshot_download(
+    repo_id=HF_REPO_ID,
+    allow_patterns=list(MODEL_LEGAL_FILES),
+    cache_dir=_get_model_cache_dir(),
+    local_dir=model_dir,
+    **kwargs,
+  )
 
 
 def download_onnx_model(filename: str, tqdm_class: Optional[type] = None) -> str:
   model_dir = str(helpers.get_app_datadir())
-  _install_model_legal_files(model_dir)
   expected_path = os.path.join(model_dir, MODEL_SUBDIR, filename)
-  if os.path.isfile(expected_path):
+  if os.path.isfile(expected_path) and _model_legal_files_exist(model_dir):
     return expected_path
 
   from huggingface_hub import snapshot_download
@@ -123,9 +137,8 @@ def download_textual_model(tqdm_class: Optional[type] = None) -> str:
 
 def download_tokenizer_vocab(tqdm_class: Optional[type] = None) -> str:
   model_dir = str(helpers.get_app_datadir())
-  _install_model_legal_files(model_dir)
   expected_path = os.path.join(model_dir, TOKENIZER_VOCAB)
-  if os.path.isfile(expected_path):
+  if os.path.isfile(expected_path) and _model_legal_files_exist(model_dir):
     return expected_path
 
   from huggingface_hub import snapshot_download
@@ -147,9 +160,8 @@ def download_tokenizer_vocab(tqdm_class: Optional[type] = None) -> str:
 
 def download_coreml_model(dirname: str, tqdm_class: Optional[type] = None) -> str:
   model_dir = str(helpers.get_app_datadir())
-  _install_model_legal_files(model_dir)
   expected_path = os.path.join(model_dir, MODEL_SUBDIR, dirname)
-  if os.path.isdir(expected_path):
+  if os.path.isdir(expected_path) and _model_legal_files_exist(model_dir):
     return expected_path
 
   from huggingface_hub import snapshot_download
@@ -205,7 +217,6 @@ def use_coreml_for_visual_index() -> bool:
 
 def ensure_downloaded() -> None:
   model_dir = str(helpers.get_app_datadir())
-  _install_model_legal_files(model_dir)
   to_download: list[tuple[str, Callable[[type | None], str]]] = []
 
   visual_query_path = os.path.join(model_dir, MODEL_SUBDIR, VISUAL_ONNX)
@@ -237,6 +248,7 @@ def ensure_downloaded() -> None:
     to_download.append((TOKENIZER_VOCAB, lambda tqdm_class: download_tokenizer_vocab(tqdm_class=tqdm_class)))
 
   if not to_download:
+    download_model_legal_files()
     _import_onnxruntime()
     return
 

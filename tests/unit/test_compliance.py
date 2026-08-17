@@ -392,7 +392,7 @@ def test_sdist_includes_compliance_inputs(tmp_path: Path) -> None:
       for directory in (
         REPO_ROOT / "compliance/notices",
         REPO_ROOT / "compliance/license-overrides",
-        REPO_ROOT / "rclip/model_repository",
+        REPO_ROOT / "compliance/model_repository",
       )
       for path in directory.rglob("*")
       if path.is_file()
@@ -415,18 +415,13 @@ def test_wheel_includes_clip_legal_files(tmp_path: Path) -> None:
   with zipfile.ZipFile(wheels[0]) as archive:
     names = set(archive.namelist())
 
-  assert {
-    "rclip/model_repository/LICENSE",
-    "rclip/model_repository/OPENAI-CLIP-MIT.txt",
-    "rclip/model_repository/README.md",
-    "rclip/model_repository/THIRD_PARTY_NOTICES.md",
-  } <= names
   expected_suffixes = {
-    "/licenses/rclip/model_repository/LICENSE",
-    "/licenses/rclip/model_repository/OPENAI-CLIP-MIT.txt",
-    "/licenses/rclip/model_repository/THIRD_PARTY_NOTICES.md",
+    "/licenses/compliance/model_repository/LICENSE",
+    "/licenses/compliance/model_repository/OPENAI-CLIP-MIT.txt",
+    "/licenses/compliance/model_repository/THIRD_PARTY_NOTICES.md",
   }
   assert all(any(name.endswith(suffix) for name in names) for suffix in expected_suffixes)
+  assert not any(name.startswith("rclip/model_repository/") for name in names)
 
 
 def test_av1_requires_aom_patent_notice(tmp_path: Path) -> None:

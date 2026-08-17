@@ -31,7 +31,7 @@ PRETRAINED = "datacomp_s34b_b86k"
 IMAGE_SIZE = 256
 CONTEXT_LENGTH = 77
 COREML_VISUAL_BATCH_SIZE = 8
-MODEL_REPOSITORY_METADATA = Path(__file__).resolve().parents[1] / "rclip/model_repository"
+MODEL_REPOSITORY_METADATA = Path(__file__).resolve().parents[1] / "compliance/model_repository"
 FeatureBatch = npt.NDArray[np.float32]
 
 

@@ -8,9 +8,9 @@ readme = "README.md"
 license = "MIT"
 license-files = [
     "LICENSE",
-    "rclip/model_repository/LICENSE",
-    "rclip/model_repository/OPENAI-CLIP-MIT.txt",
-    "rclip/model_repository/THIRD_PARTY_NOTICES.md",
+    "compliance/model_repository/LICENSE",
+    "compliance/model_repository/OPENAI-CLIP-MIT.txt",
+    "compliance/model_repository/THIRD_PARTY_NOTICES.md",
 ]
 keywords = [
     "image search",
@@ -75,6 +75,7 @@ default-groups = "all"
 module-root = ""
 source-include = [
     "compliance/license-overrides/*/*/*.txt",
+    "compliance/model_repository/*",
     "compliance/notices/*.txt",
     "compliance/policy.toml",
     "uv.lock",
