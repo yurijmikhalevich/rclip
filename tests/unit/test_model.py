@@ -375,13 +375,9 @@ def test_uses_dedicated_model_cache_dir_when_configured(monkeypatch: pytest.Monk
     ) -> str:
       calls.append({"allow_patterns": allow_patterns, "cache_dir": cache_dir, "local_dir": local_dir})
       assert cache_dir == str(Path(tmp_model_cache_dir))
-      if allow_patterns == [
-        "ViT-B-32-256-datacomp_s34b_b86k/visual.onnx",
-        *model_download_module.MODEL_LEGAL_FILES,
-      ]:
-        downloaded_path = Path(local_dir) / "ViT-B-32-256-datacomp_s34b_b86k/visual.onnx"
-        downloaded_path.parent.mkdir(parents=True, exist_ok=True)
-        downloaded_path.touch()
+      downloaded_path = Path(local_dir) / "ViT-B-32-256-datacomp_s34b_b86k/visual.onnx"
+      downloaded_path.parent.mkdir(parents=True, exist_ok=True)
+      downloaded_path.touch()
       return tmp_datadir
 
     monkeypatch.setattr("huggingface_hub.snapshot_download", fake_snapshot_download)
