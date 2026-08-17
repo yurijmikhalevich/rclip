@@ -1,7 +1,8 @@
 """
 Vendored and simplified CLIP BPE tokenizer.
-Original source: open_clip (MIT License), which in turn is based on OpenAI's CLIP tokenizer.
+Original source: OpenAI CLIP (MIT, Copyright (c) 2021 OpenAI), via OpenCLIP.
 Modified to remove the torch dependency: returns numpy int64 arrays instead of torch.LongTensor.
+See compliance/model_repository/OPENAI-CLIP-MIT.txt in the source repository.
 """
 
 import gzip

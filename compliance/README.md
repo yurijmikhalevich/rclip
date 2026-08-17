@@ -9,6 +9,11 @@ collected legal materials accurate.
 wheel omits them. Overrides are scoped as `<package>/<version>/` and must be
 checked against that exact locked dependency version.
 
+`model_repository/` contains the model card and legal materials published with
+the converted model. Required OpenCLIP and OpenAI CLIP notices are included in
+rclip distributions, and rclip downloads the complete set from Hugging Face
+alongside the model artifacts.
+
 Builds use `python -m rclip._compliance` to collect dependency licences and
 native versions, create a third-party notice index, inspect native codec
 binaries, enrich and verify Syft inventories, and validate every collected
