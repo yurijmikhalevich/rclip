@@ -13,7 +13,7 @@ from tqdm import tqdm
 import PIL
 import PIL.Image
 
-from rclip import db, fs, model
+from rclip import db, fs, model, translate
 from rclip.const import IMAGE_EXT, IMAGE_RAW_EXT
 from rclip.utils.preprocess import preprocess
 from rclip.utils.preview import preview
@@ -321,12 +321,13 @@ def init_rclip(
   enable_raw_support: bool = False,
   max_image_pixels: helpers.MaxImagePixels = helpers.AUTO_MAX_IMAGE_PIXELS,
   include_hidden: bool = False,
+  forced_lang: Optional[str] = None,
 ):
   datadir = helpers.get_app_datadir()
   db_path = datadir / "db.sqlite3"
 
   database = db.DB(db_path, allow_vector_cache_reset=not no_indexing)
-  model_instance = model.Model()
+  model_instance = model.Model(forced_lang=forced_lang)
   model_instance.ensure_downloaded()
   rclip = RClip(
     model_instance=model_instance,
@@ -378,6 +379,26 @@ def main():
   if is_snap():
     check_snap_permissions(current_directory, is_current_directory=True)
 
+  forced_lang = translate.resolve_forced_lang(args.lang)
+  if args.lang is not None and forced_lang is None:
+    print(
+      "rclip: --lang: could not detect a system locale language; pass a language code explicitly, e.g. --lang es",
+      file=sys.stderr,
+    )
+    sys.exit(1)
+  if forced_lang is not None and forced_lang != "en":
+    if not translate.is_available():
+      print(
+        'rclip: --lang requires the optional "translate" extra; run \'pip install "rclip[translate]"\' to install it',
+        file=sys.stderr,
+      )
+      sys.exit(1)
+    try:
+      translate.ensure_language_installed(forced_lang)
+    except translate.LanguagePackageError as error:
+      print(error, file=sys.stderr)
+      sys.exit(1)
+
   rclip, model_instance, db = init_rclip(
     current_directory,
     args.indexing_batch_size,
@@ -386,6 +407,7 @@ def main():
     args.experimental_raw_support,
     args.max_image_megapixels,
     args.include_hidden,
+    forced_lang,
   )
 
   try:

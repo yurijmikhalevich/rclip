@@ -356,6 +356,19 @@ def init_arg_parser() -> argparse.ArgumentParser:
     " avoid running out of memory on huge or maliciously crafted images;"
     ' pass "none" to disable the limit; default: chosen automatically based on available memory',
   )
+  parser.add_argument(
+    "--lang",
+    nargs="?",
+    const="",
+    default=None,
+    metavar="CODE",
+    help="translates non-English text queries to English, forcing the source language to CODE"
+    ' (an ISO 639-1 code, e.g. "es"); downloads the matching translation package on first use;'
+    ' passing "--lang" with no CODE uses your system locale\'s language;'
+    ' once a language\'s package is installed, later queries in it are auto-translated even'
+    " without this flag, based on your system locale;"
+    ' requires the optional "translate" extra',
+  )
   return parser
 
 
