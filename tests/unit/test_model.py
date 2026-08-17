@@ -356,6 +356,18 @@ def test_extract_query_multiplier():
   assert Model._extract_query_multiplier("1.5:complex and long query") == (1.5, "complex and long query")
 
 
+@pytest.mark.parametrize("query", ["cat", "2:cat", ".5:bright", "1.:dark"])
+def test_recognizes_text_queries(query: str) -> None:
+  assert Model.is_text_query(query)
+
+
+@pytest.mark.parametrize(
+  "query", ["./cat.jpg", "2:./cat.jpg", "https://example.com/cat.jpg", ".5:file:///cat.jpg", r"C:\cat.jpg"]
+)
+def test_recognizes_image_queries(query: str) -> None:
+  assert not Model.is_text_query(query)
+
+
 def test_uses_dedicated_model_cache_dir_when_configured(monkeypatch: pytest.MonkeyPatch):
   with tempfile.TemporaryDirectory() as tmp_datadir, tempfile.TemporaryDirectory() as tmp_model_cache_dir:
     monkeypatch.setenv("RCLIP_DATADIR", tmp_datadir)

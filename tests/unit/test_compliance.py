@@ -40,6 +40,7 @@ def write_distribution(
   include_license: bool = True,
   license_expression: str | None = "MIT",
   legacy_license: str | None = None,
+  license_classifier: str | None = None,
 ) -> None:
   dist_info = root / f"{name.replace('-', '_')}-{version}.dist-info"
   dist_info.mkdir(parents=True)
@@ -48,6 +49,8 @@ def write_distribution(
     metadata += f"License-Expression: {license_expression}\n"
   if legacy_license is not None:
     metadata += f"License: {legacy_license}\n"
+  if license_classifier is not None:
+    metadata += f"Classifier: {license_classifier}\n"
   if include_license:
     metadata += "License-File: LICENSE\n"
     licenses = dist_info / "licenses"
@@ -246,6 +249,28 @@ def test_collection_normalizes_legacy_licence_metadata(tmp_path: Path) -> None:
   assert report["components"][0]["license_expression"] == "BSD-3-Clause"
 
 
+def test_collection_includes_textual_image_licences_and_source_links(tmp_path: Path) -> None:
+  write_distribution(tmp_path, "rclip", version="3.3.0")
+  write_distribution(
+    tmp_path,
+    "textual-image",
+    version="0.8.5",
+    license_expression=None,
+    license_classifier="License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
+  )
+
+  output = tmp_path / "legal"
+  collect_legal_materials(tmp_path, output, POLICY, NOTICES)
+
+  licenses = output / "licenses/textual-image-0.8.5"
+  assert (licenses / "licenses/LICENSE").is_file()
+  assert (licenses / "COPYING.GPLv3.txt").is_file()
+  notices = (output / "THIRD_PARTY_NOTICES.txt").read_text(encoding="utf-8")
+  assert "uses textual-image 0.8.5 under LGPL-3.0-or-later" in notices
+  assert "textual_image-0.8.5.tar.gz" in notices
+  assert "/archive/refs/tags/v3.3.0.tar.gz" in notices
+
+
 @pytest.mark.parametrize(
   "expression",
   ["Apache-2.0", "BSD-3-Clause", "MIT", "MPL-2.0", "MPL-2.0 AND MIT", "WTFPL"],
@@ -275,6 +300,7 @@ def test_policy_covers_locked_runtime_closure_on_every_platform() -> None:
     policy = tomllib.load(stream)
 
   unversioned = set(policy["unversioned_python_packages"])
+  assert {"linkify-it-py", "uc-micro-py"} <= locked_versions.keys()
   assert set(policy["approved_python_licenses"]) == locked_versions.keys() | unversioned
 
 

@@ -139,6 +139,11 @@ class Model:
         phrase_queries.append((multiplier, query))
     return phrase_queries, local_file_queries, url_queries
 
+  @staticmethod
+  def is_text_query(query: str) -> bool:
+    _, query = Model._extract_query_multiplier(query)
+    return not helpers.is_http_url(query) and not helpers.is_file_path(query)
+
   def compute_features_for_queries(self, queries: List[str]) -> FeatureVector:
     text_features: Optional[FeatureVector] = None
     image_features: Optional[FeatureVector] = None

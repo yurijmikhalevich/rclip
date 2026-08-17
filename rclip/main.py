@@ -302,6 +302,11 @@ class RClip:
 
     return [RClip.SearchResult(filepath=filepaths[th[1]], score=th[0]) for th in top_k_similarities]
 
+  def list_images(self, directory: str, top_k: int) -> list[str]:
+    filepaths = (row["filepath"] for row in self._db.get_image_filepaths_by_dir_path(directory))
+    included = (filepath for filepath in filepaths if not self._exclude_dir_regex.match(filepath))
+    return list(itertools.islice(included, top_k))
+
   def _get_features(self, directory: str) -> Tuple[List[str], model.FeatureVector]:
     filepaths: List[str] = []
     features: List[model.FeatureVector] = []
@@ -321,11 +326,16 @@ def init_rclip(
   enable_raw_support: bool = False,
   max_image_pixels: helpers.MaxImagePixels = helpers.AUTO_MAX_IMAGE_PIXELS,
   include_hidden: bool = False,
+  allow_cross_thread_db: bool = False,
 ):
   datadir = helpers.get_app_datadir()
   db_path = datadir / "db.sqlite3"
 
-  database = db.DB(db_path, allow_vector_cache_reset=not no_indexing)
+  database = db.DB(
+    db_path,
+    allow_vector_cache_reset=not no_indexing,
+    allow_cross_thread=allow_cross_thread_db,
+  )
   model_instance = model.Model()
   model_instance.ensure_downloaded()
   rclip = RClip(
@@ -373,24 +383,44 @@ def print_results(result: List[RClip.SearchResult], args: helpers.argparse.Names
 def main():
   arg_parser = helpers.init_arg_parser()
   args = arg_parser.parse_args()
+  if args.query is None and not args.interactive:
+    arg_parser.error("query is required unless --interactive is used")
+  if args.interactive and not all(
+    model.Model.is_text_query(query) for query in [args.query, *args.add, *args.subtract] if query
+  ):
+    arg_parser.error("--interactive currently supports text queries only")
+  top_k = args.top or (100 if args.interactive else 10)
 
   current_directory = os.getcwd()
   if is_snap():
     check_snap_permissions(current_directory, is_current_directory=True)
 
   rclip, model_instance, db = init_rclip(
-    current_directory,
-    args.indexing_batch_size,
-    args.exclude_dir,
-    args.no_indexing,
-    args.experimental_raw_support,
-    args.max_image_megapixels,
-    args.include_hidden,
+    working_directory=current_directory,
+    indexing_batch_size=args.indexing_batch_size,
+    exclude_dir=args.exclude_dir,
+    no_indexing=args.no_indexing,
+    enable_raw_support=args.experimental_raw_support,
+    max_image_pixels=args.max_image_megapixels,
+    include_hidden=args.include_hidden,
+    allow_cross_thread_db=args.interactive,
   )
 
   try:
-    result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
-    print_results(result, args)
+    if args.interactive:
+      from rclip.tui import run_tui
+
+      run_tui(
+        rclip,
+        current_directory,
+        args.query,
+        top_k,
+        args.add,
+        args.subtract,
+      )
+    else:
+      result = rclip.search(args.query, current_directory, top_k, args.add, args.subtract)
+      print_results(result, args)
   finally:
     rclip.close()
     model_instance.close()
