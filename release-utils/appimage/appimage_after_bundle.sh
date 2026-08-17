@@ -37,3 +37,10 @@ for bin_dir in "$APPDIR/usr/bin" "$APPDIR/usr/local/bin"; do
     find "$bin_dir" -maxdepth 1 -type f \( -name pip -o -name 'pip[0-9]*' -o -name wheel \) -delete
   fi
 done
+
+python3.11 -m rclip._compliance collect \
+  --root "$APPDIR" \
+  --output "$APPDIR/usr/share/doc/rclip" \
+  --policy compliance/policy.toml \
+  --common-notices compliance/notices \
+  --include-python-runtime

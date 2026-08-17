@@ -6,6 +6,7 @@ authors = [{ name = "Yurij Mikhalevich", email = "yurij@mikhalevi.ch" }]
 requires-python = ">=3.11,<3.14"
 readme = "README.md"
 license = "MIT"
+license-files = ["LICENSE"]
 keywords = [
     "image search",
     "computer vision",
@@ -67,6 +68,13 @@ default-groups = "all"
 
 [tool.uv.build-backend]
 module-root = ""
+source-include = [
+    "compliance/license-overrides/*/*/*.txt",
+    "compliance/notices/*.txt",
+    "compliance/policy.toml",
+    "uv.lock",
+]
+source-exclude = [".DS_Store"]
 
 [build-system]
 requires = ["uv_build>=0.11.12,<0.12.0"]

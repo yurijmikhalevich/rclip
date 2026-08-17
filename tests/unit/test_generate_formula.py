@@ -43,3 +43,19 @@ def test_get_marker_environment_uses_homebrew_target_python(monkeypatch: pytest.
   assert marker_env["sys_platform"] == "linux"
   assert marker_env["platform_system"] == "Linux"
   assert marker_env["platform_machine"] == "arm64"
+
+
+def test_formula_uses_explicit_compliance_inputs() -> None:
+  formula = generate_formula.TEMPLATE.render(
+    package={"url": "https://example.test/rclip.tar.gz", "checksum": "sha256"},
+    resources="",
+    target_python_version=generate_formula.TARGET_PYTHON_VERSION,
+    wheel_resources="",
+    wheel_names="",
+    wheel_packages=[],
+    include_macos_wheel_resource=False,
+    macos_wheel_resource="",
+  )
+
+  assert '"--policy", buildpath/"compliance/policy.toml"' in formula
+  assert '"--common-notices", buildpath/"compliance/notices"' in formula

@@ -1,9 +1,27 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import json
+from pathlib import Path
+
 from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import copy_metadata
 
 
 block_cipher = None
+project_root = Path(SPEC).resolve().parents[2]
+legal_dir = project_root / 'build/legal'
+compliance_report_path = legal_dir / 'compliance-report.json'
+
+if not compliance_report_path.is_file():
+    raise RuntimeError('Missing build/legal/compliance-report.json; run `make build-windows` first.')
+
+with compliance_report_path.open(encoding='utf-8') as stream:
+    compliance_report = json.load(stream)
+
+distribution_metadata = []
+for component in compliance_report['components']:
+    if component.get('type', 'python') == 'python':
+        distribution_metadata += copy_metadata(component['name'])
 
 
 a = Analysis(
@@ -12,6 +30,8 @@ a = Analysis(
     binaries=[],
     datas=[
         *collect_data_files('onnxruntime'),
+        *distribution_metadata,
+        (str(legal_dir), 'legal'),
     ],
     # rclip imports onnxruntime dynamically, so PyInstaller won't see it unless we
     # declare it explicitly.
@@ -43,6 +63,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    contents_directory='.',
 )
 coll = COLLECT(
     exe,

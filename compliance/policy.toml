@@ -1,0 +1,114 @@
+schema_version = 1
+
+prohibited_python_packages = ["pi-heif", "pillow-heif"]
+
+# These distributions are supplied by the application itself or by the target
+# Python environment rather than by rclip's locked runtime dependency closure.
+# Keeping the exceptions explicit prevents a dependency from silently accepting
+# arbitrary versions.
+unversioned_python_packages = ["pip", "rclip", "setuptools", "wheel"]
+
+# Build tools must not be present in self-contained runtime artifacts. pip,
+# setuptools and wheel remain allowed because some virtualenv distributors
+# install them as ordinary, replaceable Python packages.
+prohibited_runtime_files = ["uv", "uvx"]
+
+# Package names are normalized according to Python packaging rules. This table
+# is the complete allowlist and records each reviewed SPDX licence expression.
+# Exact versions come from the runtime dependency closure in uv.lock.
+[approved_python_licenses]
+anyio = "MIT"
+attrs = "MIT"
+cattrs = "MIT"
+certifi = "MPL-2.0"
+charset-normalizer = "MIT"
+click = "BSD-3-Clause"
+colorama = "BSD-3-Clause"
+coremltools = "BSD-3-Clause"
+filelock = "MIT"
+flatbuffers = "Apache-2.0"
+fsspec = "BSD-3-Clause"
+ftfy = "Apache-2.0"
+h11 = "MIT"
+hf-xet = "Apache-2.0"
+httpcore = "BSD-3-Clause"
+httpx = "BSD-3-Clause"
+huggingface-hub = "Apache-2.0"
+idna = "BSD-3-Clause"
+mpmath = "BSD-3-Clause"
+numpy = "BSD-3-Clause"
+onnxruntime = "MIT"
+packaging = "Apache-2.0 OR BSD-2-Clause"
+pillow = "MIT-CMU"
+pip = "MIT"
+protobuf = "BSD-3-Clause"
+pyaml = "WTFPL"
+pyyaml = "MIT"
+rawpy = "MIT"
+rclip = "MIT"
+regex = "Apache-2.0 AND CNRI-Python"
+requests = "Apache-2.0"
+setuptools = "MIT"
+sympy = "BSD-3-Clause"
+tqdm = "MPL-2.0 AND MIT"
+typing-extensions = "PSF-2.0"
+urllib3 = "MIT"
+wcwidth = "MIT"
+wheel = "MIT"
+
+[codecs.av1]
+allowed = true
+required_notice = "AOM-PATENT-LICENSE-1.0.txt"
+required_sha256 = "86171cb5019cf1a6999969b649896e2aa5b79bfe2fef310a637ad18d2d44f15b"
+
+[[codecs.av1.native_components]]
+name = "libavif"
+version = "1.4.2"
+path_markers = ["libavif", "_avif"]
+binary_markers = ["avifDecoder"]
+
+[[codecs.av1.native_components]]
+name = "libaom"
+version = "3.14.1"
+binary_markers = ["aom_codec"]
+
+[[codecs.av1.native_components]]
+name = "dav1d"
+version = "1.5.3-0-gb546257"
+binary_markers = ["dav1d"]
+
+[codecs.dng]
+allowed = true
+required_notice = "ADOBE-DNG-PATENT-LICENSE.txt"
+required_text = "This product includes DNG technology under license by Adobe."
+required_sha256 = "2314c8d717942f3a6a5745633fb60904309c16722696197d456847898e8966e8"
+
+[[codecs.dng.native_components]]
+name = "libraw"
+version = "0.22.0"
+path_markers = ["libraw", "raw_r", "_rawpy"]
+
+[codecs.webp]
+allowed = true
+required_notice = "WEBP-PATENTS.txt"
+required_sha256 = "f80f65f5692130b5ea4a3208c9053a551509631d4be2a4d9a600fd684569d61e"
+
+[[codecs.webp.native_components]]
+name = "libwebp"
+version = "1.6.0"
+path_markers = ["libwebp", "_webp"]
+binary_markers = ["WebPDecode"]
+
+[codecs.hevc]
+allowed = false
+forbidden_filename_patterns = ["libde265", "libx265", "x265.dll"]
+forbidden_package_patterns = ["libde265", "libx265", "x265"]
+forbidden_binary_markers = [
+  "x265_encoder_open",
+  "de265_decode",
+]
+
+[copyleft.libraw]
+license = "LGPL-2.1-or-later"
+must_be_shared = true
+source_component = "rawpy"

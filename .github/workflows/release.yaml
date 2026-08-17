@@ -64,11 +64,12 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   pypi-build:
-    needs: lint
+    needs: [lint, parse_tag]
     if: github.event_name == 'push' || inputs.pypi
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-syft
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
@@ -76,10 +77,24 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
       - run: uv build
+      - name: Generate wheel SBOM
+        run: |
+          mkdir -p build/compliance
+          python -m zipfile -e \
+            dist/rclip-${{ needs.parse_tag.outputs.version }}-py3-none-any.whl \
+            build/wheel-sbom-root
+          SYFT_FILE_METADATA_SELECTION=none syft scan dir:build/wheel-sbom-root \
+            -o cyclonedx-json=build/compliance/rclip-wheel.cdx.json
+          python -c 'import json; components=json.load(open("build/compliance/rclip-wheel.cdx.json"))["components"]; assert any(component.get("name") == "rclip" for component in components), "rclip not in wheel SBOM"'
       - uses: actions/upload-artifact@v7
         with:
           name: pypi
           path: dist/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pypi-compliance
+          path: build/compliance/*
           if-no-files-found: error
 
   pypi-test:
@@ -121,7 +136,7 @@ jobs:
 
   brew:
     # the Formula references the rclip package published to PyPI
-    needs: [parse_tag, pypi-release]
+    needs: [parse_tag, pypi-release, source-release]
     if: github.event_name == 'push' && needs.parse_tag.outputs.is_stable_version == 'true'
     runs-on: ubuntu-22.04
     steps:
@@ -153,13 +168,29 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - uses: ./.github/actions/setup-syft
       - uses: canonical/setup-lxd@main
       - run: sudo snap install snapcraft --classic
       - run: snapcraft --use-lxd --build-for ${{ matrix.arch }}
+      - name: Extract assembled Snap
+        run: unsquashfs -d snap-root rclip_*.snap
+      - uses: ./.github/actions/audit-runtime
+        with:
+          root: snap-root
+          legal_dir: snap-root/share/doc/rclip
+          syft_json: snap-syft.json
+          cyclonedx_json: rclip-${{ matrix.arch }}-snap.cdx.json
+          report_output: snap-${{ matrix.arch }}-compliance.json
       - uses: actions/upload-artifact@v7
         with:
           name: snap-${{ matrix.arch }}
-          path: rclip_*.snap
+          path: |
+            rclip_*.snap
+            rclip-${{ matrix.arch }}-snap.cdx.json
+            snap-${{ matrix.arch }}-compliance.json
           if-no-files-found: error
 
   snap-test:
@@ -181,7 +212,7 @@ jobs:
       - uses: ./.github/actions/test-system-rclip
 
   snap-release:
-    needs: [snap-test, parse_tag]
+    needs: [snap-test, parse_tag, source-release]
     if: github.event_name == 'push'
     runs-on: ubuntu-22.04
     steps:
@@ -209,6 +240,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-syft
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
@@ -227,10 +259,25 @@ jobs:
         env:
           APP_VERSION: ${{ needs.parse_tag.outputs.version }}
         run: bash ./release-utils/appimage/build_appimage.sh
+      - name: Extract assembled AppImage
+        run: |
+          chmod +x rclip-*.AppImage
+          appimage_path=(./rclip-*.AppImage)
+          "${appimage_path[0]}" --appimage-extract >/dev/null
+      - uses: ./.github/actions/audit-runtime
+        with:
+          root: squashfs-root
+          legal_dir: squashfs-root/usr/share/doc/rclip
+          syft_json: appimage-syft.json
+          cyclonedx_json: rclip-${{ needs.parse_tag.outputs.version }}-appimage.cdx.json
+          report_output: appimage-compliance.json
       - uses: actions/upload-artifact@v7
         with:
           name: appimage
-          path: rclip-*.AppImage
+          path: |
+            rclip-*.AppImage
+            rclip-*-appimage.cdx.json
+            appimage-compliance.json
           if-no-files-found: error
 
   appimage-test:
@@ -256,6 +303,7 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v6
+      - uses: ./.github/actions/setup-syft
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
@@ -263,6 +311,13 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --no-dev
       - run: make build-windows
+      - uses: ./.github/actions/audit-runtime
+        with:
+          root: dist/rclip
+          legal_dir: dist/rclip/legal
+          syft_json: build/windows-syft.json
+          cyclonedx_json: build/rclip-windows.cdx.json
+          report_output: build/windows-compliance.json
       - name: Install Advinst
         uses: caphyon/advinst-github-action@main
         with:
@@ -285,49 +340,51 @@ jobs:
           Expand-Archive -Path CodeSignTool.zip -DestinationPath .
           cd CodeSignTool-v1.2.7-windows
           & ./CodeSignTool.bat sign -input_file_path="${env:GITHUB_WORKSPACE}/build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi" -username=${{ secrets.WINDOWS_SIGNING_USERNAME }} -credential_id='${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }}' -password='${{ secrets.WINDOWS_SIGNING_PASSWORD }}' -totp_secret='${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}' -output_dir_path="${env:GITHUB_WORKSPACE}/artifacts"
+      - name: Stage Windows compliance artifacts
+        run: |
+          Copy-Item build/rclip-windows.cdx.json artifacts/
+          Copy-Item build/windows-compliance.json artifacts/
       - uses: actions/upload-artifact@v7
         with:
           name: windows
-          path: artifacts/rclip-*.msi
+          path: artifacts/*
           if-no-files-found: error
 
-  windows-test:
-    needs: [parse_tag, windows-build]
-    runs-on: windows-2022
+  source-bundle:
+    needs: lint
+    if: github.event_name == 'push'
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v8
+      - uses: actions/setup-python@v6
         with:
-          name: windows
-      - name: Install MSI
+          python-version: '3.11'
+      - name: Build LibRaw corresponding source bundle
         run: |
-          $process = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i rclip-${{ needs.parse_tag.outputs.version }}.msi /quiet /norestart'
-          if ($process.ExitCode -notin 0, 3010) { throw "msiexec failed with exit code $($process.ExitCode)" }
-      - uses: ./.github/actions/test-system-rclip
+          mkdir -p source
+          rawpy_version=$(python -c 'import tomllib; print(tomllib.load(open("compliance/sources.toml", "rb"))["rawpy"]["version"])')
+          python -m rclip._compliance source-bundle \
+            --manifest compliance/sources.toml \
+            --output "source/rawpy-${rawpy_version}-corresponding-source.tar.gz"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: corresponding-source
+          path: source/*
+          if-no-files-found: error
 
-  create_release:
-    needs: [parse_tag, pypi-release, snap-release, appimage-test, windows-test]
-    # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
+  source-release:
+    needs: [parse_tag, source-bundle, pypi-release, snap-test, appimage-test, windows-test]
     if: ${{ github.event_name == 'push' && !cancelled() }}
     runs-on: ubuntu-22.04
     permissions:
       contents: write
     steps:
-      # if any of the needs jobs fail, we don't want to create a release
-      # this is needed because the condition above allows skipped dependencies
       - if: ${{ contains(needs.*.result, 'failure') }}
         run: exit 1
-      - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
         with:
-          path: artifacts/
-      - name: Rename snaps for GitHub releases page
-        run: |
-          for snap in artifacts/snap-*/*.snap; do
-            mv "$snap" "${snap//_/-}"
-          done
-      - name: Rename AppImage for GitHub releases page
-        run: mv artifacts/appimage/rclip-${{ needs.parse_tag.outputs.version }}-x86_64.AppImage artifacts/appimage/rclip-${{ needs.parse_tag.outputs.version }}-amd64.AppImage
+          name: corresponding-source
+          path: source/
       - name: Get previous public release tag
         id: previous_release
         env:
@@ -349,12 +406,62 @@ jobs:
           )
           echo "tag=$previous_tag" >> "$GITHUB_OUTPUT"
           echo "Previous public release tag: ${previous_tag:-<none>}"
+      - name: Publish corresponding source before binary distributions
+        uses: ncipollo/release-action@v1
+        with:
+          name: ${{ github.ref_name }}
+          artifacts: source/*
+          allowUpdates: true
+          artifactErrorsFailBuild: true
+          generateReleaseNotes: true
+          generateReleaseNotesPreviousTag: ${{ steps.previous_release.outputs.tag }}
+          prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  windows-test:
+    needs: [parse_tag, windows-build]
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows
+      - name: Install MSI
+        run: |
+          $process = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i rclip-${{ needs.parse_tag.outputs.version }}.msi /quiet /norestart'
+          if ($process.ExitCode -notin 0, 3010) { throw "msiexec failed with exit code $($process.ExitCode)" }
+      - uses: ./.github/actions/test-system-rclip
+
+  create_release:
+    needs: [parse_tag, pypi-release, snap-release, appimage-test, windows-test, source-release]
+    # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
+    if: ${{ github.event_name == 'push' && !cancelled() }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      # if any of the needs jobs fail, we don't want to create a release
+      # this is needed because the condition above allows skipped dependencies
+      - if: ${{ contains(needs.*.result, 'failure') }}
+        run: exit 1
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts/
+      - name: Rename snaps for GitHub releases page
+        run: |
+          for snap in artifacts/snap-*/*.snap; do
+            mv "$snap" "${snap//_/-}"
+          done
+      - name: Rename AppImage for GitHub releases page
+        run: mv artifacts/appimage/rclip-${{ needs.parse_tag.outputs.version }}-x86_64.AppImage artifacts/appimage/rclip-${{ needs.parse_tag.outputs.version }}-amd64.AppImage
       - name: Create Release
         uses: ncipollo/release-action@v1
         with:
           name: ${{ github.ref_name }}
-          artifacts: artifacts/pypi/rclip-*,artifacts/snap-amd64/rclip-*.snap,artifacts/snap-arm64/rclip-*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows/rclip-*.msi
-          generateReleaseNotes: true
-          generateReleaseNotesPreviousTag: ${{ steps.previous_release.outputs.tag }}
+          artifacts: artifacts/pypi/rclip-*,artifacts/snap-amd64/rclip-*.snap,artifacts/snap-arm64/rclip-*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows/rclip-*.msi,artifacts/**/*.cdx.json,artifacts/**/*compliance.json
+          allowUpdates: true
+          artifactErrorsFailBuild: true
+          omitBodyDuringUpdate: true
           prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
           token: ${{ secrets.GITHUB_TOKEN }}

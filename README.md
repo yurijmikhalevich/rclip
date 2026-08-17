@@ -279,6 +279,16 @@ Thanks to [Caphyon](https://github.com/Caphyon) and the Advanced Installer team 
 
 This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind are welcome!
 
+## Distribution compliance
+
+Self-contained rclip bundles include a `THIRD_PARTY_NOTICES.txt` file and the
+complete licence and patent notices for their redistributed dependencies. Each
+GitHub release also includes CycloneDX SBOMs and the corresponding rawpy/LibRaw
+source archive. The reviewed dependency and codec policy is documented in
+[`compliance/`](compliance/README.md).
+
+This product includes DNG technology under license by Adobe.
+
 ## License
 
 MIT

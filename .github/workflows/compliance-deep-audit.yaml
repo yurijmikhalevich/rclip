@@ -1,0 +1,98 @@
+name: compliance policy checks and reports
+
+on:
+  pull_request:
+    paths:
+      - .github/actions/audit-runtime/**
+      - .github/actions/setup-syft/**
+      - .github/workflows/compliance-deep-audit.yaml
+      - .github/workflows/release.yaml
+      - compliance/**
+      - Makefile
+      - pyproject.toml
+      - rclip/_compliance/**
+      - tests/unit/test_compliance.py
+      - uv.lock
+      - release-utils/**
+      - snap/**
+  schedule:
+    - cron: '31 14 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compliance-deep-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  dependencies:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - name: Install production dependencies and ScanCode
+        run: |
+          UV_PROJECT_ENVIRONMENT=.compliance-venv uv sync --locked --no-dev
+          python -m pip install scancode-toolkit==32.5.0
+      - name: Collect legal materials
+        run: |
+          .compliance-venv/bin/python -m rclip._compliance collect \
+            --root .compliance-venv \
+            --output .compliance-legal \
+            --policy compliance/policy.toml \
+            --common-notices compliance/notices
+      - name: Generate informational ScanCode licence report
+        run: scancode --license --package --copyright --json-pp scancode-dependencies.json .compliance-venv
+      - uses: actions/upload-artifact@v7
+        with:
+          name: scancode-dependencies
+          path: scancode-dependencies.json
+          if-no-files-found: error
+
+  latest-release-artifacts:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Install ScanCode and extraction tools
+        run: |
+          python -m pip install scancode-toolkit==32.5.0
+          sudo apt-get update
+          sudo apt-get install -y p7zip-full squashfs-tools
+      - name: Download latest AppImage, MSI, and Snaps
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download --pattern '*.AppImage' --pattern '*.msi' --pattern '*.snap' --dir release-artifacts
+      - name: Extract release artifacts
+        run: |
+          mkdir appimage-root msi-root snap-amd64-root snap-arm64-root
+          chmod +x release-artifacts/*.AppImage
+          cd appimage-root
+          appimage_path=(../release-artifacts/*.AppImage)
+          "${appimage_path[0]}" --appimage-extract >/dev/null
+          cd ../msi-root
+          7z x ../release-artifacts/*.msi >/dev/null
+          cd ..
+          unsquashfs -d snap-amd64-root release-artifacts/*-amd64.snap >/dev/null
+          unsquashfs -d snap-arm64-root release-artifacts/*-arm64.snap >/dev/null
+      - name: Generate informational release artifact ScanCode reports
+        run: |
+          scancode --license --package --copyright --json-pp scancode-appimage.json appimage-root/squashfs-root
+          scancode --license --package --copyright --json-pp scancode-msi.json msi-root
+          scancode --license --package --copyright --json-pp scancode-snap-amd64.json snap-amd64-root
+          scancode --license --package --copyright --json-pp scancode-snap-arm64.json snap-arm64-root
+      - uses: actions/upload-artifact@v7
+        with:
+          name: scancode-release-artifacts
+          path: scancode-*.json
+          if-no-files-found: error
