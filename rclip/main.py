@@ -1,4 +1,3 @@
-import itertools
 import os
 import re
 import sys
@@ -281,39 +280,57 @@ class RClip:
     top_k: int | None = 10,
     positive_queries: List[str] = [],
     negative_queries: List[str] = [],
+    *,
+    cancel_event: threading.Event | None = None,
   ) -> List[SearchResult]:
-    filepaths, features = self._get_features(directory)
+    filepaths, features = self._get_features(directory, cancel_event)
 
     positive_queries = [query] + positive_queries
-    sorted_similarities = self._model.compute_similarities_to_text(features, positive_queries, negative_queries)
+    sorted_similarities = self._model.compute_similarities_to_text(
+      features, positive_queries, negative_queries, cancel_event=cancel_event
+    )
 
     # exclude images that were part of the query from the results
     exclude_files = [
       os.path.abspath(query) for query in positive_queries + negative_queries if helpers.is_file_path(query)
     ]
 
-    filtered_similarities = filter(
-      lambda similarity: (
-        not self._exclude_dir_regex.match(filepaths[similarity[1]]) and filepaths[similarity[1]] not in exclude_files
-      ),
-      sorted_similarities,
-    )
-    top_k_similarities = itertools.islice(filtered_similarities, top_k) if top_k is not None else filtered_similarities
+    results: list[RClip.SearchResult] = []
+    for score, index in sorted_similarities:
+      if cancel_event is not None and cancel_event.is_set():
+        raise InterruptedError
+      if top_k is not None and len(results) >= top_k:
+        break
+      filepath = filepaths[index]
+      if self._exclude_dir_regex.match(filepath) or filepath in exclude_files:
+        continue
+      results.append(RClip.SearchResult(filepath, score))
+    return results
 
-    return [RClip.SearchResult(filepath=filepaths[th[1]], score=th[0]) for th in top_k_similarities]
+  def list_images(
+    self, directory: str, top_k: int | None = None, *, cancel_event: threading.Event | None = None
+  ) -> list[str]:
+    return self._db.get_image_filepaths_by_dir_path(directory, top_k, cancel_event)
 
-  def list_images(self, directory: str, top_k: int | None = None) -> list[str]:
-    return self._db.get_image_filepaths_by_dir_path(directory, top_k)
-
-  def _get_features(self, directory: str) -> Tuple[List[str], model.FeatureVector]:
+  def _get_features(
+    self, directory: str, cancel_event: threading.Event | None = None
+  ) -> Tuple[List[str], model.FeatureVector]:
     filepaths: List[str] = []
     features: List[model.FeatureVector] = []
     for image in self._db.get_image_vectors_by_dir_path(directory):
+      if cancel_event is not None and cancel_event.is_set():
+        raise InterruptedError
       filepaths.append(image["filepath"])
       features.append(np.frombuffer(image["vector"], np.float32))
     if not filepaths:
       return [], np.ndarray(shape=(0, model.Model.VECTOR_SIZE))
-    return filepaths, np.stack(features)
+    stacked_features = np.empty((len(features), model.Model.VECTOR_SIZE), dtype=np.float32)
+    for start in range(0, len(features), 4096):
+      if cancel_event is not None and cancel_event.is_set():
+        raise InterruptedError
+      stop = min(start + 4096, len(features))
+      np.stack(features[start:stop], out=stacked_features[start:stop])
+    return filepaths, stacked_features
 
 
 def init_rclip(

@@ -1,5 +1,6 @@
 import logging
 import re
+from threading import Event
 from typing import Any, List, Optional, Tuple
 
 import numpy as np
@@ -191,18 +192,33 @@ class Model:
     return text_features + image_features
 
   def compute_similarities_to_text(
-    self, item_features: FeatureVector, positive_queries: List[str], negative_queries: List[str]
+    self,
+    item_features: FeatureVector,
+    positive_queries: List[str],
+    negative_queries: List[str],
+    *,
+    cancel_event: Event | None = None,
   ) -> List[Tuple[float, int]]:
+    if cancel_event is not None and cancel_event.is_set():
+      raise InterruptedError
     positive_features = self.compute_features_for_queries(positive_queries)
+    if cancel_event is not None and cancel_event.is_set():
+      raise InterruptedError
     negative_features = self.compute_features_for_queries(negative_queries)
+    if cancel_event is not None and cancel_event.is_set():
+      raise InterruptedError
 
     features = positive_features - negative_features
 
     similarities = features @ item_features.T
-    sorted_similarities = sorted(
-      zip(similarities, range(item_features.shape[0])),
-      key=lambda similarity_with_index: similarity_with_index[0],
-      reverse=True,
-    )
+    if cancel_event is not None and cancel_event.is_set():
+      raise InterruptedError
 
+    order = np.argsort(-similarities, kind="stable")
+    sorted_similarities: List[Tuple[float, int]] = []
+    for start in range(0, len(order), 4096):
+      if cancel_event is not None and cancel_event.is_set():
+        raise InterruptedError
+      indices = order[start : start + 4096]
+      sorted_similarities.extend(zip(similarities[indices].tolist(), indices.tolist()))
     return sorted_similarities

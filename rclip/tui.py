@@ -22,6 +22,7 @@ from textual.containers import CenterMiddle, ItemGrid
 from textual.geometry import Size
 from textual.screen import Screen
 from textual.timer import Timer
+from textual.worker import get_current_worker
 from textual.widgets import Input, Label, Static
 from textual_image.renderable import Image as TerminalRenderable
 from textual_image.renderable import TGPImage as TGPRenderable
@@ -475,6 +476,7 @@ class RclipApp(App[None]):
     self.negative_queries = negative_queries or []
     self._search_timer: Timer | None = None
     self._search_lock = Lock()
+    self._search_generation = 0
     self._mount_lock = AsyncLock()
     self._mount_requested = False
     self._focus_after_search = False
@@ -520,12 +522,17 @@ class RclipApp(App[None]):
     self._begin_search(query)
 
   def _begin_search(self, query: str) -> None:
-    self._search(query)
+    self._search_generation += 1
+    self.query_one("#search", Input).border_title = "Searching…"
+    self._search(query, self._search_generation)
 
   @work(thread=True, group="search", exclusive=True, exit_on_error=False)
-  def _search(self, query: str) -> None:
+  def _search(self, query: str, generation: int) -> None:
+    worker = get_current_worker()
     try:
       with self._search_lock:
+        if worker.is_cancelled:
+          return
         if query:
           search_results = self.rclip.search(
             query,
@@ -533,27 +540,42 @@ class RclipApp(App[None]):
             self.top_k,
             self.positive_queries,
             self.negative_queries,
+            cancel_event=worker.cancelled_event,
           )
-          results = [TuiResult(result.filepath, result.score) for result in search_results]
+          results: list[TuiResult] = []
+          for result in search_results:
+            if worker.is_cancelled:
+              raise InterruptedError
+            results.append(TuiResult(result.filepath, result.score))
         else:
-          results = [
-            TuiResult(filepath) for filepath in self.rclip.list_images(self.working_directory, self.top_k)
-          ]
+          filepaths = self.rclip.list_images(self.working_directory, self.top_k, cancel_event=worker.cancelled_event)
+          results = []
+          for filepath in filepaths:
+            if worker.is_cancelled:
+              raise InterruptedError
+            results.append(TuiResult(filepath))
+    except InterruptedError:
+      return
     except Exception as error:
-      self.call_from_thread(self._show_search_error, query, str(error))
+      self.call_from_thread(self._show_search_error, generation, query, str(error))
     else:
-      self.call_from_thread(self._show_results, query, results)
+      self.call_from_thread(self._show_results, generation, query, results)
 
-  async def _show_results(self, query: str, results: list[TuiResult]) -> None:
-    if self.query_one("#search", Input).value.strip() != query:
+  async def _show_results(self, generation: int, query: str, results: list[TuiResult]) -> None:
+    search_input = self.query_one("#search", Input)
+    if generation != self._search_generation or search_input.value.strip() != query:
       return
     grid = self.query_one(ResultsGrid)
     self.workers.cancel_group(self, "mount-results")
     self._mount_requested = False
     await grid.remove_children()
+    if generation != self._search_generation:
+      return
     self._results = results
     self._mounted_results = 0
     await self._mount_results_batch()
+    if generation != self._search_generation:
+      return
     grid.scroll_home(animate=False)
     self._selected_index = 0
     self.call_after_refresh(grid.load_visible_previews)
@@ -561,6 +583,7 @@ class RclipApp(App[None]):
     self._focus_after_search = False
     if focus_after_search and self._mounted_results:
       self.call_after_refresh(self.query(ImageCard).first().focus)
+    search_input.border_title = None
 
   async def _mount_results_batch(self, through_index: int | None = None) -> None:
     async with self._mount_lock:
@@ -589,10 +612,12 @@ class RclipApp(App[None]):
     finally:
       self._mount_requested = False
 
-  def _show_search_error(self, query: str, message: str) -> None:
-    if self.query_one("#search", Input).value.strip() != query:
+  def _show_search_error(self, generation: int, query: str, message: str) -> None:
+    search_input = self.query_one("#search", Input)
+    if generation != self._search_generation or search_input.value.strip() != query:
       return
     self._focus_after_search = False
+    search_input.border_title = None
     self.notify(message, title="Search failed", severity="error")
 
   def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:

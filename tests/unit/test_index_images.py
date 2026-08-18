@@ -1,10 +1,12 @@
 from pathlib import Path
+from threading import Event
 from unittest.mock import Mock
 import tempfile
 
 import numpy as np
 import PIL
 from PIL import Image
+import pytest
 
 from rclip.db import DB, NewImage
 from rclip.main import ImageMeta, RClip
@@ -25,6 +27,22 @@ def _too_large_on_b(path: str) -> Image.Image:
   if path == "b.jpg":
     raise helpers.ImageTooLargeError(path, 200_000_000, 100_000_000)
   return Image.new("RGB", (1, 1))
+
+
+def test_search_stops_loading_vectors_when_cancelled() -> None:
+  cancel_event = Event()
+  database = Mock()
+
+  def rows(_directory: str):
+    yield {"filepath": "a.jpg", "vector": np.zeros(512, dtype=np.float32).tobytes()}
+    cancel_event.set()
+    yield {"filepath": "b.jpg", "vector": np.zeros(512, dtype=np.float32).tobytes()}
+
+  database.get_image_vectors_by_dir_path.side_effect = rows
+  rclip = _make_rclip(Mock(), database)
+
+  with pytest.raises(InterruptedError):
+    rclip.search("cat", ".", cancel_event=cancel_event)
 
 
 def test_load_images_preserves_order_and_skips_failures(monkeypatch):

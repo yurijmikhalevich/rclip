@@ -2,6 +2,7 @@ import os.path
 import pathlib
 import sqlite3
 import sys
+from threading import Event
 from typing import Any, Optional, TypedDict, Union, cast
 
 
@@ -170,7 +171,9 @@ class DB:
       (self._get_dirpath_like_pattern(path),),
     )
 
-  def get_image_filepaths_by_dir_path(self, path: str, limit: int | None = None) -> list[str]:
+  def get_image_filepaths_by_dir_path(
+    self, path: str, limit: int | None = None, cancel_event: Event | None = None
+  ) -> list[str]:
     query = (
       "SELECT filepath FROM images WHERE filepath LIKE ? ESCAPE '\\' AND deleted IS NULL "
       "ORDER BY modified_at DESC, filepath"
@@ -179,4 +182,9 @@ class DB:
     if limit is not None:
       query += " LIMIT ?"
       parameters += (limit,)
-    return [row["filepath"] for row in self._con.execute(query, parameters)]
+    filepaths: list[str] = []
+    for row in self._con.execute(query, parameters):
+      if cancel_event is not None and cancel_event.is_set():
+        raise InterruptedError
+      filepaths.append(row["filepath"])
+    return filepaths

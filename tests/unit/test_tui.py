@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+from threading import Event, Lock
 from types import SimpleNamespace
 
 from PIL import Image
@@ -42,11 +43,13 @@ class FakeRclip(RClip):
     top_k: int | None = 10,
     positive_queries: list[str] = [],
     negative_queries: list[str] = [],
+    *,
+    cancel_event: Event | None = None,
   ) -> list[RClip.SearchResult]:
     self.searches.append((query, directory, top_k, positive_queries, negative_queries))
     return self.results if top_k is None else self.results[:top_k]
 
-  def list_images(self, directory: str, top_k: int | None = None) -> list[str]:
+  def list_images(self, directory: str, top_k: int | None = None, *, cancel_event: Event | None = None) -> list[str]:
     self.browses.append((directory, top_k))
     filepaths = [result.filepath for result in self.results]
     return filepaths if top_k is None else filepaths[:top_k]
@@ -337,6 +340,69 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
       assert app.query_one(Input).value == "q"
       await pilot.press("ctrl+c")
       assert exits == [True]
+
+  asyncio.run(run())
+
+
+def test_new_search_interrupts_the_running_search_and_keeps_one_active(tmp_path: Path) -> None:
+  class SlowRclip(FakeRclip):
+    def __init__(self) -> None:
+      super().__init__([])
+      self.active = 0
+      self.max_active = 0
+      self.first_started = Event()
+      self.second_started = Event()
+      self.first_cancelled = Event()
+      self.state_lock = Lock()
+
+    def search(
+      self,
+      query: str,
+      directory: str,
+      top_k: int | None = 10,
+      positive_queries: list[str] = [],
+      negative_queries: list[str] = [],
+      *,
+      cancel_event: Event | None = None,
+    ) -> list[RClip.SearchResult]:
+      assert cancel_event is not None
+      with self.state_lock:
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+      try:
+        if query == "first":
+          self.first_started.set()
+          if cancel_event.wait(2):
+            self.first_cancelled.set()
+            raise InterruptedError
+        else:
+          self.second_started.set()
+        return []
+      finally:
+        with self.state_lock:
+          self.active -= 1
+
+  rclip = SlowRclip()
+  app = RclipApp(rclip, str(tmp_path), tmp_path / "cache")
+
+  async def run() -> None:
+    async with app.run_test() as pilot:
+      await app.workers.wait_for_complete()
+
+      await pilot.press("f", "i", "r", "s", "t")
+      await pilot.pause(0.3)
+      assert await asyncio.to_thread(rclip.first_started.wait, 1)
+      assert app.query_one(Input).border_title == "Searching…"
+
+      await pilot.press("s")
+      await pilot.pause(0.3)
+      assert await asyncio.to_thread(rclip.second_started.wait, 1)
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+
+      assert rclip.first_cancelled.is_set()
+      assert rclip.max_active == 1
+      assert app.query_one(Input).border_title is None
 
   asyncio.run(run())
 
