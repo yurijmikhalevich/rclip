@@ -261,7 +261,11 @@ def init_arg_parser() -> argparse.ArgumentParser:
   )
   version_str = f"rclip {version('rclip')}"
   parser.add_argument("--version", "-v", action="version", version=version_str, help=f'prints "{version_str}"')
-  parser.add_argument("query", help="a text query or a path/URL to an image file")
+  parser.add_argument(
+    "query",
+    nargs="?",
+    help="a text query or a path/URL to an image file; optional with --interactive",
+  )
   parser.add_argument(
     "--add",
     "-a",
@@ -283,9 +287,19 @@ def init_arg_parser() -> argparse.ArgumentParser:
     " can be used multiple times",
   )
   parser.add_argument(
-    "--top", "-t", type=positive_int_arg_type, default=10, help="number of top results to display; default: 10"
+    "--top",
+    "-t",
+    type=positive_int_arg_type,
+    help="number of top results to display; default: 10, or unlimited with --interactive",
   )
   display_mode_group = parser.add_mutually_exclusive_group()
+  display_mode_group.add_argument(
+    "--interactive",
+    "-i",
+    action="store_true",
+    default=False,
+    help="opens the interactive terminal UI; the query is optional",
+  )
   display_mode_group.add_argument(
     "--preview",
     "-p",

@@ -177,6 +177,7 @@ def collect_legal_materials(
   ]
   rclip_component = next((component for component in components if component["name"] == "rclip"), None)
   rawpy_component = next((component for component in components if component["name"] == "rawpy"), None)
+  textual_image_component = next((component for component in components if component["name"] == "textual-image"), None)
   if rawpy_component is not None and rclip_component is not None:
     source_filename = f"rawpy-{rawpy_component['version']}-corresponding-source.tar.gz"
     index_lines.extend(
@@ -184,6 +185,20 @@ def collect_legal_materials(
         "LibRaw corresponding source",
         "---------------------------",
         f"https://github.com/yurijmikhalevich/rclip/releases/download/v{rclip_component['version']}/{source_filename}",
+        "",
+      ]
+    )
+  if textual_image_component is not None and rclip_component is not None:
+    version = textual_image_component["version"]
+    release = f"https://github.com/yurijmikhalevich/rclip/releases/download/v{rclip_component['version']}"
+    application = f"https://github.com/yurijmikhalevich/rclip/archive/refs/tags/v{rclip_component['version']}.tar.gz"
+    index_lines.extend(
+      [
+        "textual-image (LGPL-3.0-or-later)",
+        "----------------------------------",
+        f"This product uses textual-image {version} under LGPL-3.0-or-later.",
+        f"{release}/textual_image-{version}.tar.gz",
+        f"Corresponding application source: {application}",
         "",
       ]
     )

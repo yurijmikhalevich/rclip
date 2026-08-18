@@ -38,6 +38,7 @@ ACCEPTED_LEGACY_SPDX_EXPRESSIONS = {
 LICENSE_CLASSIFIER_EXPRESSIONS = {
   "License :: OSI Approved :: Apache Software License": "Apache-2.0",
   "License :: OSI Approved :: BSD License": "BSD-3-Clause",
+  "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)": "LGPL-3.0-or-later",
   "License :: OSI Approved :: MIT License": "MIT",
   "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)": "MPL-2.0",
 }

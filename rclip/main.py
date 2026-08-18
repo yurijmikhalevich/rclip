@@ -1,4 +1,3 @@
-import itertools
 import os
 import re
 import sys
@@ -278,39 +277,60 @@ class RClip:
     self,
     query: str,
     directory: str,
-    top_k: int = 10,
+    top_k: int | None = 10,
     positive_queries: List[str] = [],
     negative_queries: List[str] = [],
+    *,
+    cancel_event: threading.Event | None = None,
   ) -> List[SearchResult]:
-    filepaths, features = self._get_features(directory)
+    filepaths, features = self._get_features(directory, cancel_event)
 
     positive_queries = [query] + positive_queries
-    sorted_similarities = self._model.compute_similarities_to_text(features, positive_queries, negative_queries)
+    sorted_similarities = self._model.compute_similarities_to_text(
+      features, positive_queries, negative_queries, cancel_event=cancel_event
+    )
 
     # exclude images that were part of the query from the results
     exclude_files = [
       os.path.abspath(query) for query in positive_queries + negative_queries if helpers.is_file_path(query)
     ]
 
-    filtered_similarities = filter(
-      lambda similarity: (
-        not self._exclude_dir_regex.match(filepaths[similarity[1]]) and filepaths[similarity[1]] not in exclude_files
-      ),
-      sorted_similarities,
-    )
-    top_k_similarities = itertools.islice(filtered_similarities, top_k)
+    results: list[RClip.SearchResult] = []
+    for score, index in sorted_similarities:
+      if cancel_event is not None and cancel_event.is_set():
+        raise InterruptedError
+      if top_k is not None and len(results) >= top_k:
+        break
+      filepath = filepaths[index]
+      if self._exclude_dir_regex.match(filepath) or filepath in exclude_files:
+        continue
+      results.append(RClip.SearchResult(filepath, score))
+    return results
 
-    return [RClip.SearchResult(filepath=filepaths[th[1]], score=th[0]) for th in top_k_similarities]
+  def list_images(
+    self, directory: str, top_k: int | None = None, *, cancel_event: threading.Event | None = None
+  ) -> list[str]:
+    return self._db.get_image_filepaths_by_dir_path(directory, top_k, cancel_event)
 
-  def _get_features(self, directory: str) -> Tuple[List[str], model.FeatureVector]:
+  def _get_features(
+    self, directory: str, cancel_event: threading.Event | None = None
+  ) -> Tuple[List[str], model.FeatureVector]:
     filepaths: List[str] = []
     features: List[model.FeatureVector] = []
     for image in self._db.get_image_vectors_by_dir_path(directory):
+      if cancel_event is not None and cancel_event.is_set():
+        raise InterruptedError
       filepaths.append(image["filepath"])
       features.append(np.frombuffer(image["vector"], np.float32))
     if not filepaths:
       return [], np.ndarray(shape=(0, model.Model.VECTOR_SIZE))
-    return filepaths, np.stack(features)
+    stacked_features = np.empty((len(features), model.Model.VECTOR_SIZE), dtype=np.float32)
+    for start in range(0, len(features), 4096):
+      if cancel_event is not None and cancel_event.is_set():
+        raise InterruptedError
+      stop = min(start + 4096, len(features))
+      np.stack(features[start:stop], out=stacked_features[start:stop])
+    return filepaths, stacked_features
 
 
 def init_rclip(
@@ -321,11 +341,16 @@ def init_rclip(
   enable_raw_support: bool = False,
   max_image_pixels: helpers.MaxImagePixels = helpers.AUTO_MAX_IMAGE_PIXELS,
   include_hidden: bool = False,
+  allow_cross_thread_db: bool = False,
 ):
   datadir = helpers.get_app_datadir()
   db_path = datadir / "db.sqlite3"
 
-  database = db.DB(db_path, allow_vector_cache_reset=not no_indexing)
+  database = db.DB(
+    db_path,
+    allow_vector_cache_reset=not no_indexing,
+    allow_cross_thread=allow_cross_thread_db,
+  )
   model_instance = model.Model()
   model_instance.ensure_downloaded()
   rclip = RClip(
@@ -373,24 +398,39 @@ def print_results(result: List[RClip.SearchResult], args: helpers.argparse.Names
 def main():
   arg_parser = helpers.init_arg_parser()
   args = arg_parser.parse_args()
+  if args.query is None and not args.interactive:
+    arg_parser.error("query is required unless --interactive is used")
 
   current_directory = os.getcwd()
   if is_snap():
     check_snap_permissions(current_directory, is_current_directory=True)
 
   rclip, model_instance, db = init_rclip(
-    current_directory,
-    args.indexing_batch_size,
-    args.exclude_dir,
-    args.no_indexing,
-    args.experimental_raw_support,
-    args.max_image_megapixels,
-    args.include_hidden,
+    working_directory=current_directory,
+    indexing_batch_size=args.indexing_batch_size,
+    exclude_dir=args.exclude_dir,
+    no_indexing=args.no_indexing,
+    enable_raw_support=args.experimental_raw_support,
+    max_image_pixels=args.max_image_megapixels,
+    include_hidden=args.include_hidden,
+    allow_cross_thread_db=args.interactive,
   )
 
   try:
-    result = rclip.search(args.query, current_directory, args.top, args.add, args.subtract)
-    print_results(result, args)
+    if args.interactive:
+      from rclip.tui import run_tui
+
+      run_tui(
+        rclip,
+        current_directory,
+        args.query,
+        args.top,
+        args.add,
+        args.subtract,
+      )
+    else:
+      result = rclip.search(args.query, current_directory, args.top or 10, args.add, args.subtract)
+      print_results(result, args)
   finally:
     rclip.close()
     model_instance.close()

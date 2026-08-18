@@ -246,6 +246,27 @@ def test_collection_normalizes_legacy_licence_metadata(tmp_path: Path) -> None:
   assert report["components"][0]["license_expression"] == "BSD-3-Clause"
 
 
+def test_collection_includes_textual_image_licences_and_source_links(tmp_path: Path) -> None:
+  write_distribution(tmp_path, "rclip", version="3.3.0")
+  write_distribution(
+    tmp_path,
+    "textual-image",
+    version="0.8.5",
+    license_expression="LGPL-3.0-or-later",
+  )
+
+  output = tmp_path / "legal"
+  collect_legal_materials(tmp_path, output, POLICY, NOTICES)
+
+  licenses = output / "licenses/textual-image-0.8.5"
+  assert (licenses / "licenses/LICENSE").is_file()
+  assert (licenses / "COPYING.GPLv3.txt").is_file()
+  notices = (output / "THIRD_PARTY_NOTICES.txt").read_text(encoding="utf-8")
+  assert "uses textual-image 0.8.5 under LGPL-3.0-or-later" in notices
+  assert "textual_image-0.8.5.tar.gz" in notices
+  assert "/archive/refs/tags/v3.3.0.tar.gz" in notices
+
+
 @pytest.mark.parametrize(
   "expression",
   ["Apache-2.0", "BSD-3-Clause", "MIT", "MPL-2.0", "MPL-2.0 AND MIT", "WTFPL"],
@@ -258,6 +279,18 @@ def test_accepts_spdx_expressions_from_legacy_licence_metadata(expression: str) 
   }
 
   assert _declared_license_expression(record) == expression
+
+
+def test_normalizes_lgpl_classifier() -> None:
+  record = {
+    "declared_license_expression": "",
+    "legacy_license": "",
+    "license_classifiers": [
+      "License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
+    ],
+  }
+
+  assert _declared_license_expression(record) == "LGPL-3.0-or-later"
 
 
 def test_unversioned_package_accepts_any_version() -> None:
