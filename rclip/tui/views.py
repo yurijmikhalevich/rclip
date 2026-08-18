@@ -119,7 +119,7 @@ class DetailScreen(Screen[None]):
     yield Static("Loading higher-resolution image…", id="detail-status", markup=False)
     yield Static(self.filepath, id="detail-path", markup=False)
     yield Static(
-      "h/l/Arrows Browse   Esc/Double-click Back   y Copy image   Y Copy path   q/Ctrl+C Quit",
+      "h/l/Arrows Browse   Esc/Double-click Back   y Copy   Y Copy path   d Download   q/Ctrl+C Quit",
       classes="hotkeys",
       markup=False,
     )

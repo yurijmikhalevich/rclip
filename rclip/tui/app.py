@@ -13,7 +13,9 @@ from textual.worker import get_current_worker
 from textual.widgets import Input, Static
 
 from rclip.model import Model
+from rclip.tui.transfer import _is_remote_session
 from rclip.tui.transfer import copy_image_to_clipboard
+from rclip.tui.transfer import download_image
 from rclip.tui.views import DetailScreen
 from rclip.tui.views import ImageCard
 from rclip.tui.views import ResultsGrid
@@ -49,6 +51,7 @@ class RclipApp(App[None]):
     Binding("escape", "go_back", "Back", show=False),
     Binding("y", "copy_image", "Copy image", show=False),
     Binding("Y", "copy_path", "Copy path", show=False),
+    Binding("d", "download", "Download", show=False),
     Binding("q", "quit_navigation", "Quit", show=False),
     Binding("ctrl+c", "quit", "Quit", show=False, priority=True),
     Binding("ctrl+q", "quit", "Quit", show=False, priority=True),
@@ -77,7 +80,7 @@ class RclipApp(App[None]):
     yield Input(placeholder=f"Search images in {directory}…", id="search")
     yield ResultsGrid()
     yield Static(
-      "/ Search   hjkl/Arrows Move   Enter View   y Copy image   Y Copy path   q/Ctrl+C Quit",
+      "/ Search   hjkl/Arrows Move   Enter View   y Copy   Y Copy path   d Download   q/Ctrl+C Quit",
       classes="hotkeys",
       markup=False,
     )
@@ -157,6 +160,7 @@ class RclipApp(App[None]):
     if isinstance(self.focused, Input) and action in {
       "copy_image",
       "copy_path",
+      "download",
       "move_down",
       "move_left",
       "move_right",
@@ -173,11 +177,12 @@ class RclipApp(App[None]):
         return False
     if action == "focus_search":
       return not isinstance(self.focused, Input)
-    if action in {"copy_image", "copy_path"} and isinstance(self.screen, DetailScreen):
+    if action in {"copy_image", "copy_path", "download"} and isinstance(self.screen, DetailScreen):
       return True
     if action in {
       "copy_image",
       "copy_path",
+      "download",
       "move_down",
       "move_down_or_focus",
       "move_left",
@@ -289,6 +294,20 @@ class RclipApp(App[None]):
   def action_copy_image(self) -> None:
     if filepath := self._selected_filepath():
       self._copy_image(filepath)
+
+  def action_download(self) -> None:
+    if not (filepath := self._selected_filepath()):
+      return
+    if not _is_remote_session():
+      self.notify(filepath, title="Image is already local")
+      return
+    try:
+      with self.suspend():
+        download_image(filepath)
+    except Exception as error:
+      self.notify(str(error), title="Unable to download image", severity="error")
+    else:
+      self.notify("Saved to ~/Downloads", title=Path(filepath).name)
 
   def action_quit_navigation(self) -> None:
     self.exit()
