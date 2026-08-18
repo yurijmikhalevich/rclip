@@ -132,10 +132,13 @@ The UI uses Kitty's graphics protocol when available and Sixel in terminals such
 | `Esc` | Return to the grid from an opened image. |
 | `y` | Copy the selected image to the system clipboard using Kitty's `kitten clipboard`. |
 | `Y` | Copy the selected image path. |
+| `d` | Download the selected original image from an SSH host. |
 | `q` | Quit while navigating results. |
 | `Ctrl+C` or `Ctrl+Q` | Quit from anywhere, including the search input. |
 
-Interactive search is unlimited by default, while cards and previews are loaded in batches. Pass `--top N` to impose a limit. Image copying requires Kitty 0.27 or newer and a discoverable `kitten` executable; the rest of the UI does not invoke Kitty executables.
+Interactive search is unlimited by default, while cards and previews are loaded in batches. Pass `--top N` to impose a limit. Image copying requires Kitty 0.27 or newer and a discoverable `kitten` executable.
+
+Over SSH, `d` preserves the original file and downloads it to `~/Downloads` on the terminal host. Kitty 0.30 or newer asks for confirmation and requires a discoverable remote `kitten` executable; `kitten ssh` provides one automatically. iTerm2 3.5 or newer uses its file-transfer protocol. If terminal detection is unavailable through SSH, set `RCLIP_DOWNLOAD_PROTOCOL` to `kitty` or `iterm2`. Locally, `d` only displays the image's existing path and does not copy it.
 
 ### Similar image search (image-to-image search)
 
