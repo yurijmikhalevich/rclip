@@ -278,6 +278,46 @@ def test_policy_covers_locked_runtime_closure_on_every_platform() -> None:
   assert set(policy["approved_python_licenses"]) == locked_versions.keys() | unversioned
 
 
+def test_locked_runtime_closure_includes_selected_extras(tmp_path: Path) -> None:
+  lock = tmp_path / "uv.lock"
+  lock.write_text(
+    """
+[[package]]
+name = "rclip"
+version = "1"
+dependencies = [{ name = "runtime", extra = ["feature"] }]
+
+[[package]]
+name = "runtime"
+version = "2"
+dependencies = [{ name = "normal" }]
+
+[package.optional-dependencies]
+feature = [{ name = "optional" }]
+
+[[package]]
+name = "normal"
+version = "3"
+
+[[package]]
+name = "optional"
+version = "4"
+""",
+    encoding="utf-8",
+  )
+
+  assert _locked_runtime_versions(lock) == {
+    "rclip": {"1"},
+    "runtime": {"2"},
+    "normal": {"3"},
+    "optional": {"4"},
+  }
+
+  lock.write_text(lock.read_text(encoding="utf-8").replace("feature =", "misspelled ="), encoding="utf-8")
+  with pytest.raises(ComplianceError, match="missing selected extra feature for runtime"):
+    _locked_runtime_versions(lock)
+
+
 def test_rawpy_source_manifest_matches_allowed_runtime_version() -> None:
   with (REPO_ROOT / "compliance/sources.toml").open("rb") as stream:
     source = tomllib.load(stream)["rawpy"]

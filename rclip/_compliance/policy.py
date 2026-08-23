@@ -174,24 +174,36 @@ def _locked_runtime_versions(path: Path) -> dict[str, set[str]]:
     raise ComplianceError(f"lock file {path} has no rclip package")
 
   versions: dict[str, set[str]] = {}
-  pending = ["rclip"]
+  pending: list[tuple[str, str | None]] = [("rclip", None)]
+  seen: set[tuple[str, str | None]] = set()
   while pending:
-    name = pending.pop()
-    if name in versions:
+    name, extra = pending.pop()
+    if (name, extra) in seen:
       continue
+    seen.add((name, extra))
     locked = packages_by_name.get(name)
     if locked is None:
       raise ComplianceError(f"lock file {path} is missing runtime dependency {name}")
     versions[name] = {str(package["version"]) for package in locked}
     for package in locked:
-      dependencies = package.get("dependencies", [])
+      optional_dependencies = package.get("optional-dependencies", {})
+      if not isinstance(optional_dependencies, dict):
+        raise ComplianceError(f"lock file {path} has invalid optional dependencies for {name}")
+      if extra is not None and extra not in optional_dependencies:
+        raise ComplianceError(f"lock file {path} is missing selected extra {extra} for {name}")
+      dependencies = package.get("dependencies", []) if extra is None else optional_dependencies[extra]
       if not isinstance(dependencies, list):
         raise ComplianceError(f"lock file {path} has invalid dependencies for {name}")
       for dependency in dependencies:
         dependency_name = dependency.get("name") if isinstance(dependency, dict) else None
         if not isinstance(dependency_name, str) or not dependency_name:
           raise ComplianceError(f"lock file {path} has an invalid dependency for {name}")
-        pending.append(normalize_python_name(dependency_name))
+        normalized_name = normalize_python_name(dependency_name)
+        pending.append((normalized_name, None))
+        extras = dependency.get("extra", [])
+        if not isinstance(extras, list) or any(not isinstance(value, str) or not value for value in extras):
+          raise ComplianceError(f"lock file {path} has invalid dependency extras for {name}")
+        pending.extend((normalized_name, value) for value in extras)
   return versions
 
 
