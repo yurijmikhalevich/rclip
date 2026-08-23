@@ -5,6 +5,7 @@ import io
 import os
 import pathlib
 import textwrap
+import threading
 import warnings
 from typing import Optional, Union, cast
 from PIL import Image, UnidentifiedImageError
@@ -40,6 +41,11 @@ MaxImagePixels = Union[str, int, None]
 
 _image_loading_configured = False
 _max_image_pixels: Optional[int] = MIN_MAX_IMAGE_PIXELS
+
+
+def raise_if_cancelled(event: threading.Event | None) -> None:
+  if event is not None and event.is_set():
+    raise InterruptedError
 
 
 class ImageTooLargeError(Exception):
