@@ -313,6 +313,10 @@ version = "4"
     "optional": {"4"},
   }
 
+  lock.write_text(lock.read_text(encoding="utf-8").replace("feature =", "misspelled ="), encoding="utf-8")
+  with pytest.raises(ComplianceError, match="missing selected extra feature for runtime"):
+    _locked_runtime_versions(lock)
+
 
 def test_rawpy_source_manifest_matches_allowed_runtime_version() -> None:
   with (REPO_ROOT / "compliance/sources.toml").open("rb") as stream:

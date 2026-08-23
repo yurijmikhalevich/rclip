@@ -189,7 +189,9 @@ def _locked_runtime_versions(path: Path) -> dict[str, set[str]]:
       optional_dependencies = package.get("optional-dependencies", {})
       if not isinstance(optional_dependencies, dict):
         raise ComplianceError(f"lock file {path} has invalid optional dependencies for {name}")
-      dependencies = package.get("dependencies", []) if extra is None else optional_dependencies.get(extra, [])
+      if extra is not None and extra not in optional_dependencies:
+        raise ComplianceError(f"lock file {path} is missing selected extra {extra} for {name}")
+      dependencies = package.get("dependencies", []) if extra is None else optional_dependencies[extra]
       if not isinstance(dependencies, list):
         raise ComplianceError(f"lock file {path} has invalid dependencies for {name}")
       for dependency in dependencies:
