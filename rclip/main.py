@@ -1,3 +1,5 @@
+import heapq
+import itertools
 import os
 import re
 import sys
@@ -63,6 +65,7 @@ class RClip:
   # cost little memory.
   LOOKAHEAD_BATCHES = 3
   MAX_IMAGE_LOADING_WORKERS = 16
+  SEARCH_BATCH_SIZE = 4096
 
   class SearchResult(NamedTuple):
     filepath: str
@@ -291,28 +294,48 @@ class RClip:
     *,
     cancel_event: threading.Event | None = None,
   ) -> List[SearchResult]:
-    filepaths, features = self._get_features(directory, cancel_event)
-
     positive_queries = [query] + positive_queries
-    sorted_similarities = self._model.compute_similarities_to_text(
-      features, positive_queries, negative_queries, cancel_event=cancel_event
-    )
+    helpers.raise_if_cancelled(cancel_event)
+    positive_features = self._model.compute_features_for_queries(positive_queries)
+    helpers.raise_if_cancelled(cancel_event)
+    negative_features = self._model.compute_features_for_queries(negative_queries)
+    helpers.raise_if_cancelled(cancel_event)
+    query_features = positive_features - negative_features
 
     # exclude images that were part of the query from the results
-    exclude_files = [
+    exclude_files = {
       os.path.abspath(query) for query in positive_queries + negative_queries if helpers.is_file_path(query)
-    ]
+    }
 
-    results: list[RClip.SearchResult] = []
-    for score, index in sorted_similarities:
-      if top_k is not None and len(results) >= top_k:
-        break
-      helpers.raise_if_cancelled(cancel_event)
-      filepath = filepaths[index]
-      if self._exclude_dir_regex.match(filepath) or filepath in exclude_files:
-        continue
-      results.append(RClip.SearchResult(filepath, score))
-    return results
+    def iter_results() -> Iterator[RClip.SearchResult]:
+      images = iter(self._db.get_image_vectors_by_dir_path(directory))
+      while True:
+        batch_size = 0
+        filepaths: list[str] = []
+        features: list[model.FeatureVector] = []
+        for image in itertools.islice(images, self.SEARCH_BATCH_SIZE):
+          helpers.raise_if_cancelled(cancel_event)
+          batch_size += 1
+          filepath = image["filepath"]
+          if self._exclude_dir_regex.match(filepath) or filepath in exclude_files:
+            continue
+          filepaths.append(filepath)
+          features.append(np.frombuffer(image["vector"], np.float32))
+        if not batch_size:
+          break
+        if not features:
+          continue
+        stacked_features = np.stack(features)
+        helpers.raise_if_cancelled(cancel_event)
+        similarities = query_features @ stacked_features.T
+        helpers.raise_if_cancelled(cancel_event)
+        yield from (
+          RClip.SearchResult(filepath, float(score)) for filepath, score in zip(filepaths, similarities)
+        )
+
+    if top_k is None:
+      return sorted(iter_results(), key=lambda result: (-result.score, result.filepath))
+    return heapq.nsmallest(top_k, iter_results(), key=lambda result: (-result.score, result.filepath))
 
   def list_images(
     self,
@@ -334,21 +357,6 @@ class RClip:
       results.append(filepath)
       last_cursor = RClip.ImageCursor(float(row["modified_at"]), filepath)
     return RClip.ImagePage(results, None)
-
-  def _get_features(
-    self, directory: str, cancel_event: threading.Event | None = None
-  ) -> Tuple[List[str], model.FeatureVector]:
-    filepaths: List[str] = []
-    features: List[model.FeatureVector] = []
-    for image in self._db.get_image_vectors_by_dir_path(directory):
-      helpers.raise_if_cancelled(cancel_event)
-      filepaths.append(image["filepath"])
-      features.append(np.frombuffer(image["vector"], np.float32))
-    if not filepaths:
-      return [], np.ndarray(shape=(0, model.Model.VECTOR_SIZE))
-    stacked_features = np.stack(features)
-    helpers.raise_if_cancelled(cancel_event)
-    return filepaths, stacked_features
 
 
 def init_rclip(
