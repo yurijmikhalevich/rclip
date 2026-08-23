@@ -31,6 +31,7 @@ a = Analysis(
     datas=[
         *collect_data_files('onnxruntime'),
         *distribution_metadata,
+        (str(project_root / 'rclip/tui/app.tcss'), 'rclip/tui'),
         (str(legal_dir), 'legal'),
     ],
     # rclip imports onnxruntime dynamically, so PyInstaller won't see it unless we

@@ -844,9 +844,10 @@ def test_source_manifest_requires_rawpy_fields(tmp_path: Path) -> None:
     build_corresponding_source(manifest, tmp_path / "source.tar.gz")
 
 
-def test_pyinstaller_legal_pack_path_uses_project_root() -> None:
+def test_pyinstaller_pack_paths_use_project_root() -> None:
   spec = (REPO_ROOT / "release-utils/windows/pyinstaller.spec").read_text(encoding="utf-8")
 
   assert "project_root = Path(SPEC).resolve().parents[2]" in spec
   assert "Path(__file__)" not in spec
+  assert "(str(project_root / 'rclip/tui/app.tcss'), 'rclip/tui')" in spec
   assert "(str(legal_dir), 'legal')" in spec
