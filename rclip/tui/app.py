@@ -18,7 +18,6 @@ from rclip.tui.views import DetailScreen
 from rclip.tui.views import ImageCard
 from rclip.tui.views import ResultsGrid
 from rclip.tui.views import TuiResult
-from rclip.utils import helpers
 
 if TYPE_CHECKING:
   from rclip.main import RClip
@@ -59,14 +58,12 @@ class RclipApp(App[None]):
     self,
     rclip: RClip,
     working_directory: str,
-    cache_dir: Path,
     top_k: int = 100,
   ) -> None:
     super().__init__()
     self.theme = os.getenv("TEXTUAL_THEME", "ansi-dark")
     self.rclip = rclip
     self.working_directory = working_directory
-    self.cache_dir = cache_dir
     self.top_k = top_k
     self._search_timer: Timer | None = None
     self._search_lock = Lock()
@@ -137,7 +134,7 @@ class RclipApp(App[None]):
     if generation != self._search_generation:
       return
     self._results = results
-    cards = [ImageCard(result, self.cache_dir) for result in results]
+    cards = [ImageCard(result) for result in results]
     if cards:
       await grid.mount(*cards)
     if generation != self._search_generation:
@@ -263,7 +260,7 @@ class RclipApp(App[None]):
 
   def action_view(self) -> None:
     if card := self._selected_card():
-      self.push_screen(DetailScreen(card.result.filepath, self.cache_dir))
+      self.push_screen(DetailScreen(card.result.filepath))
 
   def action_go_back(self) -> None:
     if isinstance(self.screen, DetailScreen):
@@ -308,5 +305,4 @@ class RclipApp(App[None]):
 
 
 def run_tui(rclip: RClip, working_directory: str, top_k: int) -> None:
-  cache_dir = helpers.get_app_datadir() / "previews"
-  RclipApp(rclip, working_directory, cache_dir, top_k).run()
+  RclipApp(rclip, working_directory, top_k).run()

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 
 from textual import events, work
@@ -8,7 +9,7 @@ from textual.screen import Screen
 from textual.widgets import Label, Static
 
 from rclip.tui.media import ImageWidget
-from rclip.tui.media import cache_image
+from rclip.tui.media import prepare_image
 
 
 PREVIEW_SIZE = (640, 480)
@@ -22,10 +23,9 @@ class TuiResult:
 
 
 class ImageCard(Static, can_focus=True):
-  def __init__(self, result: TuiResult, cache_dir: Path) -> None:
+  def __init__(self, result: TuiResult) -> None:
     super().__init__()
     self.result = result
-    self.cache_dir = cache_dir
     self._loading = False
     self._loaded = False
     self._image = ImageWidget(classes="thumbnail")
@@ -46,13 +46,13 @@ class ImageCard(Static, can_focus=True):
   @work(thread=True, exit_on_error=False)
   def _load_preview(self) -> None:
     try:
-      preview = cache_image(self.result.filepath, self.cache_dir, PREVIEW_SIZE)
+      preview = prepare_image(self.result.filepath, PREVIEW_SIZE)
     except Exception:
       self.app.call_from_thread(self._preview_failed)
     else:
       self.app.call_from_thread(self._preview_ready, preview)
 
-  def _preview_ready(self, preview: Path) -> None:
+  def _preview_ready(self, preview: BytesIO) -> None:
     if self.is_attached:
       self._image.image = preview
     self._loading = False
@@ -102,10 +102,9 @@ class ResultsGrid(ItemGrid):
 
 
 class DetailScreen(Screen[None]):
-  def __init__(self, filepath: str, cache_dir: Path) -> None:
+  def __init__(self, filepath: str) -> None:
     super().__init__()
     self.filepath = filepath
-    self.cache_dir = cache_dir
     self._image = ImageWidget(classes="detail-image")
 
   def compose(self) -> ComposeResult:
@@ -142,13 +141,13 @@ class DetailScreen(Screen[None]):
   def _load_detail(self) -> None:
     filepath = self.filepath
     try:
-      detail = cache_image(filepath, self.cache_dir, DETAIL_SIZE)
+      detail = prepare_image(filepath, DETAIL_SIZE)
     except Exception as error:
       self.app.call_from_thread(self._show_error, filepath, str(error))
     else:
       self.app.call_from_thread(self._show_detail, filepath, detail)
 
-  def _show_detail(self, filepath: str, detail: Path) -> None:
+  def _show_detail(self, filepath: str, detail: BytesIO) -> None:
     if not self.is_attached or filepath != self.filepath:
       return
     self._image.image = detail

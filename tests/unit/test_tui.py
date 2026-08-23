@@ -16,7 +16,7 @@ from rclip.main import RClip
 from rclip.tui.app import RclipApp
 from rclip.tui.app import _display_directory
 from rclip.tui.media import StableTGPImage
-from rclip.tui.media import cache_image
+from rclip.tui.media import prepare_image
 from rclip.tui.transfer import ClipboardError
 from rclip.tui.transfer import copy_image_to_clipboard
 from rclip.tui.views import DetailScreen
@@ -127,37 +127,21 @@ def test_search_placeholder_shortens_the_home_directory(monkeypatch: pytest.Monk
 
 def test_tui_uses_the_terminal_palette(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
   monkeypatch.delenv("TEXTUAL_THEME", raising=False)
-  assert RclipApp(FakeRclip([]), str(tmp_path), tmp_path / "cache").theme == "ansi-dark"
+  assert RclipApp(FakeRclip([]), str(tmp_path)).theme == "ansi-dark"
 
   monkeypatch.setenv("TEXTUAL_THEME", "ansi-light")
-  assert RclipApp(FakeRclip([]), str(tmp_path), tmp_path / "cache").theme == "ansi-light"
+  assert RclipApp(FakeRclip([]), str(tmp_path)).theme == "ansi-light"
 
 
-def test_cache_image_reuses_a_small_display_image(tmp_path: Path) -> None:
+def test_prepare_image_returns_a_small_jpeg_in_memory(tmp_path: Path) -> None:
   source = make_image(tmp_path / "source.jpg")
+  prepared = prepare_image(str(source), (32, 32))
 
-  first = cache_image(str(source), tmp_path / "cache", (32, 32))
-  first_mtime = first.stat().st_mtime_ns
-  second = cache_image(str(source), tmp_path / "cache", (32, 32))
-
-  assert second == first
-  assert second.stat().st_mtime_ns == first_mtime
-  with Image.open(second) as preview:
+  assert list(tmp_path.iterdir()) == [source]
+  with Image.open(prepared) as preview:
+    assert preview.format == "JPEG"
     assert preview.width <= 32
     assert preview.height <= 32
-
-
-def test_cache_image_refreshes_when_a_source_has_an_older_timestamp(tmp_path: Path) -> None:
-  source = make_image(tmp_path / "source.jpg")
-  cached = cache_image(str(source), tmp_path / "cache", (32, 32))
-  older_mtime = source.stat().st_mtime_ns - 1_000_000_000
-
-  make_image(source, "blue")
-  os.utime(source, ns=(older_mtime, older_mtime))
-
-  assert cache_image(str(source), tmp_path / "cache", (32, 32)) == cached
-  with Image.open(cached) as preview:
-    assert preview.convert("RGB").getpixel((0, 0)) == pytest.approx((0, 0, 254), abs=5)
 
 
 def test_kitty_image_reuses_its_renderable_until_its_size_changes(
@@ -231,7 +215,7 @@ def test_latest_clipboard_action_finishes_last(monkeypatch: pytest.MonkeyPatch, 
       first_started.set()
       assert release_first.wait(2)
 
-  app = RclipApp(FakeRclip([]), str(tmp_path), tmp_path / "cache")
+  app = RclipApp(FakeRclip([]), str(tmp_path))
   monkeypatch.setattr("rclip.tui.app.copy_image_to_clipboard", copy)
   monkeypatch.setattr(app, "notify", lambda message, **_options: notifications.append(message))
 
@@ -254,7 +238,7 @@ def test_latest_clipboard_action_finishes_last(monkeypatch: pytest.MonkeyPatch, 
 
 def test_tui_rejects_image_query(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
   rclip = FakeRclip([])
-  app = RclipApp(rclip, str(tmp_path), tmp_path / "cache")
+  app = RclipApp(rclip, str(tmp_path))
   notifications: list[str] = []
   monkeypatch.setattr(app, "notify", lambda message, **_options: notifications.append(message))
 
@@ -277,7 +261,6 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
   app = RclipApp(
     rclip,
     str(tmp_path),
-    tmp_path / "cache",
     top_k=25,
   )
   copied: list[str] = []
@@ -343,9 +326,9 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
 def test_tui_only_loads_visible_previews(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   path = make_image(tmp_path / "image.jpg")
   rclip = FakeRclip([RClip.SearchResult(str(path), 1 - index / 100) for index in range(100)])
-  app = RclipApp(rclip, str(tmp_path), tmp_path / "cache")
+  app = RclipApp(rclip, str(tmp_path))
   loaded: list[str] = []
-  monkeypatch.setattr("rclip.tui.views.cache_image", lambda filepath, _cache, _size: loaded.append(filepath) or path)
+  monkeypatch.setattr("rclip.tui.views.prepare_image", lambda filepath, _size: loaded.append(filepath) or path)
 
   async def run() -> None:
     async with app.run_test(size=(80, 24)) as pilot:
@@ -362,7 +345,7 @@ def test_tui_only_loads_visible_previews(tmp_path: Path, monkeypatch: pytest.Mon
 def test_interactive_top_limits_empty_browse(tmp_path: Path) -> None:
   path = make_image(tmp_path / "image.jpg")
   rclip = FakeRclip([RClip.SearchResult(str(path), 1 - index / 50) for index in range(50)])
-  app = RclipApp(rclip, str(tmp_path), tmp_path / "cache", top_k=25)
+  app = RclipApp(rclip, str(tmp_path), top_k=25)
 
   async def run() -> None:
     async with app.run_test() as pilot:

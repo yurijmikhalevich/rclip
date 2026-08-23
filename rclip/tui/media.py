@@ -1,7 +1,4 @@
-import hashlib
-import os
-from pathlib import Path
-import tempfile
+from io import BytesIO
 
 from PIL import Image as PILImage
 from PIL import ImageOps
@@ -15,39 +12,20 @@ from textual_image.widget import TGPImage
 from rclip.utils import helpers
 
 
-def _cache_path(filepath: str, cache_dir: Path, size: tuple[int, int]) -> Path:
-  source = Path(filepath).resolve()
-  key = hashlib.sha256(f"{source}\0{size[0]}x{size[1]}".encode()).hexdigest()
-  return cache_dir / f"{key}.jpg"
-
-
-def cache_image(filepath: str, cache_dir: Path, size: tuple[int, int]) -> Path:
-  """Return an orientation-corrected display image no larger than ``size``."""
-  source = Path(filepath)
-  target = _cache_path(filepath, cache_dir, size)
-  source_mtime = source.stat().st_mtime_ns
-  if target.is_file() and target.stat().st_mtime_ns == source_mtime:
-    return target
-
-  cache_dir.mkdir(parents=True, exist_ok=True)
-  temporary = tempfile.NamedTemporaryFile(prefix=f".{target.stem}-", suffix=".jpg", dir=cache_dir, delete=False)
-  temporary.close()
-  temporary_path = Path(temporary.name)
-  try:
-    with helpers.read_image(filepath) as opened:
-      image = ImageOps.exif_transpose(opened)
-      image.thumbnail(size, PILImage.Resampling.LANCZOS)
-      if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):
-        rgba = image.convert("RGBA")
-        background = PILImage.new("RGBA", rgba.size, "#121212")
-        background.alpha_composite(rgba)
-        image = background
-      image.convert("RGB").save(temporary_path, "JPEG", quality=80)
-    os.utime(temporary_path, ns=(source_mtime, source_mtime))
-    os.replace(temporary_path, target)
-  finally:
-    temporary_path.unlink(missing_ok=True)
-  return target
+def prepare_image(filepath: str, size: tuple[int, int]) -> BytesIO:
+  """Return an orientation-corrected JPEG no larger than ``size``."""
+  with helpers.read_image(filepath) as opened:
+    image = ImageOps.exif_transpose(opened)
+    image.thumbnail(size, PILImage.Resampling.LANCZOS)
+    if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):
+      rgba = image.convert("RGBA")
+      background = PILImage.new("RGBA", rgba.size, "#121212")
+      background.alpha_composite(rgba)
+      image = background
+    prepared = BytesIO()
+    image.convert("RGB").save(prepared, "JPEG", quality=80)
+  prepared.seek(0)
+  return prepared
 
 
 class StableTGPImage(TGPImage, Renderable=TGPRenderable):
