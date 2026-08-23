@@ -51,16 +51,12 @@ def make_image(path: Path, color: str = "red") -> Path:
   return path
 
 
-def test_interactive_cli_accepts_an_optional_query() -> None:
+def test_interactive_cli_accepts_no_query() -> None:
   parser = init_arg_parser()
 
-  args = parser.parse_args(["--interactive"])
+  args = parser.parse_args(["--interactive", "--top", "25"])
   assert args.interactive
   assert args.query is None
-
-  args = parser.parse_args(["-i", "black cat", "--top", "25"])
-  assert args.interactive
-  assert args.query == "black cat"
   assert args.top == 25
 
   with pytest.raises(SystemExit):
@@ -84,7 +80,7 @@ def test_interactive_main_allows_database_use_from_search_worker(monkeypatch: py
   main_module.main()
 
   assert init_options["allow_cross_thread_db"] is True
-  assert tui_arguments[3] == 100
+  assert tui_arguments == [resources[0], os.getcwd(), 100]
 
 
 def test_noninteractive_main_requires_a_query(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -95,8 +91,8 @@ def test_noninteractive_main_requires_a_query(monkeypatch: pytest.MonkeyPatch) -
     main_module.main()
 
 
-def test_interactive_main_rejects_image_queries_before_setup(monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setattr(sys, "argv", ["rclip", "--interactive", "2:./cat.jpg"])
+def test_interactive_main_rejects_initial_query_before_setup(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(sys, "argv", ["rclip", "--interactive", "cat"])
   monkeypatch.setattr(main_module, "init_rclip", lambda **_options: pytest.fail("must reject before setup"))
 
   with pytest.raises(SystemExit):
@@ -258,17 +254,15 @@ def test_latest_clipboard_action_finishes_last(monkeypatch: pytest.MonkeyPatch, 
 
 def test_tui_rejects_image_query(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
   rclip = FakeRclip([])
-  app = RclipApp(
-    rclip,
-    str(tmp_path),
-    tmp_path / "cache",
-    initial_query="2:./cat.jpg",
-  )
+  app = RclipApp(rclip, str(tmp_path), tmp_path / "cache")
   notifications: list[str] = []
   monkeypatch.setattr(app, "notify", lambda message, **_options: notifications.append(message))
 
   async def run() -> None:
-    async with app.run_test():
+    async with app.run_test() as pilot:
+      await app.workers.wait_for_complete()
+      app.query_one(Input).value = "2:./cat.jpg"
+      await pilot.pause(0.3)
       await app.workers.wait_for_complete()
 
   asyncio.run(run())

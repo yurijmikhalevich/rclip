@@ -60,7 +60,6 @@ class RclipApp(App[None]):
     rclip: RClip,
     working_directory: str,
     cache_dir: Path,
-    initial_query: str | None = None,
     top_k: int = 100,
   ) -> None:
     super().__init__()
@@ -68,19 +67,17 @@ class RclipApp(App[None]):
     self.rclip = rclip
     self.working_directory = working_directory
     self.cache_dir = cache_dir
-    self.initial_query = initial_query or ""
     self.top_k = top_k
     self._search_timer: Timer | None = None
     self._search_lock = Lock()
     self._search_generation = 0
     self._clipboard_lock = Lock()
-    self._ignore_initial_change = bool(initial_query)
     self._results: list[TuiResult] = []
     self._selected_index = 0
 
   def compose(self) -> ComposeResult:
     directory = _display_directory(self.working_directory)
-    yield Input(value=self.initial_query, placeholder=f"Search images in {directory}…", id="search")
+    yield Input(placeholder=f"Search images in {directory}…", id="search")
     yield ResultsGrid()
     yield Static(
       "/ Search   hjkl/Arrows Move   Enter View   y Copy image   Y Copy path   q/Ctrl+C Quit",
@@ -90,13 +87,10 @@ class RclipApp(App[None]):
 
   def on_mount(self) -> None:
     self.query_one("#search", Input).focus()
-    self._begin_search(self.initial_query.strip())
+    self._begin_search("")
 
   def on_input_changed(self, event: Input.Changed) -> None:
     if event.input.id != "search":
-      return
-    if self._ignore_initial_change and event.value == self.initial_query:
-      self._ignore_initial_change = False
       return
     if self._search_timer is not None:
       self._search_timer.stop()
@@ -313,11 +307,6 @@ class RclipApp(App[None]):
           self.call_from_thread(self.notify, "Image copied", title=Path(filepath).name)
 
 
-def run_tui(
-  rclip: RClip,
-  working_directory: str,
-  initial_query: str | None,
-  top_k: int,
-) -> None:
+def run_tui(rclip: RClip, working_directory: str, top_k: int) -> None:
   cache_dir = helpers.get_app_datadir() / "previews"
-  RclipApp(rclip, working_directory, cache_dir, initial_query, top_k).run()
+  RclipApp(rclip, working_directory, cache_dir, top_k).run()

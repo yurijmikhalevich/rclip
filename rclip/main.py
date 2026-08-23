@@ -385,10 +385,10 @@ def main():
   args = arg_parser.parse_args()
   if args.query is None and not args.interactive:
     arg_parser.error("query is required unless --interactive is used")
+  if args.interactive and args.query is not None:
+    arg_parser.error("--interactive does not accept a query")
   if args.interactive and (args.add or args.subtract):
     arg_parser.error("--interactive does not support --add or --subtract")
-  if args.interactive and args.query and not model.Model.is_text_query(args.query):
-    arg_parser.error("--interactive currently supports text queries only")
   if args.interactive and args.top and args.top > 100:
     arg_parser.error("--top cannot exceed 100 with --interactive")
   top_k = args.top or (100 if args.interactive else 10)
@@ -412,12 +412,7 @@ def main():
     if args.interactive:
       from rclip.tui import run_tui
 
-      run_tui(
-        rclip,
-        current_directory,
-        args.query,
-        top_k,
-      )
+      run_tui(rclip, current_directory, top_k)
     else:
       result = rclip.search(args.query, current_directory, top_k, args.add, args.subtract)
       print_results(result, args)

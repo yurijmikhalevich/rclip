@@ -264,7 +264,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
   parser.add_argument(
     "query",
     nargs="?",
-    help="a text query or a path/URL to an image file; optional with --interactive",
+    help="a text query or a path/URL to an image file; cannot be used with --interactive",
   )
   parser.add_argument(
     "--add",
@@ -298,7 +298,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
     "-i",
     action="store_true",
     default=False,
-    help="opens the interactive terminal UI for text queries; the query is optional",
+    help="opens the interactive terminal UI; enter text queries in the UI",
   )
   display_mode_group.add_argument(
     "--preview",

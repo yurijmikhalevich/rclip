@@ -113,14 +113,13 @@ For a detailed demonstration, watch the video: https://www.youtube.com/watch?v=t
 
 ### Interactive terminal UI
 
-Open the interactive UI without an initial query, or provide one immediately:
+Open the interactive UI and enter a query in its search input:
 
 ```bash
 rclip --interactive
-rclip -i "black cat"
 ```
 
-The UI uses Kitty's graphics protocol when available and Sixel in terminals such as iTerm2, with a colored half-cell fallback elsewhere. It uses the terminal's default colors and ANSI palette. With an empty query it browses recently modified images first. Results and cached previews load incrementally as you scroll, and opening a result loads a higher-resolution display image.
+The UI uses Kitty's graphics protocol when available and Sixel in terminals such as iTerm2, with a colored half-cell fallback elsewhere. It uses the terminal's default colors and ANSI palette. With an empty query it browses recently modified images first. Results are limited to 100, cached previews load as they become visible, and opening a result loads a higher-resolution display image.
 
 | Key | Action |
 | --- | --- |
@@ -236,11 +235,11 @@ Run `rclip --help` (or `rclip -h`) to see this list in your terminal. The positi
 
 | Option | Description |
 | --- | --- |
-| `query` | A text query or a path/URL to an image file. Optional with `--interactive`. A relative path must be prefixed with `./` (e.g. `./cat.jpg`). Any query can be prefixed with a multiplier, e.g. `2:cat` or `0.5:./cat.jpg`. |
+| `query` | A text query or a path/URL to an image file. Cannot be used with `--interactive`. A relative path must be prefixed with `./` (e.g. `./cat.jpg`). Any query can be prefixed with a multiplier, e.g. `2:cat` or `0.5:./cat.jpg`. |
 | `--add`, `-a`, `+` `QUERY` | A text query or a path/URL to an image file to add to the "original" query. Can be used multiple times. |
 | `--subtract`, `--sub`, `-s`, `-` `QUERY` | A text query or a path/URL to an image file to subtract from the "original" query. Can be used multiple times. |
-| `--top`, `-t` `N` | Number of top results to display. Default: `10`, or `100` with `--interactive`. |
-| `--interactive`, `-i` | Open the interactive terminal UI for text queries. The query is optional. Mutually exclusive with `--preview` and `--filepath-only`. |
+| `--top`, `-t` `N` | Number of top results to display. Default: `10`, or `100` with `--interactive`; interactive maximum: `100`. |
+| `--interactive`, `-i` | Open the interactive terminal UI and enter text queries there. Mutually exclusive with `--preview` and `--filepath-only`. |
 | `--preview`, `-p` | Preview results in the terminal (supported in iTerm2, Konsole 22.04+, wezterm, Mintty, mlterm). Mutually exclusive with `--filepath-only`. |
 | `--filepath-only`, `-f` | Output only filepaths, without scores or the header. Mutually exclusive with `--preview`. |
 | `--preview-height`, `-H` `PX` | Preview height in pixels. Default: `400`. |
