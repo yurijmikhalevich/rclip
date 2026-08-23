@@ -13,14 +13,14 @@ from textual.widgets import Input
 
 from rclip import main as main_module
 from rclip.main import RClip
-from rclip.tui import ClipboardError
-from rclip.tui import DetailScreen
-from rclip.tui import ImageCard
-from rclip.tui import RclipApp
-from rclip.tui import StableTGPImage
-from rclip.tui import _display_directory
-from rclip.tui import cache_image
-from rclip.tui import copy_image_to_clipboard
+from rclip.tui.app import RclipApp
+from rclip.tui.app import _display_directory
+from rclip.tui.media import StableTGPImage
+from rclip.tui.media import cache_image
+from rclip.tui.transfer import ClipboardError
+from rclip.tui.transfer import copy_image_to_clipboard
+from rclip.tui.views import DetailScreen
+from rclip.tui.views import ImageCard
 from rclip.utils.helpers import init_arg_parser
 
 
@@ -184,7 +184,7 @@ def test_copy_image_keeps_common_formats_and_converts_others(
     with Image.open(path) as image:
       copied.append((path.suffix, image.format or ""))
 
-  monkeypatch.setattr("rclip.tui._run_clipboard_kitten", fake_copy)
+  monkeypatch.setattr("rclip.tui.transfer._run_clipboard_kitten", fake_copy)
   jpeg = make_image(tmp_path / "image.jpg")
   ppm = make_image(tmp_path / "image.ppm")
 
@@ -195,7 +195,7 @@ def test_copy_image_keeps_common_formats_and_converts_others(
 
 
 def test_clipboard_kitten_failure_is_reported(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-  monkeypatch.setattr("rclip.tui._kitten_executable", lambda: "kitten")
+  monkeypatch.setattr("rclip.tui.transfer._kitten_executable", lambda: "kitten")
   monkeypatch.setattr(
     subprocess,
     "run",
@@ -219,7 +219,7 @@ def test_latest_clipboard_action_finishes_last(monkeypatch: pytest.MonkeyPatch, 
       assert release_first.wait(2)
 
   app = RclipApp(FakeRclip([]), str(tmp_path), tmp_path / "cache")
-  monkeypatch.setattr("rclip.tui.copy_image_to_clipboard", copy)
+  monkeypatch.setattr("rclip.tui.app.copy_image_to_clipboard", copy)
   monkeypatch.setattr(app, "notify", lambda message, **_options: notifications.append(message))
 
   async def run() -> None:
@@ -352,7 +352,7 @@ def test_tui_only_loads_visible_previews(tmp_path: Path, monkeypatch: pytest.Mon
   rclip = FakeRclip([RClip.SearchResult(str(path), 1 - index / 100) for index in range(100)])
   app = RclipApp(rclip, str(tmp_path), tmp_path / "cache")
   loaded: list[str] = []
-  monkeypatch.setattr("rclip.tui.cache_image", lambda filepath, _cache, _size: loaded.append(filepath) or path)
+  monkeypatch.setattr("rclip.tui.views.cache_image", lambda filepath, _cache, _size: loaded.append(filepath) or path)
 
   async def run() -> None:
     async with app.run_test(size=(80, 24)) as pilot:

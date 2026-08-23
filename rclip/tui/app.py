@@ -1,33 +1,24 @@
 from __future__ import annotations
 
 from asyncio import Lock as AsyncLock
-from dataclasses import dataclass
-import hashlib
 import os
 from pathlib import Path
-import shutil
-import subprocess
-import tempfile
 from threading import Lock
 from typing import TYPE_CHECKING, ClassVar
 
-from PIL import Image as PILImage
-from PIL import ImageOps
-from textual import events, work
-from textual.app import App, ComposeResult, RenderResult
+from textual import work
+from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import CenterMiddle, ItemGrid
-from textual.geometry import Size
-from textual.screen import Screen
 from textual.timer import Timer
 from textual.worker import get_current_worker
-from textual.widgets import Input, Label, Static
-from textual_image.renderable import Image as TerminalRenderable
-from textual_image.renderable import TGPImage as TGPRenderable
-from textual_image.widget import Image as TerminalImage
-from textual_image.widget import TGPImage
+from textual.widgets import Input, Static
 
 from rclip.model import Model
+from rclip.tui.transfer import copy_image_to_clipboard
+from rclip.tui.views import DetailScreen
+from rclip.tui.views import ImageCard
+from rclip.tui.views import ResultsGrid
+from rclip.tui.views import TuiResult
 from rclip.utils import helpers
 
 if TYPE_CHECKING:
@@ -35,25 +26,6 @@ if TYPE_CHECKING:
 
 
 RESULT_BATCH_SIZE = 100
-PREVIEW_SIZE = (640, 480)
-DETAIL_SIZE = (1920, 1920)
-CLIPBOARD_NATIVE_EXTENSIONS = {"bmp", "gif", "jpeg", "jpg", "png", "tif", "tiff", "webp"}
-
-
-class ClipboardError(Exception):
-  pass
-
-
-@dataclass(frozen=True)
-class TuiResult:
-  filepath: str
-  score: float | None = None
-
-
-def _cache_path(filepath: str, cache_dir: Path, size: tuple[int, int]) -> Path:
-  source = Path(filepath).resolve()
-  key = hashlib.sha256(f"{source}\0{size[0]}x{size[1]}".encode()).hexdigest()
-  return cache_dir / f"{key}.jpg"
 
 
 def _display_directory(directory: str) -> str:
@@ -65,328 +37,14 @@ def _display_directory(directory: str) -> str:
   return str(Path("~") / relative)
 
 
-def cache_image(filepath: str, cache_dir: Path, size: tuple[int, int]) -> Path:
-  """Return an orientation-corrected display image no larger than ``size``."""
-  source = Path(filepath)
-  target = _cache_path(filepath, cache_dir, size)
-  source_mtime = source.stat().st_mtime_ns
-  if target.is_file() and target.stat().st_mtime_ns == source_mtime:
-    return target
-
-  cache_dir.mkdir(parents=True, exist_ok=True)
-  temporary = tempfile.NamedTemporaryFile(prefix=f".{target.stem}-", suffix=".jpg", dir=cache_dir, delete=False)
-  temporary.close()
-  temporary_path = Path(temporary.name)
-  try:
-    with helpers.read_image(filepath) as opened:
-      image = ImageOps.exif_transpose(opened)
-      image.thumbnail(size, PILImage.Resampling.LANCZOS)
-      if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):
-        rgba = image.convert("RGBA")
-        background = PILImage.new("RGBA", rgba.size, "#121212")
-        background.alpha_composite(rgba)
-        image = background
-      image.convert("RGB").save(temporary_path, "JPEG", quality=88)
-    os.utime(temporary_path, ns=(source_mtime, source_mtime))
-    os.replace(temporary_path, target)
-  finally:
-    temporary_path.unlink(missing_ok=True)
-  return target
-
-
-def _kitten_executable() -> str:
-  if executable := shutil.which("kitten"):
-    return executable
-  if installation_dir := os.getenv("KITTY_INSTALLATION_DIR"):
-    executable = Path(installation_dir) / "kitten"
-    if executable.is_file():
-      return str(executable)
-  raise ClipboardError("could not find Kitty's `kitten` executable")
-
-
-def _run_clipboard_kitten(filepath: Path) -> None:
-  completed = subprocess.run(
-    [_kitten_executable(), "clipboard", str(filepath)],
-    stdin=subprocess.DEVNULL,
-    stderr=subprocess.PIPE,
-    text=True,
-    timeout=30,
-  )
-  if completed.returncode:
-    message = completed.stderr.strip() or f"kitten exited with status {completed.returncode}"
-    raise ClipboardError(message)
-
-
-def copy_image_to_clipboard(filepath: str) -> None:
-  """Copy an image to Kitty's clipboard, converting uncommon formats to PNG."""
-  if helpers.get_file_extension(filepath) in CLIPBOARD_NATIVE_EXTENSIONS:
-    _run_clipboard_kitten(Path(filepath))
-    return
-
-  with tempfile.TemporaryDirectory(prefix="rclip-clipboard-") as temporary:
-    converted = Path(temporary) / "image.png"
-    with helpers.read_image(filepath) as opened:
-      ImageOps.exif_transpose(opened).save(converted, "PNG")
-    _run_clipboard_kitten(converted)
-
-
-class StableTGPImage(TGPImage, Renderable=TGPRenderable):
-  """Keep a Kitty image alive until its source or rendered size changes."""
-
-  _rendered_size: Size | None = None
-
-  def render(self) -> RenderResult:
-    if not self.image:
-      return ""
-    if self._rendered_size != self.content_size:
-      self._discard_renderable()
-    if self._renderable is None:
-      self._renderable = self._Renderable(self.image, *self._get_styled_size())
-    self._rendered_size = self.content_size
-    return self._renderable
-
-  def on_unmount(self) -> None:
-    self._discard_renderable()
-
-  def _discard_renderable(self) -> None:
-    if self._renderable is not None:
-      self._renderable.cleanup()
-      self._renderable = None
-    self._rendered_size = None
-
-
-ImageWidget = StableTGPImage if TerminalRenderable is TGPRenderable else TerminalImage
-
-
-class ImageCard(Static, can_focus=True):
-  def __init__(self, result: TuiResult, cache_dir: Path) -> None:
-    super().__init__()
-    self.result = result
-    self.cache_dir = cache_dir
-    self._loading = False
-    self._loaded = False
-    self._image = ImageWidget(classes="thumbnail")
-
-  def compose(self) -> ComposeResult:
-    with CenterMiddle(classes="thumbnail-frame"):
-      yield self._image
-    filename = Path(self.result.filepath).name
-    label = filename if self.result.score is None else f"{self.result.score:.3f}  {filename}"
-    yield Label(label, classes="result-label", markup=False)
-
-  def load_preview(self) -> None:
-    if self._loading or self._loaded:
-      return
-    self._loading = True
-    self._load_preview()
-
-  @work(thread=True, exit_on_error=False)
-  def _load_preview(self) -> None:
-    try:
-      preview = cache_image(self.result.filepath, self.cache_dir, PREVIEW_SIZE)
-    except Exception:
-      self.app.call_from_thread(self._preview_failed)
-    else:
-      self.app.call_from_thread(self._preview_ready, preview)
-
-  def _preview_ready(self, preview: Path) -> None:
-    if self.is_attached:
-      self._image.image = preview
-    self._loading = False
-    self._loaded = True
-
-  def _preview_failed(self) -> None:
-    self._loading = False
-    self._loaded = True
-    self.add_class("preview-failed")
-
-  def on_focus(self) -> None:
-    if isinstance(self.app, RclipApp):
-      self.app.select_card(self)
-
-  def on_click(self, event: events.Click) -> None:
-    if event.button == 1 and event.chain == 2 and isinstance(self.app, RclipApp):
-      self.focus()
-      self.app.select_card(self)
-      self.app.action_view()
-
-
-class ResultsGrid(ItemGrid):
-  def __init__(self) -> None:
-    super().__init__(
-      id="results",
-      min_column_width=24,
-      regular=False,
-      stretch_height=False,
-    )
-
-  def load_visible_previews(self) -> None:
-    viewport = self.scrollable_content_region
-    for card in self.query(ImageCard):
-      if card.region.overlaps(viewport):
-        card.load_preview()
-    if self.max_scroll_y - self.scroll_y <= viewport.height:
-      if isinstance(self.app, RclipApp):
-        self.app.mount_more_results()
-
-  def watch_scroll_y(self, old_value: float, new_value: float) -> None:
-    super().watch_scroll_y(old_value, new_value)
-    self.call_after_refresh(self.load_visible_previews)
-
-  def on_resize(self, _event: events.Resize) -> None:
-    self.call_after_refresh(self.load_visible_previews)
-
-
-class DetailScreen(Screen[None]):
-  def __init__(self, filepath: str, cache_dir: Path) -> None:
-    super().__init__()
-    self.filepath = filepath
-    self.cache_dir = cache_dir
-    self._image = ImageWidget(classes="detail-image")
-
-  def compose(self) -> ComposeResult:
-    with CenterMiddle(id="detail-frame"):
-      yield self._image
-    yield Static("Loading higher-resolution image…", id="detail-status", markup=False)
-    yield Static(self.filepath, id="detail-path", markup=False)
-    yield Static(
-      "h/l/Arrows Browse   Esc/Double-click Back   y Copy image   Y Copy path   q/Ctrl+C Quit",
-      classes="hotkeys",
-      markup=False,
-    )
-
-  def on_mount(self) -> None:
-    self._load_detail()
-
-  def show_image(self, filepath: str) -> None:
-    self.filepath = filepath
-    self._image.image = None
-    status = self.query_one("#detail-status", Static)
-    status.update("Loading higher-resolution image…")
-    status.display = True
-    self.query_one("#detail-path", Static).update(filepath)
-    self._load_detail()
-
-  async def on_click(self, event: events.Click) -> None:
-    if event.button == 1 and event.chain == 2 and isinstance(self.app, RclipApp):
-      event.stop()
-      await self.app.action_go_back()
-
-  @work(thread=True, group="detail", exclusive=True, exit_on_error=False)
-  def _load_detail(self) -> None:
-    filepath = self.filepath
-    try:
-      detail = cache_image(filepath, self.cache_dir, DETAIL_SIZE)
-    except Exception as error:
-      self.app.call_from_thread(self._show_error, filepath, str(error))
-    else:
-      self.app.call_from_thread(self._show_detail, filepath, detail)
-
-  def _show_detail(self, filepath: str, detail: Path) -> None:
-    if not self.is_attached or filepath != self.filepath:
-      return
-    self._image.image = detail
-    self.query_one("#detail-status", Static).display = False
-
-  def _show_error(self, filepath: str, message: str) -> None:
-    if self.is_attached and filepath == self.filepath:
-      self.query_one("#detail-status", Static).update(f"Unable to load image: {message}")
-
-
 class RclipApp(App[None]):
   TITLE = "rclip"
-  CSS = """
-  Screen {
-    background: $background;
-    color: $foreground;
-    layout: vertical;
-  }
-
-  #search {
-    height: 3;
-    margin: 1 1 0 1;
-    border: round $border-blurred;
-    background: $surface;
-  }
-
-  #search:focus {
-    border: round $accent;
-  }
-
-  #results {
-    height: 1fr;
-    grid-gutter: 1;
-    grid-rows: 16;
-    overflow-x: hidden;
-    overflow-y: auto;
-  }
-
-  ImageCard {
-    height: 16;
-    layout: vertical;
-    border: round $border-blurred;
-    background: $surface;
-    padding: 0 1;
-  }
-
-  ImageCard:focus {
-    border: heavy $accent;
-    background: $block-hover-background;
-  }
-
-  .thumbnail-frame {
-    height: 13;
-  }
-
-  .thumbnail {
-    width: auto;
-    height: auto;
-    max-width: 100%;
-    max-height: 100%;
-  }
-
-  .result-label {
-    height: 1;
-    color: $text-muted;
-    text-overflow: ellipsis;
-  }
-
-  ImageCard.preview-failed {
-    border: round $error;
-  }
-
-  .hotkeys {
-    height: 1;
-    padding: 0 1;
-    background: $surface;
-    color: $text-muted;
-    text-align: center;
-  }
-
-  #detail-frame {
-    height: 1fr;
-    padding: 1;
-  }
-
-  #detail-frame .detail-image {
-    width: auto;
-    height: auto;
-    max-width: 100%;
-    max-height: 100%;
-  }
-
-  #detail-status, #detail-path {
-    height: 1;
-    padding: 0 1;
-    color: $text-muted;
-    text-align: center;
-    text-overflow: ellipsis;
-  }
-  """
+  CSS_PATH = "app.tcss"
 
   BINDINGS: ClassVar[list[Binding]] = [
     Binding("/", "focus_search", "Search", show=False),
     Binding("h,left", "move_left", "Left", show=False),
+    # Making j or k switch focus would prevent typing that key in the search input.
     Binding("j", "move_down", "Down", show=False),
     Binding("down", "move_down_or_focus", "Down", show=False),
     Binding("k", "move_up", "Up", show=False),
