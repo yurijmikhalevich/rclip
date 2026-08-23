@@ -42,7 +42,7 @@ def cache_image(filepath: str, cache_dir: Path, size: tuple[int, int]) -> Path:
         background = PILImage.new("RGBA", rgba.size, "#121212")
         background.alpha_composite(rgba)
         image = background
-      image.convert("RGB").save(temporary_path, "JPEG", quality=88)
+      image.convert("RGB").save(temporary_path, "JPEG", quality=80)
     os.utime(temporary_path, ns=(source_mtime, source_mtime))
     os.replace(temporary_path, target)
   finally:
