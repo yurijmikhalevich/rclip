@@ -389,6 +389,8 @@ def main():
     arg_parser.error("--interactive does not support --add or --subtract")
   if args.interactive and args.query and not model.Model.is_text_query(args.query):
     arg_parser.error("--interactive currently supports text queries only")
+  if args.interactive and args.top and args.top > 100:
+    arg_parser.error("--top cannot exceed 100 with --interactive")
   top_k = args.top or (100 if args.interactive else 10)
 
   current_directory = os.getcwd()

@@ -112,6 +112,14 @@ def test_interactive_main_rejects_additional_queries_before_setup(option: str, m
     main_module.main()
 
 
+def test_interactive_main_rejects_more_than_100_results_before_setup(monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(sys, "argv", ["rclip", "--interactive", "--top", "101"])
+  monkeypatch.setattr(main_module, "init_rclip", lambda **_options: pytest.fail("must reject before setup"))
+
+  with pytest.raises(SystemExit):
+    main_module.main()
+
+
 def test_search_placeholder_shortens_the_home_directory(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
   home = tmp_path / "home"
   monkeypatch.setattr(Path, "home", lambda: home)
@@ -353,29 +361,6 @@ def test_tui_only_loads_visible_previews(tmp_path: Path, monkeypatch: pytest.Mon
       await pilot.pause()
 
       assert 0 < len(loaded) < len(app.query(ImageCard))
-
-  asyncio.run(run())
-
-
-def test_empty_query_browses_and_mounts_results_in_batches(tmp_path: Path) -> None:
-  path = make_image(tmp_path / "image.jpg")
-  rclip = FakeRclip([RClip.SearchResult(str(path), 1 - index / 150) for index in range(150)])
-  app = RclipApp(rclip, str(tmp_path), tmp_path / "cache", top_k=150)
-
-  async def run() -> None:
-    async with app.run_test(size=(80, 24)) as pilot:
-      await app.workers.wait_for_complete()
-      await pilot.pause()
-
-      grid = app.query_one("#results")
-      assert len(app.query(ImageCard)) == 100
-      assert rclip.browses == [(str(tmp_path), 150)]
-
-      grid.scroll_end(animate=False)
-      await pilot.pause()
-      await app.workers.wait_for_complete()
-      await pilot.pause()
-      assert len(app.query(ImageCard)) == 150
 
   asyncio.run(run())
 

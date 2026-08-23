@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from asyncio import Lock as AsyncLock
 import os
 from pathlib import Path
 from threading import Lock
@@ -23,9 +22,6 @@ from rclip.utils import helpers
 
 if TYPE_CHECKING:
   from rclip.main import RClip
-
-
-RESULT_BATCH_SIZE = 100
 
 
 def _display_directory(directory: str) -> str:
@@ -78,11 +74,8 @@ class RclipApp(App[None]):
     self._search_lock = Lock()
     self._search_generation = 0
     self._clipboard_lock = Lock()
-    self._mount_lock = AsyncLock()
-    self._mount_requested = False
     self._ignore_initial_change = bool(initial_query)
     self._results: list[TuiResult] = []
-    self._mounted_results = 0
     self._selected_index = 0
 
   def compose(self) -> ComposeResult:
@@ -146,46 +139,18 @@ class RclipApp(App[None]):
     if generation != self._search_generation or self.query_one("#search", Input).value.strip() != query:
       return
     grid = self.query_one(ResultsGrid)
-    self.workers.cancel_group(self, "mount-results")
-    self._mount_requested = False
     await grid.remove_children()
     if generation != self._search_generation:
       return
     self._results = results
-    self._mounted_results = 0
-    await self._mount_results_batch()
+    cards = [ImageCard(result, self.cache_dir) for result in results]
+    if cards:
+      await grid.mount(*cards)
     if generation != self._search_generation:
       return
     grid.scroll_home(animate=False)
     self._selected_index = 0
     self.call_after_refresh(grid.load_visible_previews)
-
-  async def _mount_results_batch(self, through_index: int | None = None) -> None:
-    async with self._mount_lock:
-      if through_index is not None and through_index < self._mounted_results:
-        return
-      start = self._mounted_results
-      required = -1 if through_index is None else through_index
-      stop = min(len(self._results), max(start + RESULT_BATCH_SIZE, required + 1))
-      if stop <= start:
-        return
-      cards = [ImageCard(result, self.cache_dir) for result in self._results[start:stop]]
-      await self.query_one(ResultsGrid).mount(*cards)
-      self._mounted_results = stop
-      self.call_after_refresh(self.query_one(ResultsGrid).load_visible_previews)
-
-  def mount_more_results(self) -> None:
-    if self._mount_requested or self._mounted_results >= len(self._results):
-      return
-    self._mount_requested = True
-    self._mount_more_results()
-
-  @work(group="mount-results", exit_on_error=False)
-  async def _mount_more_results(self) -> None:
-    try:
-      await self._mount_results_batch()
-    finally:
-      self._mount_requested = False
 
   def _show_search_error(self, generation: int, query: str, message: str) -> None:
     if generation != self._search_generation or self.query_one("#search", Input).value.strip() != query:
@@ -246,11 +211,10 @@ class RclipApp(App[None]):
     card = self._selected_card()
     return card.result.filepath if card else None
 
-  async def _move(self, offset: int) -> None:
+  def _move(self, offset: int) -> None:
     if not self._results:
       return
     index = min(max(self._selected_index + offset, 0), len(self._results) - 1)
-    await self._mount_results_batch(index)
     self._selected_index = index
     list(self.query(ImageCard))[index].focus()
 
@@ -269,36 +233,36 @@ class RclipApp(App[None]):
     if isinstance(self.screen, DetailScreen):
       self.screen.show_image(self._results[index].filepath)
 
-  async def action_move_left(self) -> None:
+  def action_move_left(self) -> None:
     if isinstance(self.screen, DetailScreen):
       self._move_detail(-1)
     else:
-      await self._move(-1)
+      self._move(-1)
 
-  async def action_move_right(self) -> None:
+  def action_move_right(self) -> None:
     if isinstance(self.screen, DetailScreen):
       self._move_detail(1)
     else:
-      await self._move(1)
+      self._move(1)
 
-  async def action_move_up(self) -> None:
-    await self._move(-self._columns())
+  def action_move_up(self) -> None:
+    self._move(-self._columns())
 
-  async def action_move_down(self) -> None:
-    await self._move(self._columns())
+  def action_move_down(self) -> None:
+    self._move(self._columns())
 
-  async def action_move_up_or_focus(self) -> None:
+  def action_move_up_or_focus(self) -> None:
     if isinstance(self.focused, ImageCard) and self._selected_index < self._columns():
       self.action_focus_search()
     else:
-      await self.action_move_up()
+      self.action_move_up()
 
-  async def action_move_down_or_focus(self) -> None:
+  def action_move_down_or_focus(self) -> None:
     if isinstance(self.focused, Input):
       if card := self._selected_card():
         card.focus()
     else:
-      await self.action_move_down()
+      self.action_move_down()
 
   def action_focus_search(self) -> None:
     self.query_one("#search", Input).focus()
@@ -307,10 +271,9 @@ class RclipApp(App[None]):
     if card := self._selected_card():
       self.push_screen(DetailScreen(card.result.filepath, self.cache_dir))
 
-  async def action_go_back(self) -> None:
+  def action_go_back(self) -> None:
     if isinstance(self.screen, DetailScreen):
       selected_index = self._selected_index
-      await self._mount_results_batch(selected_index)
       self.pop_screen()
       cards = list(self.query(ImageCard))
       if selected_index < len(cards):

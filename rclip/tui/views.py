@@ -88,14 +88,10 @@ class ResultsGrid(ItemGrid):
     )
 
   def load_visible_previews(self) -> None:
-    from rclip.tui.app import RclipApp
-
     viewport = self.scrollable_content_region
     for card in self.query(ImageCard):
       if card.region.overlaps(viewport):
         card.load_preview()
-    if self.max_scroll_y - self.scroll_y <= viewport.height and isinstance(self.app, RclipApp):
-      self.app.mount_more_results()
 
   def watch_scroll_y(self, old_value: float, new_value: float) -> None:
     super().watch_scroll_y(old_value, new_value)
@@ -135,12 +131,12 @@ class DetailScreen(Screen[None]):
     self.query_one("#detail-path", Static).update(filepath)
     self._load_detail()
 
-  async def on_click(self, event: events.Click) -> None:
+  def on_click(self, event: events.Click) -> None:
     from rclip.tui.app import RclipApp
 
     if event.button == 1 and event.chain == 2 and isinstance(self.app, RclipApp):
       event.stop()
-      await self.app.action_go_back()
+      self.app.action_go_back()
 
   @work(thread=True, group="detail", exclusive=True, exit_on_error=False)
   def _load_detail(self) -> None:
