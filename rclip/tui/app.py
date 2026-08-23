@@ -66,8 +66,6 @@ class RclipApp(App[None]):
     cache_dir: Path,
     initial_query: str | None = None,
     top_k: int = 100,
-    positive_queries: list[str] | None = None,
-    negative_queries: list[str] | None = None,
   ) -> None:
     super().__init__()
     self.theme = os.getenv("TEXTUAL_THEME", "ansi-dark")
@@ -76,8 +74,6 @@ class RclipApp(App[None]):
     self.cache_dir = cache_dir
     self.initial_query = initial_query or ""
     self.top_k = top_k
-    self.positive_queries = positive_queries or []
-    self.negative_queries = negative_queries or []
     self._search_timer: Timer | None = None
     self._search_lock = Lock()
     self._search_generation = 0
@@ -131,17 +127,11 @@ class RclipApp(App[None]):
   @work(thread=True, group="search", exclusive=True, exit_on_error=False)
   def _search(self, query: str, generation: int) -> None:
     try:
-      if not all(Model.is_text_query(value) for value in [query, *self.positive_queries, *self.negative_queries] if value):
+      if query and not Model.is_text_query(query):
         raise ValueError("interactive mode supports text queries only")
       with self._search_lock:
         if query:
-          search_results = self.rclip.search(
-            query,
-            self.working_directory,
-            self.top_k,
-            self.positive_queries,
-            self.negative_queries,
-          )
+          search_results = self.rclip.search(query, self.working_directory, self.top_k)
           results = [TuiResult(result.filepath, result.score) for result in search_results]
         else:
           results = [
@@ -365,16 +355,6 @@ def run_tui(
   working_directory: str,
   initial_query: str | None,
   top_k: int,
-  positive_queries: list[str],
-  negative_queries: list[str],
 ) -> None:
   cache_dir = helpers.get_app_datadir() / "previews"
-  RclipApp(
-    rclip,
-    working_directory,
-    cache_dir,
-    initial_query,
-    top_k,
-    positive_queries,
-    negative_queries,
-  ).run()
+  RclipApp(rclip, working_directory, cache_dir, initial_query, top_k).run()

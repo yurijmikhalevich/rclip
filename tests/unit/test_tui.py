@@ -103,6 +103,15 @@ def test_interactive_main_rejects_image_queries_before_setup(monkeypatch: pytest
     main_module.main()
 
 
+@pytest.mark.parametrize("option", ["--add", "--subtract"])
+def test_interactive_main_rejects_additional_queries_before_setup(option: str, monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(sys, "argv", ["rclip", "--interactive", option, "cat"])
+  monkeypatch.setattr(main_module, "init_rclip", lambda **_options: pytest.fail("must reject before setup"))
+
+  with pytest.raises(SystemExit):
+    main_module.main()
+
+
 def test_search_placeholder_shortens_the_home_directory(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
   home = tmp_path / "home"
   monkeypatch.setattr(Path, "home", lambda: home)
@@ -239,29 +248,13 @@ def test_latest_clipboard_action_finishes_last(monkeypatch: pytest.MonkeyPatch, 
   assert notifications == ["Image copied"]
 
 
-@pytest.mark.parametrize(
-  ("query", "positive_queries", "negative_queries"),
-  [
-    ("2:./cat.jpg", [], []),
-    ("cat", ["https://example.com/cat.jpg"], []),
-    ("cat", [], [".5:file:///cat.jpg"]),
-  ],
-)
-def test_tui_rejects_image_queries(
-  query: str,
-  positive_queries: list[str],
-  negative_queries: list[str],
-  monkeypatch: pytest.MonkeyPatch,
-  tmp_path: Path,
-) -> None:
+def test_tui_rejects_image_query(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
   rclip = FakeRclip([])
   app = RclipApp(
     rclip,
     str(tmp_path),
     tmp_path / "cache",
-    initial_query=query,
-    positive_queries=positive_queries,
-    negative_queries=negative_queries,
+    initial_query="2:./cat.jpg",
   )
   notifications: list[str] = []
   monkeypatch.setattr(app, "notify", lambda message, **_options: notifications.append(message))
@@ -284,8 +277,6 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
     str(tmp_path),
     tmp_path / "cache",
     top_k=25,
-    positive_queries=["2:bright"],
-    negative_queries=[".5:dark"],
   )
   copied: list[str] = []
   exits: list[bool] = []
@@ -302,7 +293,7 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
       cards = list(app.query(ImageCard))
       assert len(cards) == 2
       assert isinstance(app.focused, Input)
-      assert rclip.searches == [("cat", str(tmp_path), 25, ["2:bright"], [".5:dark"])]
+      assert rclip.searches == [("cat", str(tmp_path), 25, [], [])]
 
       await pilot.press("down")
       assert app.focused is cards[0]

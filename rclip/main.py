@@ -385,9 +385,9 @@ def main():
   args = arg_parser.parse_args()
   if args.query is None and not args.interactive:
     arg_parser.error("query is required unless --interactive is used")
-  if args.interactive and not all(
-    model.Model.is_text_query(query) for query in [args.query, *args.add, *args.subtract] if query
-  ):
+  if args.interactive and (args.add or args.subtract):
+    arg_parser.error("--interactive does not support --add or --subtract")
+  if args.interactive and args.query and not model.Model.is_text_query(args.query):
     arg_parser.error("--interactive currently supports text queries only")
   top_k = args.top or (100 if args.interactive else 10)
 
@@ -415,8 +415,6 @@ def main():
         current_directory,
         args.query,
         top_k,
-        args.add,
-        args.subtract,
       )
     else:
       result = rclip.search(args.query, current_directory, top_k, args.add, args.subtract)
