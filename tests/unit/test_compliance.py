@@ -278,6 +278,32 @@ def test_policy_covers_locked_runtime_closure_on_every_platform() -> None:
   assert set(policy["approved_python_licenses"]) == locked_versions.keys() | unversioned
 
 
+def test_locked_runtime_closure_includes_selected_extras(tmp_path: Path) -> None:
+  lock = tmp_path / "uv.lock"
+  lock.write_text(
+    """
+[[package]]
+name = "rclip"
+version = "1"
+dependencies = [{ name = "runtime", extra = ["feature"] }]
+
+[[package]]
+name = "runtime"
+version = "2"
+
+[package.optional-dependencies]
+feature = [{ name = "optional" }]
+
+[[package]]
+name = "optional"
+version = "3"
+""",
+    encoding="utf-8",
+  )
+
+  assert _locked_runtime_versions(lock) == {"rclip": {"1"}, "runtime": {"2"}, "optional": {"3"}}
+
+
 def test_rawpy_source_manifest_matches_allowed_runtime_version() -> None:
   with (REPO_ROOT / "compliance/sources.toml").open("rb") as stream:
     source = tomllib.load(stream)["rawpy"]
