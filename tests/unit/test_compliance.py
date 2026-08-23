@@ -290,18 +290,28 @@ dependencies = [{ name = "runtime", extra = ["feature"] }]
 [[package]]
 name = "runtime"
 version = "2"
+dependencies = [{ name = "normal" }]
 
 [package.optional-dependencies]
 feature = [{ name = "optional" }]
 
 [[package]]
-name = "optional"
+name = "normal"
 version = "3"
+
+[[package]]
+name = "optional"
+version = "4"
 """,
     encoding="utf-8",
   )
 
-  assert _locked_runtime_versions(lock) == {"rclip": {"1"}, "runtime": {"2"}, "optional": {"3"}}
+  assert _locked_runtime_versions(lock) == {
+    "rclip": {"1"},
+    "runtime": {"2"},
+    "normal": {"3"},
+    "optional": {"4"},
+  }
 
 
 def test_rawpy_source_manifest_matches_allowed_runtime_version() -> None:
