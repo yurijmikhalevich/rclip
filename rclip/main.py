@@ -68,6 +68,14 @@ class RClip:
     filepath: str
     score: float
 
+  class ImageCursor(NamedTuple):
+    modified_at: float
+    filepath: str
+
+  class ImagePage(NamedTuple):
+    filepaths: list[str]
+    next_cursor: "RClip.ImageCursor | None"
+
   def __init__(
     self,
     model_instance: model.Model,
@@ -307,18 +315,25 @@ class RClip:
     return results
 
   def list_images(
-    self, directory: str, top_k: int, *, cancel_event: threading.Event | None = None
-  ) -> list[str]:
+    self,
+    directory: str,
+    limit: int,
+    *,
+    after: ImageCursor | None = None,
+    cancel_event: threading.Event | None = None,
+  ) -> ImagePage:
     results: list[str] = []
-    for row in self._db.get_image_filepaths_by_dir_path(directory):
-      if len(results) >= top_k:
-        break
+    last_cursor: RClip.ImageCursor | None = None
+    for row in self._db.get_image_filepaths_by_dir_path(directory, after):
       helpers.raise_if_cancelled(cancel_event)
       filepath = row["filepath"]
       if self._exclude_dir_regex.match(filepath):
         continue
+      if len(results) == limit:
+        return RClip.ImagePage(results, last_cursor)
       results.append(filepath)
-    return results
+      last_cursor = RClip.ImageCursor(float(row["modified_at"]), filepath)
+    return RClip.ImagePage(results, None)
 
   def _get_features(
     self, directory: str, cancel_event: threading.Event | None = None

@@ -71,13 +71,18 @@ def test_load_images_preserves_order_and_skips_failures(monkeypatch):
 def test_list_images_applies_exclusions_before_the_limit(tmp_path: Path) -> None:
   database = DB(tmp_path / "db.sqlite3")
   private = tmp_path / "private" / "new.jpg"
-  included = tmp_path / "included.jpg"
-  database.upsert_image(NewImage(filepath=str(private), modified_at=2, size=1, vector=b"x", hash=None))
-  database.upsert_image(NewImage(filepath=str(included), modified_at=1, size=1, vector=b"x", hash=None))
+  first = tmp_path / "first.jpg"
+  second = tmp_path / "second.jpg"
+  database.upsert_image(NewImage(filepath=str(private), modified_at=3, size=1, vector=b"x", hash=None))
+  database.upsert_image(NewImage(filepath=str(first), modified_at=2, size=1, vector=b"x", hash=None))
+  database.upsert_image(NewImage(filepath=str(second), modified_at=1, size=1, vector=b"x", hash=None))
   rclip = _make_rclip(Mock(), database, ["private"])
 
   try:
-    assert rclip.list_images(str(tmp_path), 1) == [str(included)]
+    first_page = rclip.list_images(str(tmp_path), 1)
+    assert first_page.filepaths == [str(first)]
+    assert first_page.next_cursor == RClip.ImageCursor(2, str(first))
+    assert rclip.list_images(str(tmp_path), 1, after=first_page.next_cursor) == RClip.ImagePage([str(second)], None)
   finally:
     rclip.close()
     database.close()

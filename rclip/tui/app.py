@@ -52,6 +52,8 @@ class RclipApp(App[None]):
     Binding("y", "copy_image", "Copy image", show=False),
     Binding("Y", "copy_path", "Copy path", show=False),
     Binding("d", "download", "Download", show=False),
+    Binding("[", "previous_page", "Previous page", show=False),
+    Binding("]", "next_page", "Next page", show=False),
     Binding("q", "quit_navigation", "Quit", show=False),
     Binding("ctrl+c", "quit", "Quit", show=False, priority=True),
     Binding("ctrl+q", "quit", "Quit", show=False, priority=True),
@@ -74,13 +76,16 @@ class RclipApp(App[None]):
     self._clipboard_lock = Lock()
     self._results: list[TuiResult] = []
     self._selected_index = 0
+    self._browse_cursors: list[RClip.ImageCursor | None] = [None]
+    self._browse_page = 0
+    self._next_cursor: RClip.ImageCursor | None = None
 
   def compose(self) -> ComposeResult:
     directory = _display_directory(self.working_directory)
     yield Input(placeholder=f"Search images in {directory}…", id="search")
     yield ResultsGrid()
     yield Static(
-      "/ Search   hjkl/Arrows Move   Enter View   y Copy   Y Copy path   d Download   q/Ctrl+C Quit",
+      "/ Search   hjkl/Arrows Move   [] Page   Enter View   y Copy   Y Copy path   d Download   q/Ctrl+C Quit",
       classes="hotkeys",
       markup=False,
     )
@@ -107,14 +112,19 @@ class RclipApp(App[None]):
       self._search_timer = None
     self._begin_search(query)
 
-  def _begin_search(self, query: str) -> None:
+  def _begin_search(
+    self, query: str, after: RClip.ImageCursor | None = None, browse_page: int = 0
+  ) -> None:
     self._search_generation += 1
     self.query_one("#search", Input).border_title = "Searching…"
-    self._search(query, self._search_generation)
+    self._search(query, self._search_generation, after, browse_page)
 
   @work(thread=True, group="search", exclusive=True, exit_on_error=False)
-  def _search(self, query: str, generation: int) -> None:
+  def _search(
+    self, query: str, generation: int, after: RClip.ImageCursor | None, browse_page: int
+  ) -> None:
     worker = get_current_worker()
+    next_cursor = None
     try:
       if query and not Model.is_text_query(query):
         raise ValueError("interactive mode supports text queries only")
@@ -130,12 +140,14 @@ class RclipApp(App[None]):
           )
           results = [TuiResult(result.filepath, result.score) for result in search_results]
         else:
-          results = [
-            TuiResult(filepath)
-            for filepath in self.rclip.list_images(
-              self.working_directory, self.top_k, cancel_event=worker.cancelled_event
-            )
-          ]
+          page = self.rclip.list_images(
+            self.working_directory,
+            self.top_k,
+            after=after,
+            cancel_event=worker.cancelled_event,
+          )
+          results = [TuiResult(filepath) for filepath in page.filepaths]
+          next_cursor = page.next_cursor
         if worker.is_cancelled:
           return
     except InterruptedError:
@@ -143,17 +155,36 @@ class RclipApp(App[None]):
     except Exception as error:
       self.call_from_thread(self._show_search_error, generation, query, str(error))
     else:
-      self.call_from_thread(self._show_results, generation, query, results)
+      self.call_from_thread(
+        self._show_results, generation, query, results, next_cursor, after, browse_page
+      )
 
-  async def _show_results(self, generation: int, query: str, results: list[TuiResult]) -> None:
+  async def _show_results(
+    self,
+    generation: int,
+    query: str,
+    results: list[TuiResult],
+    next_cursor: RClip.ImageCursor | None,
+    after: RClip.ImageCursor | None,
+    browse_page: int,
+  ) -> None:
     search_input = self.query_one("#search", Input)
     if generation != self._search_generation or search_input.value.strip() != query:
       return
+    focus_results = isinstance(self.focused, ImageCard)
     grid = self.query_one(ResultsGrid)
     await grid.remove_children()
     if generation != self._search_generation:
       return
     self._results = results
+    if query:
+      self._browse_cursors = [None]
+      self._browse_page = 0
+      self._next_cursor = None
+    else:
+      self._browse_cursors[browse_page:] = [after]
+      self._browse_page = browse_page
+      self._next_cursor = next_cursor
     cards = [ImageCard(result) for result in results]
     if cards:
       await grid.mount(*cards)
@@ -162,6 +193,8 @@ class RclipApp(App[None]):
     grid.scroll_home(animate=False)
     self._selected_index = 0
     self.call_after_refresh(grid.load_visible_previews)
+    if focus_results and cards:
+      self.call_after_refresh(cards[0].focus)
     search_input.border_title = None if results else "No results"
 
   def _show_search_error(self, generation: int, query: str, message: str) -> None:
@@ -181,32 +214,29 @@ class RclipApp(App[None]):
       "move_right",
       "move_up",
       "move_up_or_focus",
+      "next_page",
+      "previous_page",
       "quit_navigation",
       "view",
     }:
       return False
-    if isinstance(self.screen, DetailScreen):
-      if action in {"move_left", "move_right"}:
-        return len(self._results) > 1
-      if action in {"focus_search", "move_down", "move_down_or_focus", "move_up", "move_up_or_focus", "view"}:
-        return False
-    if action == "focus_search":
-      return not isinstance(self.focused, Input)
-    if action in {"copy_image", "copy_path", "download"} and isinstance(self.screen, DetailScreen):
-      return True
-    if action in {
-      "copy_image",
-      "copy_path",
-      "download",
+    if isinstance(self.screen, DetailScreen) and action in {
+      "focus_search",
       "move_down",
       "move_down_or_focus",
-      "move_left",
-      "move_right",
       "move_up",
       "move_up_or_focus",
+      "next_page",
+      "previous_page",
       "view",
     }:
-      return bool(self.query(ImageCard))
+      return False
+    if action == "focus_search":
+      return not isinstance(self.focused, Input)
+    if action == "previous_page":
+      return not self.query_one("#search", Input).value.strip() and self._browse_page > 0
+    if action == "next_page":
+      return not self.query_one("#search", Input).value.strip() and self._next_cursor is not None
     return super().check_action(action, parameters)
 
   def select_card(self, card: ImageCard) -> None:
@@ -323,6 +353,17 @@ class RclipApp(App[None]):
       self.notify(str(error), title="Unable to download image", severity="error")
     else:
       self.notify("Saved to ~/Downloads", title=Path(filepath).name)
+
+  def action_previous_page(self) -> None:
+    if self._browse_page == 0:
+      return
+    page = self._browse_page - 1
+    self._begin_search("", self._browse_cursors[page], page)
+
+  def action_next_page(self) -> None:
+    if self._next_cursor is None:
+      return
+    self._begin_search("", self._next_cursor, self._browse_page + 1)
 
   def action_quit_navigation(self) -> None:
     self.exit()

@@ -34,7 +34,7 @@ class FakeRclip(RClip):
   def __init__(self, results: list[RClip.SearchResult]) -> None:
     self.results = results
     self.searches: list[tuple[str, str, int, list[str], list[str]]] = []
-    self.browses: list[tuple[str, int]] = []
+    self.browses: list[tuple[str, int, RClip.ImageCursor | None]] = []
 
   def search(
     self,
@@ -49,9 +49,24 @@ class FakeRclip(RClip):
     self.searches.append((query, directory, top_k, positive_queries, negative_queries))
     return self.results[:top_k]
 
-  def list_images(self, directory: str, top_k: int, *, cancel_event: Event | None = None) -> list[str]:
-    self.browses.append((directory, top_k))
-    return [result.filepath for result in self.results[:top_k]]
+  def list_images(
+    self,
+    directory: str,
+    limit: int,
+    *,
+    after: RClip.ImageCursor | None = None,
+    cancel_event: Event | None = None,
+  ) -> RClip.ImagePage:
+    self.browses.append((directory, limit, after))
+    start = 0 if after is None else next(
+      index + 1 for index, result in enumerate(self.results) if result.filepath == after.filepath
+    )
+    results = self.results[start : start + limit]
+    next_cursor = None
+    if start + limit < len(self.results):
+      last_index = start + len(results) - 1
+      next_cursor = RClip.ImageCursor(float(len(self.results) - last_index), results[-1].filepath)
+    return RClip.ImagePage([result.filepath for result in results], next_cursor)
 
 
 def make_image(path: Path, color: str = "red") -> Path:
@@ -268,11 +283,18 @@ def test_tui_reports_searching_and_no_results(monkeypatch: pytest.MonkeyPatch, t
   release = Event()
   rclip = FakeRclip([])
 
-  def list_images(_directory: str, _top_k: int, *, cancel_event: Event | None = None) -> list[str]:
+  def list_images(
+    _directory: str,
+    _top_k: int,
+    *,
+    after: RClip.ImageCursor | None = None,
+    cancel_event: Event | None = None,
+  ) -> RClip.ImagePage:
+    assert after is None
     assert cancel_event is not None
     started.set()
     assert release.wait(2)
-    return []
+    return RClip.ImagePage([], None)
 
   monkeypatch.setattr(rclip, "list_images", list_images)
   app = RclipApp(rclip, str(tmp_path))
@@ -559,6 +581,69 @@ def test_interactive_top_limits_empty_browse(tmp_path: Path) -> None:
       await pilot.pause()
 
       assert len(app.query(ImageCard)) == 25
-      assert rclip.browses == [(str(tmp_path), 25)]
+      assert rclip.browses == [(str(tmp_path), 25, None)]
 
   asyncio.run(run())
+
+
+def test_empty_browse_replaces_pages_and_returns_to_the_previous_page(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  paths = [make_image(tmp_path / f"image-{index}.jpg") for index in range(3)]
+  rclip = FakeRclip([RClip.SearchResult(str(path), 1 - index / 10) for index, path in enumerate(paths)])
+  app = RclipApp(rclip, str(tmp_path), top_k=2)
+  list_images = rclip.list_images
+  failed = False
+
+  def fail_second_page_once(
+    directory: str,
+    limit: int,
+    *,
+    after: RClip.ImageCursor | None = None,
+    cancel_event: Event | None = None,
+  ) -> RClip.ImagePage:
+    nonlocal failed
+    if after is not None and not failed:
+      failed = True
+      raise RuntimeError("page failed")
+    return list_images(directory, limit, after=after, cancel_event=cancel_event)
+
+  monkeypatch.setattr(rclip, "list_images", fail_second_page_once)
+
+  async def run() -> None:
+    async with app.run_test() as pilot:
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths[:2]]
+
+      await pilot.press("down")
+      assert app.check_action("previous_page", ()) is False
+      assert app.check_action("next_page", ()) is True
+      await pilot.press("]")
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths[:2]]
+      assert app.check_action("previous_page", ()) is False
+      assert app.check_action("next_page", ()) is True
+
+      await pilot.press("]")
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert [card.result.filepath for card in app.query(ImageCard)] == [str(paths[2])]
+      assert isinstance(app.focused, ImageCard)
+      assert app.check_action("previous_page", ()) is True
+      assert app.check_action("next_page", ()) is False
+
+      await pilot.press("[")
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths[:2]]
+
+  asyncio.run(run())
+
+  cursor = RClip.ImageCursor(2, str(paths[1]))
+  assert rclip.browses == [
+    (str(tmp_path), 2, None),
+    (str(tmp_path), 2, cursor),
+    (str(tmp_path), 2, None),
+  ]
