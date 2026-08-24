@@ -155,6 +155,18 @@ def test_search(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_m
   execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "kitty")
 
 
+def test_interactive_starts_and_exits_cleanly(
+  test_empty_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
+) -> None:
+  monkeypatch.setenv("RCLIP_MODEL_CACHE_DIR", shared_model_cache_dir)
+  monkeypatch.setenv("TEXTUAL_PRESS", "ctrl+c")
+  command = ["rclip"] if os.getenv("RCLIP_TEST_RUN_SYSTEM_RCLIP") else [sys.executable, "-m", "rclip"]
+
+  completed_run = subprocess.run([*command, "--interactive"], cwd=test_empty_dir, capture_output=True, timeout=300)
+
+  assert completed_run.returncode == 0, completed_run.stderr.decode(errors="replace")
+
+
 @pytest.mark.usefixtures("assert_output_snapshot")
 @pytest.mark.parametrize(
   "query,expected_ext",
