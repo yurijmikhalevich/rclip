@@ -11,8 +11,8 @@ from rclip.main import ImageMeta, RClip
 from rclip.utils import helpers
 
 
-def _make_rclip(model, database):
-  return RClip(model, database, indexing_batch_size=8, exclude_dirs=None)
+def _make_rclip(model, database, exclude_dirs=None):
+  return RClip(model, database, indexing_batch_size=8, exclude_dirs=exclude_dirs)
 
 
 def _fail_on_b(path: str) -> Image.Image:
@@ -46,6 +46,21 @@ def test_load_images_preserves_order_and_skips_failures(monkeypatch):
   assert [(path, meta) for path, meta, _hash, _image in loaded] == [("a.jpg", meta_a), ("c.jpg", meta_c)]
   # the loader threads preprocess the images, so it yields ready-to-encode CLIP tensors
   assert all(isinstance(image, np.ndarray) and image.shape == (3, 256, 256) for _path, _meta, _hash, image in loaded)
+
+
+def test_list_images_applies_exclusions_before_the_limit(tmp_path: Path) -> None:
+  database = DB(tmp_path / "db.sqlite3")
+  private = tmp_path / "private" / "new.jpg"
+  included = tmp_path / "included.jpg"
+  database.upsert_image(NewImage(filepath=str(private), modified_at=2, size=1, vector=b"x", hash=None))
+  database.upsert_image(NewImage(filepath=str(included), modified_at=1, size=1, vector=b"x", hash=None))
+  rclip = _make_rclip(Mock(), database, ["private"])
+
+  try:
+    assert rclip.list_images(str(tmp_path), 1) == [str(included)]
+  finally:
+    rclip.close()
+    database.close()
 
 
 def test_load_images_skips_images_that_are_too_large(monkeypatch, capsys):

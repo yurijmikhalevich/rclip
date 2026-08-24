@@ -1,0 +1,86 @@
+Screen {
+  background: $background;
+  color: $foreground;
+  layout: vertical;
+}
+
+#search {
+  height: 3;
+  margin: 1 1 0 1;
+  border: round $border-blurred;
+  background: $surface;
+}
+
+#search:focus {
+  border: round $accent;
+}
+
+#results {
+  height: 1fr;
+  grid-gutter: 1;
+  grid-rows: 16;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+ImageCard {
+  height: 16;
+  layout: vertical;
+  border: round $border-blurred;
+  background: $surface;
+  padding: 0 1;
+}
+
+ImageCard:focus {
+  border: heavy $accent;
+  background: $block-hover-background;
+}
+
+.thumbnail-frame {
+  height: 13;
+}
+
+.thumbnail {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.result-label {
+  height: 1;
+  color: $text-muted;
+  text-overflow: ellipsis;
+}
+
+ImageCard.preview-failed {
+  border: round $error;
+}
+
+.hotkeys {
+  height: 1;
+  padding: 0 1;
+  background: $surface;
+  color: $text-muted;
+  text-align: center;
+}
+
+#detail-frame {
+  height: 1fr;
+  padding: 1;
+}
+
+#detail-frame .detail-image {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+#detail-status, #detail-path {
+  height: 1;
+  padding: 0 1;
+  color: $text-muted;
+  text-align: center;
+  text-overflow: ellipsis;
+}

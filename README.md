@@ -20,6 +20,7 @@
 - **Wide format support** – `jpg`, `png`, `webp`, `tiff`, `gif`, and more, plus native HEIC on
   macOS/Windows and experimental RAW (`arw`, `cr2`, `dng`).
 - **Fast incremental indexing** – only new and changed images are reprocessed on subsequent runs.
+- **Interactive terminal UI** – search a responsive thumbnail grid without leaving the terminal.
 - **Terminal previews** – view images inline in iTerm2, Konsole, wezterm, Mintty, and mlterm.
 - **Cross-platform** – Linux, macOS (Apple Silicon), and Windows.
 
@@ -109,6 +110,31 @@ cd photos && rclip "search query"
 The first time you run **rclip** in a directory, it extracts features from your images to build the search index. How long this takes depends on your CPU and the number of images you search. On my hardware, it took 15 hours to process 84,725 photos on a NAS with an old Intel Celeron J3455, 7 minutes to index 50,000 images on a MacBook with an M1 Max, and 3 hours to process 1.28 million images on the same MacBook.
 
 For a detailed demonstration, watch the video: https://www.youtube.com/watch?v=tAJHXOkHidw.
+
+### Interactive terminal UI
+
+Open the interactive UI and enter a query in its search input:
+
+```bash
+rclip --interactive
+```
+
+The UI uses Kitty's graphics protocol when available and Sixel in terminals such as iTerm2, with a colored half-cell fallback elsewhere. It uses the terminal's default colors and ANSI palette. With an empty query it browses the 100 most recently modified images by default. Pass `--top N` to use a smaller result limit. Enter text queries in the UI; image queries remain available in the non-interactive CLI. Cached previews load as they become visible, and opening a result loads a higher-resolution display image.
+
+| Key | Action |
+| --- | --- |
+| `/` | Focus the search input. |
+| Arrow keys or `h`, `j`, `k`, `l` | Move between results. |
+| `Enter` | Open the selected image. |
+| Left/Right or `h`/`l` | Show the previous or next opened image. |
+| Double-click | Open an image, or return to the grid from an opened image. |
+| `Esc` | Return to the grid from an opened image. |
+| `y` | Copy the selected image to the system clipboard using Kitty's `kitten clipboard`. |
+| `Y` | Copy the selected image path. |
+| `q` | Quit while navigating results. |
+| `Ctrl+C` or `Ctrl+Q` | Quit from anywhere, including the search input. |
+
+Image copying requires Kitty 0.27 or newer and a discoverable `kitten` executable; the rest of the UI does not invoke Kitty executables.
 
 ### Similar image search (image-to-image search)
 
@@ -209,10 +235,11 @@ Run `rclip --help` (or `rclip -h`) to see this list in your terminal. The positi
 
 | Option | Description |
 | --- | --- |
-| `query` | A text query or a path/URL to an image file. A relative path must be prefixed with `./` (e.g. `./cat.jpg`). Any query can be prefixed with a multiplier, e.g. `2:cat` or `0.5:./cat.jpg`. |
+| `query` | A text query or a path/URL to an image file. Cannot be used with `--interactive`. A relative path must be prefixed with `./` (e.g. `./cat.jpg`). Any query can be prefixed with a multiplier, e.g. `2:cat` or `0.5:./cat.jpg`. |
 | `--add`, `-a`, `+` `QUERY` | A text query or a path/URL to an image file to add to the "original" query. Can be used multiple times. |
 | `--subtract`, `--sub`, `-s`, `-` `QUERY` | A text query or a path/URL to an image file to subtract from the "original" query. Can be used multiple times. |
-| `--top`, `-t` `N` | Number of top results to display. Default: `10`. |
+| `--top`, `-t` `N` | Number of top results to display. Default: `10`, or `100` with `--interactive`; interactive maximum: `100`. |
+| `--interactive`, `-i` | Open the interactive terminal UI and enter text queries there. Does not accept a positional query or `--add`/`--subtract`. Mutually exclusive with `--preview` and `--filepath-only`. |
 | `--preview`, `-p` | Preview results in the terminal (supported in iTerm2, Konsole 22.04+, wezterm, Mintty, mlterm). Mutually exclusive with `--filepath-only`. |
 | `--filepath-only`, `-f` | Output only filepaths, without scores or the header. Mutually exclusive with `--preview`. |
 | `--preview-height`, `-H` `PX` | Preview height in pixels. Default: `400`. |
@@ -283,9 +310,9 @@ This project follows the [all-contributors](https://github.com/all-contributors/
 
 Self-contained rclip bundles include a `THIRD_PARTY_NOTICES.txt` file and the
 complete licence and patent notices for their redistributed dependencies. Each
-GitHub release also includes CycloneDX SBOMs and the corresponding rawpy/LibRaw
-source archive. The reviewed dependency and codec policy is documented in
-[`compliance/`](compliance/README.md).
+GitHub release also includes CycloneDX SBOMs and corresponding rawpy/LibRaw and
+textual-image source archives. The reviewed dependency and codec policy is
+documented in [`compliance/`](compliance/README.md).
 
 The separately downloaded model includes its model card, attribution, and the
 MIT notices for OpenCLIP and the OpenAI CLIP tokenizer and vocabulary.
