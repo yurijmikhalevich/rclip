@@ -1,6 +1,10 @@
 import asyncio
+import base64
+from contextlib import nullcontext
+from io import StringIO
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 from threading import Event, Lock
@@ -17,8 +21,10 @@ from rclip.tui.app import RclipApp
 from rclip.tui.app import _display_directory
 from rclip.tui.media import StableTGPImage
 from rclip.tui.media import prepare_image
-from rclip.tui.transfer import ClipboardError
+from rclip.tui.transfer import TransferError
+from rclip.tui.transfer import _download_protocol
 from rclip.tui.transfer import copy_image_to_clipboard
+from rclip.tui.transfer import download_image
 from rclip.tui.views import DetailScreen
 from rclip.tui.views import ImageCard
 from rclip.utils.helpers import init_arg_parser
@@ -199,7 +205,7 @@ def test_clipboard_kitten_failure_is_reported(monkeypatch: pytest.MonkeyPatch, t
     lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 1, stderr="permission denied"),
   )
 
-  with pytest.raises(ClipboardError, match="permission denied"):
+  with pytest.raises(TransferError, match="permission denied"):
     copy_image_to_clipboard(str(make_image(tmp_path / "image.jpg")))
 
 
@@ -280,6 +286,76 @@ def test_tui_reports_searching_and_no_results(monkeypatch: pytest.MonkeyPatch, t
   asyncio.run(run())
 
 
+def test_download_protocol_can_be_detected_or_overridden(monkeypatch: pytest.MonkeyPatch) -> None:
+  for name in (
+    "KITTY_PUBLIC_KEY",
+    "KITTY_WINDOW_ID",
+    "LC_TERMINAL",
+    "RCLIP_DOWNLOAD_PROTOCOL",
+    "TERM",
+    "TERM_PROGRAM",
+  ):
+    monkeypatch.delenv(name, raising=False)
+
+  with pytest.raises(TransferError, match="could not detect"):
+    _download_protocol()
+
+  monkeypatch.setenv("TERM", "xterm-kitty")
+  assert _download_protocol() == "kitty"
+
+  monkeypatch.setenv("RCLIP_DOWNLOAD_PROTOCOL", "iterm2")
+  assert _download_protocol() == "iterm2"
+
+  monkeypatch.setenv("RCLIP_DOWNLOAD_PROTOCOL", "unknown")
+  with pytest.raises(TransferError, match="must be `kitty` or `iterm2`"):
+    _download_protocol()
+
+
+def test_download_image_uses_kitty_transfer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+  source = make_image(tmp_path / "image.jpg")
+  commands: list[tuple[list[str], dict[str, object]]] = []
+
+  def run(command: list[str], **options: object) -> subprocess.CompletedProcess[str]:
+    commands.append((command, options))
+    return subprocess.CompletedProcess(command, 0, stderr="")
+
+  monkeypatch.setenv("SSH_CONNECTION", "client 1 server 2")
+  monkeypatch.setenv("RCLIP_DOWNLOAD_PROTOCOL", "kitty")
+  monkeypatch.setattr("rclip.tui.transfer._kitten_executable", lambda: "kitten")
+  monkeypatch.setattr(subprocess, "run", run)
+
+  download_image(str(source))
+
+  assert commands == [(["kitten", "transfer", str(source), "Downloads/"], {"stderr": subprocess.PIPE, "text": True})]
+
+
+def test_download_image_reports_missing_kitten(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+  monkeypatch.setenv("RCLIP_DOWNLOAD_PROTOCOL", "kitty")
+  monkeypatch.delenv("KITTY_INSTALLATION_DIR", raising=False)
+  monkeypatch.setattr("rclip.tui.transfer.shutil.which", lambda _: None)
+
+  with pytest.raises(TransferError, match="could not find Kitty"):
+    download_image(str(make_image(tmp_path / "image.jpg")))
+
+
+def test_download_image_streams_the_original_to_iterm2(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+  source = make_image(tmp_path / "image with spaces.jpg")
+  output = StringIO()
+  monkeypatch.setenv("SSH_TTY", "/dev/pts/1")
+  monkeypatch.setenv("RCLIP_DOWNLOAD_PROTOCOL", "iterm2")
+  monkeypatch.setenv("TERM", "xterm-256color")
+  monkeypatch.setattr(sys, "stdout", output)
+
+  download_image(str(source))
+
+  sequences = output.getvalue()
+  encoded_name = base64.b64encode(source.name.encode()).decode("ascii")
+  assert f"1337;MultipartFile=name={encoded_name};size={source.stat().st_size};inline=0\a" in sequences
+  assert sequences.endswith("1337;FileEnd\a")
+  parts = re.findall(r"1337;FilePart=([A-Za-z0-9+/=]+)\a", sequences)
+  assert b"".join(base64.b64decode(part) for part in parts) == source.read_bytes()
+
+
 def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   paths = [make_image(tmp_path / f"image-{index}.jpg", color) for index, color in enumerate(("red", "green"))]
   rclip = FakeRclip([RClip.SearchResult(str(path), 0.9 - index / 10) for index, path in enumerate(paths)])
@@ -289,8 +365,18 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
     top_k=25,
   )
   copied: list[str] = []
+  downloaded: list[str] = []
   exits: list[bool] = []
+  notifications: list[tuple[str, str | None]] = []
   monkeypatch.setattr(app, "copy_to_clipboard", copied.append)
+  monkeypatch.setattr(
+    app,
+    "notify",
+    lambda message, **options: notifications.append((message, options.get("title"))),
+  )
+  monkeypatch.setattr(app, "suspend", nullcontext)
+  monkeypatch.setattr("rclip.tui.app.download_image", downloaded.append)
+  monkeypatch.setenv("SSH_CONNECTION", "client 1 server 2")
   monkeypatch.setattr(app, "exit", lambda *args, **kwargs: exits.append(True))
 
   async def run() -> None:
@@ -310,6 +396,12 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
 
       await pilot.press("Y")
       assert copied == [str(paths[0])]
+      await pilot.press("d")
+      assert downloaded == [str(paths[0])]
+      monkeypatch.delenv("SSH_CONNECTION")
+      await pilot.press("d")
+      assert downloaded == [str(paths[0])]
+      assert notifications[-1] == (str(paths[0]), "Image is already local")
 
       await pilot.press("right")
       assert app.focused is cards[1]

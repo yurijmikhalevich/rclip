@@ -21,6 +21,10 @@ def _get_end_sequence():
   return "\a"
 
 
+def iterm_sequence(command: str) -> str:
+  return f"{_get_start_sequence()}1337;{command}{_get_end_sequence()}"
+
+
 def _get_preview_dimensions(width_px: int, height_px: int) -> tuple[str, str]:
   if sys.stdout.isatty() and os.name != "nt":
     try:
@@ -60,7 +64,7 @@ def preview(filepath: str, img_height_px: int):
   img_str = base64.b64encode(img_bytes).decode("utf-8")
   width, height = _get_preview_dimensions(width_px, height_px)
   print(
-    f"{_get_start_sequence()}1337;"
-    f"File=inline=1;size={len(img_bytes)};preserveAspectRatio=1;"
-    f"width={width};height={height}:{img_str}{_get_end_sequence()}",
+    iterm_sequence(
+      f"File=inline=1;size={len(img_bytes)};preserveAspectRatio=1;width={width};height={height}:{img_str}"
+    ),
   )

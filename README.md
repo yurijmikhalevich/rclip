@@ -131,10 +131,13 @@ The UI uses Kitty's graphics protocol when available and Sixel in terminals such
 | `Esc` | Return to the grid from an opened image. |
 | `y` | Copy the selected image to the system clipboard using Kitty's `kitten clipboard`. |
 | `Y` | Copy the selected image path. |
+| `d` | Download the selected original image from an SSH host. |
 | `q` | Quit while navigating results. |
 | `Ctrl+C` or `Ctrl+Q` | Quit from anywhere, including the search input. |
 
 Image copying requires Kitty 0.27 or newer and a discoverable `kitten` executable; the rest of the UI does not invoke Kitty executables.
+
+Over SSH, `d` downloads the original file to `~/Downloads` on the terminal host. Kitty 0.30+ requires a remote `kitten` executable (`kitten ssh` provides it) and asks for confirmation; iTerm2 3.5+ is also supported. If detection fails, set `RCLIP_DOWNLOAD_PROTOCOL` to `kitty` or `iterm2`. Locally, `d` only shows the file path.
 
 ### Similar image search (image-to-image search)
 
