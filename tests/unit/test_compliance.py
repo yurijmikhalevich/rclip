@@ -254,7 +254,7 @@ def test_collection_includes_textual_image_licences_and_source_links(tmp_path: P
   write_distribution(
     tmp_path,
     "textual-image",
-    version="0.8.5",
+    version="0.12.0",
     license_expression=None,
     license_classifier="License :: OSI Approved :: GNU Lesser General Public License v3 or later (LGPLv3+)",
   )
@@ -262,12 +262,12 @@ def test_collection_includes_textual_image_licences_and_source_links(tmp_path: P
   output = tmp_path / "legal"
   collect_legal_materials(tmp_path, output, POLICY, NOTICES)
 
-  licenses = output / "licenses/textual-image-0.8.5"
+  licenses = output / "licenses/textual-image-0.12.0"
   assert (licenses / "licenses/LICENSE").is_file()
   assert (licenses / "COPYING.GPLv3.txt").is_file()
   notices = (output / "THIRD_PARTY_NOTICES.txt").read_text(encoding="utf-8")
-  assert "uses textual-image 0.8.5 under LGPL-3.0-or-later" in notices
-  assert "textual_image-0.8.5.tar.gz" in notices
+  assert "uses textual-image 0.12.0 under LGPL-3.0-or-later" in notices
+  assert "textual_image-0.12.0.tar.gz" in notices
   assert "/archive/refs/tags/v3.3.0.tar.gz" in notices
 
 

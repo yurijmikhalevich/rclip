@@ -46,8 +46,8 @@ dependencies = [
     "regex~=2026.4.4",
     "requests~=2.32",
     "textual>=8.2.8,<9",
-    # StableTGPImage uses textual-image 0.8.5's private TGP renderable API.
-    "textual-image==0.8.5",
+    # StableTGPImage uses a private API; textual-image 0.13.0 and 0.13.1 omit their package code.
+    "textual-image==0.12.0",
     "tqdm>=4.65.0,<5",
     "rawpy>=0.26.1,<0.27",
 ]
