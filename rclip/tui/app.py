@@ -114,17 +114,32 @@ class RclipApp(App[None]):
 
   @work(thread=True, group="search", exclusive=True, exit_on_error=False)
   def _search(self, query: str, generation: int) -> None:
+    worker = get_current_worker()
     try:
       if query and not Model.is_text_query(query):
         raise ValueError("interactive mode supports text queries only")
       with self._search_lock:
+        if worker.is_cancelled:
+          return
         if query:
-          search_results = self.rclip.search(query, self.working_directory, self.top_k)
+          search_results = self.rclip.search(
+            query,
+            self.working_directory,
+            self.top_k,
+            cancel_event=worker.cancelled_event,
+          )
           results = [TuiResult(result.filepath, result.score) for result in search_results]
         else:
           results = [
-            TuiResult(filepath) for filepath in self.rclip.list_images(self.working_directory, self.top_k)
+            TuiResult(filepath)
+            for filepath in self.rclip.list_images(
+              self.working_directory, self.top_k, cancel_event=worker.cancelled_event
+            )
           ]
+        if worker.is_cancelled:
+          return
+    except InterruptedError:
+      return
     except Exception as error:
       self.call_from_thread(self._show_search_error, generation, query, str(error))
     else:
