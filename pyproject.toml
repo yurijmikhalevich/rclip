@@ -3,7 +3,7 @@ name = "rclip"
 version = "3.3.0"
 description = "Semantic photo search for the command line"
 authors = [{ name = "Yurij Mikhalevich", email = "yurij@mikhalevi.ch" }]
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.12,<3.14"
 readme = "README.md"
 license = "MIT"
 license-files = [
@@ -33,7 +33,6 @@ classifiers = [
     "Topic :: Utilities",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
 ]
