@@ -17,11 +17,7 @@ CLIPBOARD_NATIVE_EXTENSIONS = {"bmp", "gif", "jpeg", "jpg", "png", "tif", "tiff"
 ITERM_TRANSFER_CHUNK_SIZE = 512 * 1024
 
 
-class ClipboardError(Exception):
-  pass
-
-
-class DownloadError(Exception):
+class TransferError(Exception):
   pass
 
 
@@ -32,7 +28,7 @@ def _kitten_executable() -> str:
     executable = Path(installation_dir) / "kitten"
     if executable.is_file():
       return str(executable)
-  raise ClipboardError("could not find Kitty's `kitten` executable")
+  raise TransferError("could not find Kitty's `kitten` executable")
 
 
 def _run_clipboard_kitten(filepath: Path) -> None:
@@ -45,7 +41,7 @@ def _run_clipboard_kitten(filepath: Path) -> None:
   )
   if completed.returncode:
     message = completed.stderr.strip() or f"kitten exited with status {completed.returncode}"
-    raise ClipboardError(message)
+    raise TransferError(message)
 
 
 def copy_image_to_clipboard(filepath: str) -> None:
@@ -72,12 +68,12 @@ def _download_protocol() -> Literal["kitty", "iterm2"]:
   if override == "iterm2":
     return "iterm2"
   if override:
-    raise DownloadError("RCLIP_DOWNLOAD_PROTOCOL must be `kitty` or `iterm2`")
+    raise TransferError("RCLIP_DOWNLOAD_PROTOCOL must be `kitty` or `iterm2`")
   if os.getenv("TERM") == "xterm-kitty" or os.getenv("KITTY_WINDOW_ID") or os.getenv("KITTY_PUBLIC_KEY"):
     return "kitty"
   if os.getenv("TERM_PROGRAM") == "iTerm.app" or os.getenv("LC_TERMINAL") == "iTerm2":
     return "iterm2"
-  raise DownloadError("could not detect Kitty or iTerm2; set RCLIP_DOWNLOAD_PROTOCOL to `kitty` or `iterm2`")
+  raise TransferError("could not detect Kitty or iTerm2; set RCLIP_DOWNLOAD_PROTOCOL to `kitty` or `iterm2`")
 
 
 def download_image(filepath: str) -> None:
@@ -91,7 +87,7 @@ def download_image(filepath: str) -> None:
     )
     if completed.returncode:
       message = completed.stderr.strip() or f"kitten exited with status {completed.returncode}"
-      raise DownloadError(message)
+      raise TransferError(message)
     return
 
   name = base64.b64encode(path.name.encode()).decode("ascii")

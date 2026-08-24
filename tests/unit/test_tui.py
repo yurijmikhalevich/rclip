@@ -21,8 +21,7 @@ from rclip.tui.app import RclipApp
 from rclip.tui.app import _display_directory
 from rclip.tui.media import StableTGPImage
 from rclip.tui.media import prepare_image
-from rclip.tui.transfer import ClipboardError
-from rclip.tui.transfer import DownloadError
+from rclip.tui.transfer import TransferError
 from rclip.tui.transfer import _download_protocol
 from rclip.tui.transfer import copy_image_to_clipboard
 from rclip.tui.transfer import download_image
@@ -206,7 +205,7 @@ def test_clipboard_kitten_failure_is_reported(monkeypatch: pytest.MonkeyPatch, t
     lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 1, stderr="permission denied"),
   )
 
-  with pytest.raises(ClipboardError, match="permission denied"):
+  with pytest.raises(TransferError, match="permission denied"):
     copy_image_to_clipboard(str(make_image(tmp_path / "image.jpg")))
 
 
@@ -298,7 +297,7 @@ def test_download_protocol_can_be_detected_or_overridden(monkeypatch: pytest.Mon
   ):
     monkeypatch.delenv(name, raising=False)
 
-  with pytest.raises(DownloadError, match="could not detect"):
+  with pytest.raises(TransferError, match="could not detect"):
     _download_protocol()
 
   monkeypatch.setenv("TERM", "xterm-kitty")
@@ -308,7 +307,7 @@ def test_download_protocol_can_be_detected_or_overridden(monkeypatch: pytest.Mon
   assert _download_protocol() == "iterm2"
 
   monkeypatch.setenv("RCLIP_DOWNLOAD_PROTOCOL", "unknown")
-  with pytest.raises(DownloadError, match="must be `kitty` or `iterm2`"):
+  with pytest.raises(TransferError, match="must be `kitty` or `iterm2`"):
     _download_protocol()
 
 
@@ -328,6 +327,15 @@ def test_download_image_uses_kitty_transfer(monkeypatch: pytest.MonkeyPatch, tmp
   download_image(str(source))
 
   assert commands == [(["kitten", "transfer", str(source), "Downloads/"], {"stderr": subprocess.PIPE, "text": True})]
+
+
+def test_download_image_reports_missing_kitten(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+  monkeypatch.setenv("RCLIP_DOWNLOAD_PROTOCOL", "kitty")
+  monkeypatch.delenv("KITTY_INSTALLATION_DIR", raising=False)
+  monkeypatch.setattr("rclip.tui.transfer.shutil.which", lambda _: None)
+
+  with pytest.raises(TransferError, match="could not find Kitty"):
+    download_image(str(make_image(tmp_path / "image.jpg")))
 
 
 def test_download_image_streams_the_original_to_iterm2(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
