@@ -35,10 +35,8 @@ AppDir:
 
     include:
       - libffi7
-      - libpython3.13-minimal
       - libpython3.13-stdlib
       - python3.13
-      - python3.13-minimal
       - python3.13-venv
     exclude: []
 
