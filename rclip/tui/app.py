@@ -106,6 +106,7 @@ class RclipApp(App[None]):
 
   def _begin_search(self, query: str) -> None:
     self._search_generation += 1
+    self.query_one("#search", Input).border_title = "Searching…"
     self._search(query, self._search_generation)
 
   @work(thread=True, group="search", exclusive=True, exit_on_error=False)
@@ -127,7 +128,8 @@ class RclipApp(App[None]):
       self.call_from_thread(self._show_results, generation, query, results)
 
   async def _show_results(self, generation: int, query: str, results: list[TuiResult]) -> None:
-    if generation != self._search_generation or self.query_one("#search", Input).value.strip() != query:
+    search_input = self.query_one("#search", Input)
+    if generation != self._search_generation or search_input.value.strip() != query:
       return
     grid = self.query_one(ResultsGrid)
     await grid.remove_children()
@@ -142,10 +144,13 @@ class RclipApp(App[None]):
     grid.scroll_home(animate=False)
     self._selected_index = 0
     self.call_after_refresh(grid.load_visible_previews)
+    search_input.border_title = None if results else "No results"
 
   def _show_search_error(self, generation: int, query: str, message: str) -> None:
-    if generation != self._search_generation or self.query_one("#search", Input).value.strip() != query:
+    search_input = self.query_one("#search", Input)
+    if generation != self._search_generation or search_input.value.strip() != query:
       return
+    search_input.border_title = None
     self.notify(message, title="Search failed", severity="error")
 
   def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:

@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-from threading import Event
+from threading import Event, Lock
 from types import SimpleNamespace
 
 from PIL import Image
@@ -255,6 +255,31 @@ def test_tui_rejects_image_query(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
   assert notifications == ["interactive mode supports text queries only"]
 
 
+def test_tui_reports_searching_and_no_results(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+  started = Event()
+  release = Event()
+  rclip = FakeRclip([])
+
+  def list_images(_directory: str, _top_k: int) -> list[str]:
+    started.set()
+    assert release.wait(2)
+    return []
+
+  monkeypatch.setattr(rclip, "list_images", list_images)
+  app = RclipApp(rclip, str(tmp_path))
+
+  async def run() -> None:
+    async with app.run_test():
+      assert await asyncio.to_thread(started.wait, 1)
+      assert app.query_one(Input).border_title == "Searching…"
+      release.set()
+      await app.workers.wait_for_complete()
+      await asyncio.sleep(0)
+      assert app.query_one(Input).border_title == "No results"
+
+  asyncio.run(run())
+
+
 def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   paths = [make_image(tmp_path / f"image-{index}.jpg", color) for index, color in enumerate(("red", "green"))]
   rclip = FakeRclip([RClip.SearchResult(str(path), 0.9 - index / 10) for index, path in enumerate(paths)])
@@ -328,14 +353,37 @@ def test_tui_only_loads_visible_previews(tmp_path: Path, monkeypatch: pytest.Mon
   rclip = FakeRclip([RClip.SearchResult(str(path), 1 - index / 100) for index in range(100)])
   app = RclipApp(rclip, str(tmp_path))
   loaded: list[str] = []
-  monkeypatch.setattr("rclip.tui.views.prepare_image", lambda filepath, _size: loaded.append(filepath) or path)
+  lock = Lock()
+  release = Event()
+  four_started = Event()
+  active = 0
+  max_active = 0
+
+  def prepare(filepath: str, _size: tuple[int, int]) -> Path:
+    nonlocal active, max_active
+    with lock:
+      loaded.append(filepath)
+      active += 1
+      max_active = max(max_active, active)
+      if active == 4:
+        four_started.set()
+    try:
+      assert release.wait(2)
+      return path
+    finally:
+      with lock:
+        active -= 1
+
+  monkeypatch.setattr("rclip.tui.views.prepare_image", prepare)
 
   async def run() -> None:
-    async with app.run_test(size=(80, 24)) as pilot:
-      await pilot.press("x", "enter")
-      await pilot.pause()
+    async with app.run_test(size=(80, 24)):
+      assert await asyncio.to_thread(four_started.wait, 1)
+      await asyncio.sleep(0.05)
+      assert max_active == 4
+      release.set()
       await app.workers.wait_for_complete()
-      await pilot.pause()
+      await asyncio.sleep(0)
 
       assert 0 < len(loaded) < len(app.query(ImageCard))
 

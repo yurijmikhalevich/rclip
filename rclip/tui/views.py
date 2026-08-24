@@ -1,11 +1,13 @@
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
+from threading import Semaphore
 
 from textual import events, work
 from textual.app import ComposeResult
 from textual.containers import CenterMiddle, ItemGrid
 from textual.screen import Screen
+from textual.worker import get_current_worker
 from textual.widgets import Label, Static
 
 from rclip.tui.media import ImageWidget
@@ -14,6 +16,7 @@ from rclip.tui.media import prepare_image
 
 PREVIEW_SIZE = (640, 480)
 DETAIL_SIZE = (1920, 1920)
+_IMAGE_DECODES = Semaphore(4)
 
 
 @dataclass(frozen=True)
@@ -45,12 +48,15 @@ class ImageCard(Static, can_focus=True):
 
   @work(thread=True, exit_on_error=False)
   def _load_preview(self) -> None:
-    try:
-      preview = prepare_image(self.result.filepath, PREVIEW_SIZE)
-    except Exception:
-      self.app.call_from_thread(self._preview_failed)
-    else:
-      self.app.call_from_thread(self._preview_ready, preview)
+    with _IMAGE_DECODES:
+      if get_current_worker().is_cancelled:
+        return
+      try:
+        preview = prepare_image(self.result.filepath, PREVIEW_SIZE)
+      except Exception:
+        self.app.call_from_thread(self._preview_failed)
+      else:
+        self.app.call_from_thread(self._preview_ready, preview)
 
   def _preview_ready(self, preview: BytesIO) -> None:
     if self.is_attached:
@@ -140,12 +146,15 @@ class DetailScreen(Screen[None]):
   @work(thread=True, group="detail", exclusive=True, exit_on_error=False)
   def _load_detail(self) -> None:
     filepath = self.filepath
-    try:
-      detail = prepare_image(filepath, DETAIL_SIZE)
-    except Exception as error:
-      self.app.call_from_thread(self._show_error, filepath, str(error))
-    else:
-      self.app.call_from_thread(self._show_detail, filepath, detail)
+    with _IMAGE_DECODES:
+      if get_current_worker().is_cancelled:
+        return
+      try:
+        detail = prepare_image(filepath, DETAIL_SIZE)
+      except Exception as error:
+        self.app.call_from_thread(self._show_error, filepath, str(error))
+      else:
+        self.app.call_from_thread(self._show_detail, filepath, detail)
 
   def _show_detail(self, filepath: str, detail: BytesIO) -> None:
     if not self.is_attached or filepath != self.filepath:
