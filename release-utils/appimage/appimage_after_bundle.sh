@@ -3,26 +3,26 @@
 set -euo pipefail
 
 export PYTHONHOME="$APPDIR/usr"
-export PYTHONPATH="$APPDIR/usr/lib/python3/dist-packages:$APPDIR/usr/lib/python3.11:$APPDIR/usr/lib/python3.11/site-packages:$APPDIR/usr/local/lib/python3.11/dist-packages"
+export PYTHONPATH="$APPDIR/usr/lib/python3/dist-packages:$APPDIR/usr/lib/python3.13:$APPDIR/usr/local/lib/python3.13/site-packages"
 export LD_LIBRARY_PATH="$APPDIR/usr/lib/x86_64-linux-gnu"
 
 RCLIP_BUILD_TOOLS_DIR=$(mktemp -d)
 trap 'rm -rf "$RCLIP_BUILD_TOOLS_DIR"' EXIT
-python3.11 -m pip install --isolated --no-input --target="$RCLIP_BUILD_TOOLS_DIR" uv==0.11.12
-export PYTHONPATH="$RCLIP_BUILD_TOOLS_DIR:$PYTHONPATH"
+python3.13 -m venv "$RCLIP_BUILD_TOOLS_DIR"
+build_python="$RCLIP_BUILD_TOOLS_DIR/bin/python"
+"$build_python" -m pip install --isolated --no-input uv==0.11.12
 
-python3.11 -m uv build
-python3.11 -m uv export --locked --format requirements.txt --no-dev --no-editable --no-emit-project --no-hashes --output-file requirements.txt
-python3.11 -m pip install --upgrade --isolated --no-input --ignore-installed --prefix="$APPDIR/usr" -r requirements.txt
-python3.11 -m pip install --no-dependencies --isolated --no-input --prefix="$APPDIR/usr" dist/*.whl
-python3.11 -m pip install --upgrade --isolated --no-input --ignore-installed --target="$APPDIR/usr/lib/python3.11/site-packages" certifi
+"$build_python" -m uv build
+"$build_python" -m uv export --locked --format requirements.txt --no-dev --no-editable --no-emit-project --no-hashes --output-file requirements.txt
+"$build_python" -m pip install --upgrade --isolated --no-input --ignore-installed --root="$APPDIR" --prefix=/usr/local -r requirements.txt
+"$build_python" -m pip install --no-dependencies --isolated --no-input --root="$APPDIR" --prefix=/usr/local dist/*.whl
+"$build_python" -m pip install --upgrade --isolated --no-input --ignore-installed --target="$APPDIR/usr/local/lib/python3.13/site-packages" certifi
 
 # The bundled pip, setuptools, and wheel packages are build tools inherited
 # from the Ubuntu Python packages. They are not needed by the application.
 for site_packages in \
   "$APPDIR/usr/lib/python3/dist-packages" \
-  "$APPDIR/usr/lib/python3.11/site-packages" \
-  "$APPDIR/usr/local/lib/python3.11/dist-packages"; do
+  "$APPDIR/usr/local/lib/python3.13/site-packages"; do
   if [[ -d "$site_packages" ]]; then
     find "$site_packages" -maxdepth 1 \
       \( -name pip -o -name 'pip-*.dist-info' \
@@ -38,7 +38,7 @@ for bin_dir in "$APPDIR/usr/bin" "$APPDIR/usr/local/bin"; do
   fi
 done
 
-python3.11 -m rclip._compliance collect \
+python3.13 -m rclip._compliance collect \
   --root "$APPDIR" \
   --output "$APPDIR/usr/share/doc/rclip" \
   --policy compliance/policy.toml \
