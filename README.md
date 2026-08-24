@@ -137,7 +137,7 @@ The UI uses Kitty's graphics protocol when available and Sixel in terminals such
 
 Image copying requires Kitty 0.27 or newer and a discoverable `kitten` executable; the rest of the UI does not invoke Kitty executables.
 
-Over SSH, `d` preserves the original file and downloads it to `~/Downloads` on the terminal host. Kitty 0.30 or newer asks for confirmation and requires a discoverable remote `kitten` executable; `kitten ssh` provides one automatically. iTerm2 3.5 or newer uses its file-transfer protocol. If terminal detection is unavailable through SSH, set `RCLIP_DOWNLOAD_PROTOCOL` to `kitty` or `iterm2`. Locally, `d` only displays the image's existing path and does not copy it.
+Over SSH, `d` downloads the original file to `~/Downloads` on the terminal host. Kitty 0.30+ requires a remote `kitten` executable (`kitten ssh` provides it) and asks for confirmation; iTerm2 3.5+ is also supported. If detection fails, set `RCLIP_DOWNLOAD_PROTOCOL` to `kitty` or `iterm2`. Locally, `d` only shows the file path.
 
 ### Similar image search (image-to-image search)
 
