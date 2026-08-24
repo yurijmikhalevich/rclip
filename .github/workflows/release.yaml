@@ -377,7 +377,8 @@ jobs:
           lock = tomllib.loads(Path("uv.lock").read_text())
           package = next(package for package in lock["package"] if package["name"] == "textual-image")
           source = package["sdist"]
-          data = urlopen(source["url"]).read()
+          with urlopen(source["url"], timeout=60) as response:
+            data = response.read()
           expected = source["hash"].removeprefix("sha256:")
           if sha256(data).hexdigest() != expected:
             raise ValueError("textual-image source hash does not match uv.lock")
