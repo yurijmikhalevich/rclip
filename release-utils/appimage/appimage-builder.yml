@@ -27,9 +27,9 @@ AppDir:
     arch: amd64
     sources:
       - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ jammy main restricted universe multiverse'
-        key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x871920D1991BC93C'
+        key_url: 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x871920D1991BC93C'
       - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ jammy-updates main restricted'
-        key_url: 'http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x871920D1991BC93C'
+        key_url: 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x871920D1991BC93C'
       - sourceline: 'deb http://ppa.launchpad.net/deadsnakes/ppa/ubuntu jammy main'
         key_url: 'https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xba6932366a755776'
 
@@ -52,11 +52,11 @@ AppDir:
       PYTHONHOME: '${APPDIR}/usr'
       # Path to the site-packages dir or other modules dirs
       # See https://docs.python.org/3/using/cmdline.html#envvar-PYTHONPATH
-      PYTHONPATH: '${APPDIR}/usr/src:${APPDIR}/usr/lib/python3.13/site-packages'
+      PYTHONPATH: '${APPDIR}/usr/src:${APPDIR}/usr/local/lib/python3.13/site-packages'
       # SSL Certificates are placed in a different location for every system therefore we ship our own copy
-      SSL_CERT_FILE: '${APPDIR}/usr/lib/python3.13/site-packages/certifi/cacert.pem'
+      SSL_CERT_FILE: '${APPDIR}/usr/local/lib/python3.13/site-packages/certifi/cacert.pem'
       # requests (used by huggingface_hub) checks REQUESTS_CA_BUNDLE before certifi.where()
-      REQUESTS_CA_BUNDLE: '${APPDIR}/usr/lib/python3.13/site-packages/certifi/cacert.pem'
+      REQUESTS_CA_BUNDLE: '${APPDIR}/usr/local/lib/python3.13/site-packages/certifi/cacert.pem'
 
   test:
     fedora:
