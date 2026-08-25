@@ -1,4 +1,4 @@
-# rclip – semantic photo search for the command line
+# rclip – grep for images
 <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
 [![All Contributors](https://img.shields.io/badge/all_contributors-7-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
@@ -9,7 +9,14 @@
   <img alt="rclip logo" src="https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/resources/logo-transparent.png" width="600px" />
 </div>
 
-**rclip** is a semantic photo search tool for the command line, powered by [OpenCLIP's top-performing ViT-B/32 AI model](https://github.com/mlfoundations/open_clip/blob/55794d65a14dfc547a9ed3514145dd68ccc939e9/README.md). Search a local photo library with natural-language queries, similar image search, or mixed text and image queries – entirely on your machine, with no cloud and no uploads. It builds on the CLIP architecture introduced by OpenAI.
+Search any folder by what its images contain. Use natural language, an example image, or both – without tagging, uploading, or importing your files into a photo library.
+
+**Local. Terminal-native. Works over SSH. Plays well with Unix tools.**
+
+```bash
+cd ~/Photos
+rclip "two parrots on a branch"
+```
 
 ## Features
 
@@ -231,6 +238,10 @@ search even more.
 ```bash
 rclip -n cat
 ```
+
+### How it works
+
+**rclip** currently uses the [OpenCLIP's ViT-B/32 AI model](https://github.com/mlfoundations/open_clip/blob/55794d65a14dfc547a9ed3514145dd68ccc939e9/README.md) to generate embeddings for images and text. This enables natural-language search, similar-image search, and mixed text-and-image queries entirely on your machine. The model builds on the CLIP architecture introduced by OpenAI.
 
 ## Command-line options
 
