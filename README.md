@@ -126,7 +126,7 @@ Open the interactive UI and enter a query in its search input:
 rclip --interactive
 ```
 
-The UI uses Kitty's graphics protocol when available and Sixel in terminals such as iTerm2, with a colored half-cell fallback elsewhere. It uses the terminal's default colors and ANSI palette. With an empty query it browses recently modified images in pages. Each browse page and search returns up to 100 results by default; pass `--top N` to use a smaller limit. Enter text queries in the UI; image queries remain available in the non-interactive CLI. Cached previews load as they become visible, and opening a result loads a higher-resolution display image.
+The UI uses Kitty's graphics protocol when available and Sixel in terminals such as iTerm2, with a colored half-cell fallback elsewhere. It uses the terminal's default colors and ANSI palette. With an empty query it browses recently modified images, loading more as you scroll. Searches return up to 100 results by default; pass `--top N` to use a smaller search limit. Enter text queries in the UI; image queries remain available in the non-interactive CLI. Cached previews load as they become visible, and opening a result loads a higher-resolution display image.
 
 | Key | Action |
 | --- | --- |
@@ -134,7 +134,6 @@ The UI uses Kitty's graphics protocol when available and Sixel in terminals such
 | Arrow keys or `h`, `j`, `k`, `l` | Move between results. |
 | `Enter` | Open the selected image. |
 | Left/Right or `h`/`l` | Show the previous or next opened image. |
-| `[` / `]` | Show the previous or next browse page. |
 | Double-click | Open an image, or return to the grid from an opened image. |
 | `Esc` | Return to the grid from an opened image. |
 | `y` | Copy the selected image to the system clipboard using Kitty's `kitten clipboard`. |
