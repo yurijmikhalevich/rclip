@@ -34,14 +34,14 @@ from rclip.utils.helpers import init_arg_parser
 class FakeRclip(RClip):
   def __init__(self, results: list[RClip.SearchResult]) -> None:
     self.results = results
-    self.searches: list[tuple[str, str, int, list[str], list[str]]] = []
+    self.searches: list[tuple[str, str, int | None, list[str], list[str]]] = []
     self.browses: list[tuple[str, int, RClip.ImageCursor | None]] = []
 
   def search(
     self,
     query: str,
     directory: str,
-    top_k: int = 10,
+    top_k: int | None = 10,
     positive_queries: list[str] = [],
     negative_queries: list[str] = [],
     *,
@@ -132,7 +132,7 @@ def test_interactive_main_rejects_additional_queries_before_setup(option: str, m
     main_module.main()
 
 
-def test_interactive_main_rejects_more_than_100_results_before_setup(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_interactive_main_rejects_search_batches_larger_than_100(monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.setattr(sys, "argv", ["rclip", "--interactive", "--top", "101"])
   monkeypatch.setattr(main_module, "init_rclip", lambda **_options: pytest.fail("must reject before setup"))
 
@@ -415,7 +415,7 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
       cards = list(app.query(ImageCard))
       assert len(cards) == 2
       assert isinstance(app.focused, Input)
-      assert rclip.searches == [("cat", str(tmp_path), 25, [], [])]
+      assert rclip.searches == [("cat", str(tmp_path), None, [], [])]
 
       await pilot.press("down")
       assert app.focused is cards[0]
@@ -481,7 +481,7 @@ def test_new_search_interrupts_the_running_search_and_keeps_one_active(tmp_path:
       self,
       query: str,
       directory: str,
-      top_k: int = 10,
+      top_k: int | None = 10,
       positive_queries: list[str] = [],
       negative_queries: list[str] = [],
       *,
@@ -570,7 +570,7 @@ def test_new_search_interrupts_loading_more(tmp_path: Path, monkeypatch: pytest.
       await pilot.pause()
 
       assert page_cancelled.is_set()
-      assert rclip.searches == [("cat", str(tmp_path), 25, [], [])]
+      assert rclip.searches == [("cat", str(tmp_path), None, [], [])]
       assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths[:25]]
 
   asyncio.run(run())
@@ -667,6 +667,31 @@ def test_empty_browse_loads_more_as_keyboard_moves_down(tmp_path: Path) -> None:
     (str(tmp_path), 25, None),
     (str(tmp_path), 25, cursor),
   ]
+
+
+def test_search_loads_more_on_scroll(tmp_path: Path) -> None:
+  paths = [tmp_path / f"image-{index}.jpg" for index in range(26)]
+  rclip = FakeRclip([RClip.SearchResult(str(path), 1 - index / 10) for index, path in enumerate(paths)])
+  app = RclipApp(rclip, str(tmp_path), top_k=25)
+
+  async def run() -> None:
+    async with app.run_test(size=(80, 24)) as pilot:
+      await app.workers.wait_for_complete()
+
+      search_input = app.query_one(Input)
+      search_input.value = "cat"
+      await pilot.pause(0.3)
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths[:25]]
+
+      app.query_one(ResultsGrid).scroll_end(animate=False)
+      await pilot.pause()
+      assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths]
+
+  asyncio.run(run())
+
+  assert rclip.searches == [("cat", str(tmp_path), None, [], [])]
 
 
 def test_empty_browse_loads_more_on_scroll_and_retries_after_failure(

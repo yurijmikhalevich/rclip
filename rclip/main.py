@@ -285,7 +285,7 @@ class RClip:
     self,
     query: str,
     directory: str,
-    top_k: int = 10,
+    top_k: int | None = 10,
     positive_queries: List[str] = [],
     negative_queries: List[str] = [],
     *,
@@ -305,7 +305,7 @@ class RClip:
 
     results: list[RClip.SearchResult] = []
     for score, index in sorted_similarities:
-      if len(results) >= top_k:
+      if top_k is not None and len(results) >= top_k:
         break
       helpers.raise_if_cancelled(cancel_event)
       filepath = filepaths[index]

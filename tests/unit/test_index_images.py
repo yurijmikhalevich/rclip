@@ -47,6 +47,21 @@ def test_search_stops_loading_vectors_when_cancelled() -> None:
   model.compute_similarities_to_text.assert_not_called()
 
 
+def test_search_can_return_every_ranked_result() -> None:
+  database = Mock()
+  database.get_image_vectors_by_dir_path.return_value = [
+    {"filepath": f"{index}.jpg", "vector": np.zeros(512, dtype=np.float32).tobytes()}
+    for index in range(12)
+  ]
+  model = Mock()
+  model.compute_similarities_to_text.return_value = [(float(index), index) for index in range(12)]
+  rclip = _make_rclip(model, database)
+
+  assert rclip.search("cat", ".", top_k=None) == [
+    RClip.SearchResult(f"{index}.jpg", float(index)) for index in range(12)
+  ]
+
+
 def test_load_images_preserves_order_and_skips_failures(monkeypatch):
   monkeypatch.setattr(helpers, "_ensure_image_loading_configured", lambda: None)
   monkeypatch.setattr(helpers, "read_image", _fail_on_b)

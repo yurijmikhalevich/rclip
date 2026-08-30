@@ -68,13 +68,14 @@ class RclipApp(App[None]):
     self.theme = os.getenv("TEXTUAL_THEME", "ansi-dark")
     self.rclip = rclip
     self.working_directory = working_directory
-    self.search_limit = top_k
+    self.search_batch_size = top_k
     self._search_timer: Timer | None = None
     self._search_lock = Lock()
     self._search_generation = 0
     self._clipboard_lock = Lock()
     self._selected_index = 0
     self._next_cursor: RClip.ImageCursor | None = None
+    self._remaining_search_results: list[TuiResult] = []
     self._loading_more = False
 
   def compose(self) -> ComposeResult:
@@ -113,16 +114,31 @@ class RclipApp(App[None]):
     self._search_generation += 1
     self._loading_more = False
     self._next_cursor = None
+    self._remaining_search_results = []
     self.query_one("#search", Input).border_title = "Searching…"
     self._search(query, self._search_generation, None)
 
   def _load_more(self) -> None:
-    if (
-      self._loading_more
-      or self._next_cursor is None
-      or self.query_one("#search", Input).value.strip()
-      or isinstance(self.screen, DetailScreen)
-    ):
+    if self._loading_more or isinstance(self.screen, DetailScreen):
+      return
+    query = self.query_one("#search", Input).value.strip()
+    if query:
+      if not self._remaining_search_results:
+        return
+      results = self._remaining_search_results[: self.search_batch_size]
+      del self._remaining_search_results[: self.search_batch_size]
+      self._loading_more = True
+      self.query_one("#search", Input).border_title = "Loading…"
+      self.call_after_refresh(
+        self._show_results,
+        self._search_generation,
+        query,
+        results,
+        None,
+        True,
+      )
+      return
+    if self._next_cursor is None:
       return
     self._loading_more = True
     self.query_one("#search", Input).border_title = "Loading…"
@@ -143,7 +159,7 @@ class RclipApp(App[None]):
           search_results = self.rclip.search(
             query,
             self.working_directory,
-            self.search_limit,
+            top_k=None,
             cancel_event=worker.cancelled_event,
           )
           results = [TuiResult(result.filepath, result.score) for result in search_results]
@@ -177,11 +193,14 @@ class RclipApp(App[None]):
     if not self._is_current_search(generation, query):
       return
     grid = self.query_one(ResultsGrid)
-    cards = [ImageCard(result) for result in results]
     if not append:
       await grid.remove_children()
       if not self._is_current_search(generation, query):
         return
+      if query:
+        self._remaining_search_results = results[self.search_batch_size :]
+        results = results[: self.search_batch_size]
+    cards = [ImageCard(result) for result in results]
     if cards:
       await grid.mount(*cards)
     if not self._is_current_search(generation, query):
