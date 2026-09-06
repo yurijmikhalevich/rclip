@@ -724,6 +724,7 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str, width:
         if width == 80 and index == 22:
           await pilot.resize_terminal(160, 24)
         await app.workers.wait_for_complete()
+        await pilot.pause()
         neighbors = (4 if index >= 22 else 2) if width == 80 else 0
         expected = [
           paths[neighbor] if 0 <= neighbor < len(paths) else None
@@ -737,6 +738,7 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str, width:
       await pilot.press("left")
       assert app.screen.filepath == paths[-2]
       await pilot.press("escape")
+      await pilot.pause()
       async with asyncio.timeout(0.25):
         while app.focused is not app.query_one(ResultsGrid).cards[-2]:
           await pilot.pause(0.01)
