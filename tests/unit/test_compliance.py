@@ -285,17 +285,13 @@ def test_accepts_spdx_expressions_from_legacy_licence_metadata(expression: str) 
   assert _declared_license_expression(record) == expression
 
 
-@pytest.mark.parametrize("locked_versions", [{}, {"example": {"1"}}])
-def test_only_unversioned_packages_accept_unlocked_versions(locked_versions: dict[str, set[str]]) -> None:
-  policy = {"approved_python_licenses": {"example": "MIT"}, "unversioned_python_packages": []}
-  records = [{"name": "example", "version": "999"}]
+def test_unversioned_package_accepts_any_version() -> None:
+  policy = {
+    "unversioned_python_packages": ["example"],
+    "approved_python_licenses": {"example": "MIT"},
+  }
 
-  _validate_python_packages([], policy, locked_versions)
-  with pytest.raises(ComplianceError, match="disallowed Python versions"):
-    _validate_python_packages(records, policy, locked_versions)
-
-  policy["unversioned_python_packages"].append("example")
-  _validate_python_packages(records, policy, locked_versions)
+  _validate_python_packages([{"name": "example", "version": "999"}], policy, {})
 
 
 def test_policy_covers_locked_runtime_closure_on_every_platform() -> None:

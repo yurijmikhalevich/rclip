@@ -93,9 +93,15 @@ def _validate_python_packages(
     errors.append(f"prohibited Python distributions: {', '.join(rejected)}")
   if unknown:
     errors.append(f"disallowed Python distributions: {', '.join(unknown)}")
+  missing_approvals = sorted(locked_versions.keys() - approved.keys())
+  stale_approvals = sorted(approved.keys() - locked_versions.keys() - unversioned)
+  if missing_approvals:
+    errors.append(f"locked Python distributions have no approved licence: {', '.join(missing_approvals)}")
+  if stale_approvals:
+    errors.append(f"approved Python distributions are absent from the runtime lock: {', '.join(stale_approvals)}")
   version_drift = []
   for record in records:
-    expected = None if record["name"] in unversioned else locked_versions.get(record["name"], set())
+    expected = None if record["name"] in unversioned else locked_versions.get(record["name"])
     actual = record.get("version")
     if expected is not None and str(actual) not in expected:
       version_drift.append(f"{record['name']} {actual or '<missing>'} (locked: {', '.join(sorted(expected))})")
