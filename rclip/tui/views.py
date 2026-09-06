@@ -205,6 +205,21 @@ class DetailScreen(Screen[None]):
     if isinstance(self.app, RclipApp):
       self.app._update_detail()
 
+  def show_thumbnails(self, filepaths: list[str | None]) -> None:
+    retained = {
+      thumbnail.filepath: thumbnail
+      for thumbnail in self.thumbnails
+      if thumbnail.filepath is not None and thumbnail.filepath in filepaths
+    }
+    unused = iter(thumbnail for thumbnail in self.thumbnails if thumbnail not in retained.values())
+    self.thumbnails = [retained[filepath] if filepath in retained else next(unused) for filepath in filepaths]
+    filmstrip = self.query_one("#detail-filmstrip", Horizontal)
+    for index, (thumbnail, filepath) in enumerate(zip(self.thumbnails, filepaths)):
+      thumbnail.result_offset = index - len(filepaths) // 2
+      thumbnail.set_class(thumbnail.result_offset == 0, "selected")
+      thumbnail.show_image(filepath)
+      filmstrip.move_child(thumbnail, before=index)
+
   def show_image(self, filepath: str) -> None:
     self.filepath = filepath
     self._image.display = False

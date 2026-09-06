@@ -571,6 +571,48 @@ def test_detail_loading_and_error_keep_layout_stable(tmp_path: Path, monkeypatch
   asyncio.run(run())
 
 
+def test_filmstrip_reuses_loaded_neighbors_while_new_thumbnail_loads(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  paths = [str(make_image(tmp_path / f"image-{index}.jpg")) for index in range(7)]
+  app = RclipApp(FakeRclip([RClip.SearchResult(path, 1) for path in paths]), str(tmp_path))
+  previews: list[str] = []
+  release = Event()
+
+  def slow_prepare(filepath: str, size: tuple[int, int]):
+    if size == (640, 480):
+      previews.append(filepath)
+      assert release.wait(5)
+    return prepare_image(filepath, size)
+
+  async def run() -> None:
+    async with app.run_test(size=(100, 40)) as pilot:
+      await app.workers.wait_for_complete()
+      await pilot.press("down", "enter", "right", "right")
+      await app.workers.wait_for_complete()
+      screen = app.screen
+      assert isinstance(screen, DetailScreen)
+      loaded = {thumbnail.filepath: (thumbnail, thumbnail._image.image) for thumbnail in screen.thumbnails}
+      monkeypatch.setattr("rclip.tui.views.prepare_image", slow_prepare)
+      try:
+        app.action_move_right()
+        assert [thumbnail.filepath for thumbnail in screen.thumbnails] == paths[1:6]
+        for thumbnail in screen.thumbnails[:-1]:
+          previous, image = loaded[thumbnail.filepath]
+          assert thumbnail is previous
+          assert thumbnail._image.image is image
+          assert image is not None
+        assert screen.thumbnails[-1]._image.image is None
+        await pilot.pause()
+        assert previews == [paths[5]]
+      finally:
+        release.set()
+      await app.workers.wait_for_complete()
+      assert all(thumbnail._image.image is not None for thumbnail in screen.thumbnails)
+
+  asyncio.run(run())
+
+
 def test_detail_filmstrip_centers_selection_and_navigates(tmp_path: Path) -> None:
   paths = [str(make_image(tmp_path / f"image-{index}.jpg")) for index in range(5)]
   app = RclipApp(FakeRclip([RClip.SearchResult(path, 1) for path in paths]), str(tmp_path))
@@ -597,8 +639,8 @@ def test_detail_filmstrip_centers_selection_and_navigates(tmp_path: Path) -> Non
         assert thumbnail._image.content_size.width < selected_size.width
         assert thumbnail._image.content_size.height < selected_size.height
         frame = thumbnail.query_one(".detail-thumbnail-frame").region
-        assert frame.width < selected_frame.width
-        assert frame.height < selected_frame.height
+        assert 0 < selected_frame.width - frame.width <= 2
+        assert selected_frame.height - frame.height == 1
       await pilot.press("right", "right")
       await app.workers.wait_for_complete()
       assert [thumbnail.filepath for thumbnail in screen.thumbnails] == [*paths[2:], None, None]

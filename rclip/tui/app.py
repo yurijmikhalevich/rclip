@@ -324,15 +324,17 @@ class RclipApp(App[None]):
     self._update_detail()
 
   def _update_detail(self) -> None:
-    if not isinstance(self.screen, DetailScreen):
+    if not isinstance(self.screen, DetailScreen) or not self.screen.thumbnails:
       return
     cards = self._cards()
     filepath = cards[self._selected_index].result.filepath
     if self.screen.filepath != filepath:
       self.screen.show_image(filepath)
-    for thumbnail in self.screen.thumbnails:
-      index = self._selected_index + thumbnail.result_offset
-      thumbnail.show_image(cards[index].result.filepath if 0 <= index < len(cards) else None)
+    neighbors = len(self.screen.thumbnails) // 2
+    self.screen.show_thumbnails([
+      cards[index].result.filepath if 0 <= index < len(cards) else None
+      for index in range(self._selected_index - neighbors, self._selected_index + neighbors + 1)
+    ])
     self._load_more()
 
   def action_move_left(self) -> None:
