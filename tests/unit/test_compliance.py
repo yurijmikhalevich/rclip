@@ -224,12 +224,12 @@ def test_collection_rejects_disallowed_version_changes(tmp_path: Path) -> None:
 
 
 def test_collection_rejects_unapproved_or_unknown_licences(tmp_path: Path) -> None:
-  write_distribution(tmp_path, "anyio", version="4.14.2", license_expression="GPL-3.0-only")
+  write_distribution(tmp_path, "rclip", license_expression="GPL-3.0-only")
   with pytest.raises(ComplianceError, match="unapproved Python licence"):
     collect_legal_materials(tmp_path, tmp_path / "legal", POLICY, NOTICES)
 
   root = tmp_path / "unknown"
-  write_distribution(root, "anyio", version="4.14.2", license_expression=None)
+  write_distribution(root, "rclip", license_expression=None)
   with pytest.raises(ComplianceError, match="unknown Python licence declaration"):
     collect_legal_materials(root, root / "legal", POLICY, NOTICES)
 
@@ -285,13 +285,17 @@ def test_accepts_spdx_expressions_from_legacy_licence_metadata(expression: str) 
   assert _declared_license_expression(record) == expression
 
 
-def test_unversioned_package_accepts_any_version() -> None:
-  policy = {
-    "unversioned_python_packages": ["example"],
-    "approved_python_licenses": {"example": "MIT"},
-  }
+@pytest.mark.parametrize("locked_versions", [{}, {"example": {"1"}}])
+def test_only_unversioned_packages_accept_unlocked_versions(locked_versions: dict[str, set[str]]) -> None:
+  policy = {"approved_python_licenses": {"example": "MIT"}, "unversioned_python_packages": []}
+  records = [{"name": "example", "version": "999"}]
 
-  _validate_python_packages([{"name": "example", "version": "999"}], policy, {})
+  _validate_python_packages([], policy, locked_versions)
+  with pytest.raises(ComplianceError, match="disallowed Python versions"):
+    _validate_python_packages(records, policy, locked_versions)
+
+  policy["unversioned_python_packages"].append("example")
+  _validate_python_packages(records, policy, locked_versions)
 
 
 def test_policy_covers_locked_runtime_closure_on_every_platform() -> None:
@@ -300,7 +304,6 @@ def test_policy_covers_locked_runtime_closure_on_every_platform() -> None:
     policy = tomllib.load(stream)
 
   unversioned = set(policy["unversioned_python_packages"])
-  assert {"linkify-it-py", "uc-micro-py"} <= locked_versions.keys()
   assert set(policy["approved_python_licenses"]) == locked_versions.keys() | unversioned
 
 
