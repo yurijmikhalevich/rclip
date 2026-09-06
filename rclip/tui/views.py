@@ -7,11 +7,12 @@ from typing import Callable, Sequence, cast
 
 from textual import events, work
 from textual.app import ComposeResult
-from textual.containers import CenterMiddle, ItemGrid
+from textual.containers import CenterMiddle, Horizontal, ItemGrid
 from textual.screen import Screen
 from textual.worker import get_current_worker
 from textual.widgets import Label, Static
 
+from rclip.tui.media import CenteredTGPImage
 from rclip.tui.media import ImageWidget
 from rclip.tui.media import prepare_image
 
@@ -123,16 +124,65 @@ class ResultsGrid(ItemGrid):
     self.call_after_refresh(self.update_visible)
 
 
+class DetailThumbnail(Static):
+  def __init__(self, offset: int, browse: Callable[[int], None]) -> None:
+    super().__init__(classes="detail-thumbnail selected" if offset == 0 else "detail-thumbnail")
+    self.visible = False
+    self.result_offset = offset
+    self.browse = browse
+    self.filepath: str | None = None
+    self._image = CenteredTGPImage(classes="thumbnail")
+
+  def compose(self) -> ComposeResult:
+    with CenterMiddle(classes="detail-thumbnail-frame"):
+      yield self._image
+
+  def show_image(self, filepath: str | None) -> None:
+    self.visible = filepath is not None
+    if filepath == self.filepath:
+      return
+    self.filepath = filepath
+    self._image.image = None
+    self._load_preview()
+
+  @work(thread=True, exclusive=True, exit_on_error=False)
+  def _load_preview(self) -> None:
+    filepath = self.filepath
+    if filepath is None:
+      return
+    with _IMAGE_DECODES:
+      if get_current_worker().is_cancelled:
+        return
+      try:
+        preview = prepare_image(filepath, PREVIEW_SIZE)
+      except Exception:
+        return
+      self.app.call_from_thread(self._show_preview, filepath, preview)
+
+  def _show_preview(self, filepath: str, preview: BytesIO) -> None:
+    if self.is_attached and filepath == self.filepath:
+      self._image.image = preview
+
+  def on_click(self, event: events.Click) -> None:
+    event.stop()
+    if event.button == 1 and event.chain == 1 and self.filepath is not None:
+      self.browse(self.result_offset)
+
+
 class DetailScreen(Screen[None]):
-  def __init__(self, filepath: str) -> None:
+  def __init__(self, filepath: str, browse: Callable[[int], None]) -> None:
     super().__init__()
     self.filepath = filepath
     self._image = ImageWidget(classes="detail-image")
+    self._image.display = False
+    self._browse = browse
+    self.thumbnails: list[DetailThumbnail] = []
 
   def compose(self) -> ComposeResult:
     with CenterMiddle(id="detail-frame"):
       yield self._image
-    yield Static("Loading higher-resolution image…", id="detail-status", markup=False)
+      yield Static("Loading higher-resolution image…", id="detail-status", markup=False)
+    yield Horizontal(id="detail-filmstrip")
     yield Static(self.filepath, id="detail-path", markup=False)
     yield Static(
       "h/l/Arrows Browse   Esc/Double-click Back   y Copy   Y Copy path   d Download   q/Ctrl+C Quit",
@@ -143,8 +193,37 @@ class DetailScreen(Screen[None]):
   def on_mount(self) -> None:
     self._load_detail()
 
+  async def on_resize(self, event: events.Resize) -> None:
+    from rclip.tui.app import RclipApp
+
+    neighbors = max(0, (event.size.width // 16 - 1) // 2)
+    if len(self.thumbnails) == neighbors * 2 + 1:
+      return
+    filmstrip = self.query_one("#detail-filmstrip", Horizontal)
+    await filmstrip.remove_children()
+    self.thumbnails = [DetailThumbnail(offset, self._browse) for offset in range(-neighbors, neighbors + 1)]
+    await filmstrip.mount(*self.thumbnails)
+    if isinstance(self.app, RclipApp):
+      self.app._update_detail()
+
+  def show_thumbnails(self, filepaths: list[str | None]) -> None:
+    retained = {
+      thumbnail.filepath: thumbnail
+      for thumbnail in self.thumbnails
+      if thumbnail.filepath is not None and thumbnail.filepath in filepaths
+    }
+    unused = iter(thumbnail for thumbnail in self.thumbnails if thumbnail not in retained.values())
+    self.thumbnails = [retained[filepath] if filepath in retained else next(unused) for filepath in filepaths]
+    filmstrip = self.query_one("#detail-filmstrip", Horizontal)
+    for index, (thumbnail, filepath) in enumerate(zip(self.thumbnails, filepaths)):
+      thumbnail.result_offset = index - len(filepaths) // 2
+      thumbnail.set_class(thumbnail.result_offset == 0, "selected")
+      thumbnail.show_image(filepath)
+      filmstrip.move_child(thumbnail, before=index)
+
   def show_image(self, filepath: str) -> None:
     self.filepath = filepath
+    self._image.display = False
     self._image.image = None
     status = self.query_one("#detail-status", Static)
     status.update("Loading higher-resolution image…")
@@ -176,6 +255,7 @@ class DetailScreen(Screen[None]):
     if not self.is_attached or filepath != self.filepath:
       return
     self._image.image = detail
+    self._image.display = True
     self.query_one("#detail-status", Static).display = False
 
   def _show_error(self, filepath: str, message: str) -> None:

@@ -1,7 +1,7 @@
 import asyncio
 import base64
 from contextlib import nullcontext
-from io import StringIO
+from io import BytesIO, StringIO
 import os
 from pathlib import Path
 import re
@@ -11,6 +11,9 @@ from threading import Event, Lock
 from types import SimpleNamespace
 
 from PIL import Image
+from rich.console import Console
+from textual_image.renderable import TGPImage as TGPRenderable
+from textual_image._terminal import CellSize
 import pytest
 from textual.geometry import Size
 from textual.widgets import Input, Static
@@ -19,6 +22,7 @@ from rclip import main as main_module
 from rclip.main import RClip
 from rclip.tui.app import RclipApp
 from rclip.tui.app import _display_directory
+from rclip.tui.media import CenteredTGPImage
 from rclip.tui.media import StableTGPImage
 from rclip.tui.media import prepare_image
 from rclip.tui.transfer import TransferError
@@ -194,6 +198,44 @@ def test_kitty_image_reuses_its_renderable_until_its_size_changes(
 
   image.on_unmount()
   assert second.cleaned
+
+
+@pytest.mark.parametrize("size", [(1200, 800), (800, 1200), (800, 800)])
+def test_strip_preview_pixels_are_centered_and_keep_aspect_ratio(
+  monkeypatch: pytest.MonkeyPatch, size: tuple[int, int]
+) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(17, 33))
+  renderable = CenteredTGPImage._Renderable(Image.new("RGB", size, "red"), 13, 5)
+  Console(file=StringIO(), width=13).print(renderable)
+  chunks = re.findall(r"\x1b_G[^;]*;([A-Za-z0-9+/=]+)\x1b\\", output.getvalue())
+  with Image.open(BytesIO(base64.b64decode("".join(chunks)))) as image:
+    assert image.size == (221, 165)
+    bounds = image.getbbox()
+    assert bounds is not None
+    left, top, right, bottom = bounds
+    assert abs(left - (image.width - right)) <= 1
+    assert abs(top - (image.height - bottom)) <= 1
+    assert abs((right - left) - (bottom - top) * size[0] / size[1]) <= 1
+    assert left > 0 or top > 0
+
+
+def test_kitty_image_cleanup_deletes_only_its_own_image(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
+  image = StableTGPImage(make_image(tmp_path / "image.jpg"))
+  renderable = image.render()
+  assert isinstance(renderable, TGPRenderable)
+  Console(file=StringIO(), width=20).print(renderable)
+  image_id = renderable.terminal_image_id
+  assert image_id is not None
+  output.seek(0)
+  output.truncate()
+  image.on_unmount()
+  assert output.getvalue() == f"\x1b_Ga=d,d=I,i={image_id},q=2\x1b\\"
+  image.on_unmount()
+  assert output.getvalue() == f"\x1b_Ga=d,d=I,i={image_id},q=2\x1b\\"
 
 
 def test_copy_image_keeps_common_formats_and_converts_others(
@@ -479,40 +521,227 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
   asyncio.run(run())
 
 
+def test_gallery_resends_thumbnails_after_detail_browsing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(sys, "__stdout__", StringIO())
+  paths = [make_image(tmp_path / f"image-{index}.jpg") for index in range(6)]
+  app = RclipApp(FakeRclip([RClip.SearchResult(str(path), 1) for path in paths]), str(tmp_path))
+
+  async def run() -> None:
+    async with app.run_test(size=(100, 40)) as pilot:
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      cards = app.query_one(ResultsGrid).cards
+      for card in cards:
+        card.load_preview()
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      before = [card._image.render() for card in cards]
+      assert all(isinstance(renderable, TGPRenderable) for renderable in before)
+      await pilot.press("down", "enter", "right", "right", "left", "escape")
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      for card, previous in zip(cards, before):
+        assert isinstance(previous, TGPRenderable)
+        assert previous.terminal_image_id is None
+        current = card._image.render()
+        assert isinstance(current, TGPRenderable)
+        assert current is not previous
+        assert current.terminal_image_id is not None
+      await pilot.press("right", "left")
+      assert all(card._image.image is not None for card in cards)
+
+  asyncio.run(run())
+
+
+def test_detail_loading_and_error_keep_layout_stable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  path = make_image(tmp_path / "image.jpg")
+  missing = tmp_path / "missing.jpg"
+  app = RclipApp(FakeRclip([RClip.SearchResult(str(item), 1) for item in [path, missing]]), str(tmp_path))
+  started = Event()
+  release = Event()
+
+  def slow_prepare(filepath: str, size: tuple[int, int]):
+    if size == (1920, 1920):
+      started.set()
+      assert release.wait(5)
+    return prepare_image(filepath, size)
+
+  monkeypatch.setattr("rclip.tui.views.prepare_image", slow_prepare)
+
+  async def run() -> None:
+    async with app.run_test(size=(100, 40)) as pilot:
+      try:
+        await app.workers.wait_for_complete()
+        await pilot.press("down", "enter")
+        assert await asyncio.to_thread(started.wait, 1)
+        screen = app.screen
+        assert isinstance(screen, DetailScreen)
+        status = screen.query_one("#detail-status", Static)
+        frame = screen.query_one("#detail-frame")
+        filmstrip = screen.query_one("#detail-filmstrip")
+        regions = frame.region, filmstrip.region
+        assert status.display and not screen._image.display
+        assert frame.region.contains_region(status.region)
+      finally:
+        release.set()
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert not status.display and screen._image.display
+      assert (frame.region, filmstrip.region) == regions
+      await pilot.press("right")
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert status.display and not screen._image.display
+      assert (frame.region, filmstrip.region) == regions
+      assert frame.region.contains_region(status.region)
+
+  asyncio.run(run())
+
+
+def test_filmstrip_reuses_loaded_neighbors_while_new_thumbnail_loads(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  paths = [str(make_image(tmp_path / f"image-{index}.jpg")) for index in range(7)]
+  app = RclipApp(FakeRclip([RClip.SearchResult(path, 1) for path in paths]), str(tmp_path))
+  previews: list[str] = []
+  release = Event()
+
+  def slow_prepare(filepath: str, size: tuple[int, int]):
+    if size == (640, 480):
+      previews.append(filepath)
+      assert release.wait(5)
+    return prepare_image(filepath, size)
+
+  async def run() -> None:
+    async with app.run_test(size=(100, 40)) as pilot:
+      await app.workers.wait_for_complete()
+      await pilot.press("down", "enter", "right", "right")
+      await app.workers.wait_for_complete()
+      screen = app.screen
+      assert isinstance(screen, DetailScreen)
+      loaded = {thumbnail.filepath: (thumbnail, thumbnail._image.image) for thumbnail in screen.thumbnails}
+      monkeypatch.setattr("rclip.tui.views.prepare_image", slow_prepare)
+      try:
+        app.action_move_right()
+        assert [thumbnail.filepath for thumbnail in screen.thumbnails] == paths[1:6]
+        for thumbnail in screen.thumbnails[:-1]:
+          previous, image = loaded[thumbnail.filepath]
+          assert thumbnail is previous
+          assert thumbnail._image.image is image
+          assert image is not None
+        assert screen.thumbnails[-1]._image.image is None
+        await pilot.pause()
+        assert previews == [paths[5]]
+      finally:
+        release.set()
+      await app.workers.wait_for_complete()
+      assert all(thumbnail._image.image is not None for thumbnail in screen.thumbnails)
+
+  asyncio.run(run())
+
+
+def test_detail_filmstrip_centers_selection_and_navigates(tmp_path: Path) -> None:
+  paths = [str(make_image(tmp_path / f"image-{index}.jpg")) for index in range(5)]
+  app = RclipApp(FakeRclip([RClip.SearchResult(path, 1) for path in paths]), str(tmp_path))
+
+  async def run() -> None:
+    async with app.run_test(size=(100, 40)) as pilot:
+      await app.workers.wait_for_complete()
+      await pilot.press("down", "enter")
+      await app.workers.wait_for_complete()
+      screen = app.screen
+      assert isinstance(screen, DetailScreen)
+      assert [thumbnail.filepath for thumbnail in screen.thumbnails] == [None, None, *paths[:3]]
+      assert all(thumbnail._image.image is not None for thumbnail in screen.thumbnails[2:])
+      assert all(not thumbnail.visible for thumbnail in screen.thumbnails[:2])
+      assert all(thumbnail.visible for thumbnail in screen.thumbnails[2:])
+      await pilot.click(screen.thumbnails[4])
+      await app.workers.wait_for_complete()
+      assert screen.filepath == paths[2]
+      assert [thumbnail.filepath for thumbnail in screen.thumbnails] == paths
+      await pilot.pause()
+      selected_size = screen.thumbnails[2]._image.content_size
+      selected_frame = screen.thumbnails[2].query_one(".detail-thumbnail-frame").region
+      for thumbnail in [*screen.thumbnails[:2], *screen.thumbnails[3:]]:
+        assert thumbnail._image.content_size.width < selected_size.width
+        assert thumbnail._image.content_size.height < selected_size.height
+        frame = thumbnail.query_one(".detail-thumbnail-frame").region
+        assert 0 < selected_frame.width - frame.width <= 2
+        assert selected_frame.height - frame.height == 2
+        slot = thumbnail.region
+        preview = thumbnail._image.region
+        assert frame.y - slot.y == slot.bottom - frame.bottom == 1
+        assert abs(preview.x * 2 + preview.width - (frame.x * 2 + frame.width)) <= 1
+        assert abs(preview.y * 2 + preview.height - (frame.y * 2 + frame.height)) <= 1
+      await pilot.press("right", "right")
+      await app.workers.wait_for_complete()
+      assert [thumbnail.filepath for thumbnail in screen.thumbnails] == [*paths[2:], None, None]
+      assert all(thumbnail._image.image is None for thumbnail in screen.thumbnails[3:])
+      assert all(not thumbnail.visible for thumbnail in screen.thumbnails[3:])
+      for width, height, count in [(100, 40, 5), (81, 24, 5), (40, 16, 1), (160, 40, 9)]:
+        await pilot.resize_terminal(width, height)
+        await pilot.pause()
+        assert len(screen.thumbnails) == count
+        assert [thumbnail.filepath for thumbnail in screen.thumbnails] == [
+          paths[index] if 0 <= index < len(paths) else None
+          for index in range(4 - count // 2, 5 + count // 2)
+        ]
+        center = screen.thumbnails[count // 2].region
+        assert abs(center.x * 2 + center.width - width) <= 1
+        assert screen.query_one("#detail-frame").region.height > 0
+      await pilot.press("h", "l", "left")
+      await app.workers.wait_for_complete()
+      assert screen.filepath == paths[3]
+      assert screen.thumbnails[len(screen.thumbnails) // 2].filepath == paths[3]
+      await pilot.press("escape")
+      assert isinstance(app.focused, ImageCard)
+      assert app.focused.result.filepath == paths[3]
+
+  asyncio.run(run())
+
+
 @pytest.mark.parametrize("query", ["", "cat"])
-def test_detail_navigation_loads_more_results(tmp_path: Path, query: str) -> None:
+@pytest.mark.parametrize("width", [40, 80])
+def test_detail_navigation_loads_more_results(tmp_path: Path, query: str, width: int) -> None:
   paths = [str(tmp_path / f"image-{index}.jpg") for index in range(51)]
   rclip = FakeRclip([RClip.SearchResult(path, 1) for path in paths])
   app = RclipApp(rclip, str(tmp_path), top_k=25)
 
   async def run() -> None:
-    async with app.run_test(size=(80, 24)) as pilot:
+    async with app.run_test(size=(width, 24)) as pilot:
       await app.workers.wait_for_complete()
       if query:
-        await pilot.press(*query, "enter")
+        with app.prevent(Input.Changed):
+          app.query_one(Input).value = query
+        await pilot.press("enter")
         await app.workers.wait_for_complete()
       await pilot.pause()
       assert len(app.query(ImageCard)) == 25
       await pilot.press("down", "enter")
       assert isinstance(app.screen, DetailScreen)
       for index, path in enumerate(paths[1:], 1):
-        if index % 25 == 0:
-          # Repeated input before the batch arrives must still advance exactly once.
-          app.action_move_right()
-          app.action_move_right()
-        else:
-          await pilot.press("right")
+        await pilot.press("right")
+        if width == 80 and index == 22:
+          await pilot.resize_terminal(160, 24)
         await app.workers.wait_for_complete()
-        await pilot.pause(0.1)
-        assert app.screen.filepath == path
+        await pilot.pause()
+        neighbors = (4 if index >= 22 else 2) if width == 80 else 0
+        expected = [
+          paths[neighbor] if 0 <= neighbor < len(paths) else None
+          for neighbor in range(index - neighbors, index + neighbors + 1)
+        ]
+        async with asyncio.timeout(0.25):
+          while app.screen.filepath != path or [thumbnail.filepath for thumbnail in app.screen.thumbnails] != expected:
+            await pilot.pause(0.01)
       await pilot.press("right")
       assert app.screen.filepath == paths[-1]
       await pilot.press("left")
       assert app.screen.filepath == paths[-2]
       await pilot.press("escape")
       await pilot.pause()
-      assert isinstance(app.focused, ImageCard)
-      assert app.focused.result.filepath == paths[-2]
+      async with asyncio.timeout(0.25):
+        while app.focused is not app.query_one(ResultsGrid).cards[-2]:
+          await pilot.pause(0.01)
       assert [card.result.filepath for card in app.query(ImageCard)] == paths
 
   asyncio.run(run())
@@ -520,8 +749,40 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str) -> Non
   assert rclip.searches == ([(query, str(tmp_path), None, [], [])] if query else [])
 
 
-@pytest.mark.parametrize("action", ["left", "escape"])
-def test_detail_navigation_cancels_pending_advance(
+@pytest.mark.parametrize("result_count", [0, 1])
+def test_search_replacement_closes_obsolete_detail(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, result_count: int
+) -> None:
+  results = [RClip.SearchResult(str(tmp_path / "new.jpg"), 1)][:result_count]
+  rclip = FakeRclip([RClip.SearchResult(str(tmp_path / "old.jpg"), 1)])
+  release = Event()
+
+  def slow_search(*args, **kwargs) -> list[RClip.SearchResult]:
+    assert release.wait(5)
+    return results
+
+  monkeypatch.setattr(rclip, "search", slow_search)
+  app = RclipApp(rclip, str(tmp_path))
+
+  async def run() -> None:
+    async with app.run_test(size=(80, 24)) as pilot:
+      try:
+        await app.workers.wait_for_complete()
+        await pilot.press("c", "a", "t", "enter", "down", "enter")
+        assert isinstance(app.screen, DetailScreen)
+      finally:
+        release.set()
+      await app.workers.wait_for_complete()
+      await pilot.resize_terminal(160, 24)
+      await pilot.pause()
+      assert not isinstance(app.screen, DetailScreen)
+      assert [card.result.filepath for card in app.query(ImageCard)] == [result.filepath for result in results]
+
+  asyncio.run(run())
+
+
+@pytest.mark.parametrize("action", ["left", "right", "escape"])
+def test_detail_navigation_handles_pending_advance(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch, action: str
 ) -> None:
   paths = [str(tmp_path / f"image-{index}.jpg") for index in range(26)]
@@ -554,9 +815,9 @@ def test_detail_navigation_cancels_pending_advance(
       await app.workers.wait_for_complete()
       await pilot.pause()
       assert len(app.query(ImageCard)) == 26
-      if action == "left":
+      if action != "escape":
         assert isinstance(app.screen, DetailScreen)
-        assert app.screen.filepath == paths[23]
+        assert app.screen.filepath == paths[23 if action == "left" else 25]
       else:
         assert not isinstance(app.screen, DetailScreen)
         assert isinstance(app.focused, ImageCard)
@@ -839,28 +1100,30 @@ def test_empty_browse_retries_loading_more_after_failure(
 
       grid = app.query_one(ResultsGrid)
       if detail:
-        await pilot.press("down", "enter", *(["right"] * 25))
+        await pilot.press("down", "enter", *(["right"] * 23))
       else:
         grid.scroll_end(animate=False)
-      await app.workers.wait_for_complete()
-      await pilot.pause()
+      async with asyncio.timeout(0.25):
+        while not notifications:
+          await asyncio.sleep(0.01)
       assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths[:25]]
       assert notifications == [("page failed", "Unable to load more images")]
 
       if detail:
         assert isinstance(app.screen, DetailScreen)
-        assert app.screen.filepath == str(paths[24])
+        assert app.screen.filepath == str(paths[23])
         await pilot.press("right")
       else:
         grid.scroll_home(animate=False)
         await pilot.pause()
         grid.scroll_end(animate=False)
-      await app.workers.wait_for_complete()
-      await pilot.pause()
-      assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths]
+      expected = [str(path) for path in paths]
+      async with asyncio.timeout(0.25):
+        while [card.result.filepath for card in app.query(ImageCard)] != expected:
+          await asyncio.sleep(0.01)
       if detail:
         assert isinstance(app.screen, DetailScreen)
-        assert app.screen.filepath == str(paths[25])
+        assert app.screen.filepath == str(paths[24])
 
   asyncio.run(run())
 

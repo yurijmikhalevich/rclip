@@ -4,7 +4,9 @@ from PIL import Image as PILImage
 from PIL import ImageOps
 from textual.app import RenderResult
 from textual.geometry import Size
+from textual_image._pixeldata import PixelData
 from textual_image.renderable import TGPImage as TGPRenderable
+from textual_image.renderable.tgp import _send_tgp_message
 from textual_image.widget import TGPImage
 
 from rclip.utils import helpers
@@ -26,7 +28,15 @@ def prepare_image(filepath: str, size: tuple[int, int]) -> BytesIO:
   return prepared
 
 
-class StableTGPImage(TGPImage, Renderable=TGPRenderable):
+class _TGPRenderable(TGPRenderable):
+  def cleanup(self) -> None:
+    # textual-image 0.12.0 omits the deletion selector and confuses image IDs with numbers.
+    if self.terminal_image_id is not None:
+      _send_tgp_message(a="d", d="I", i=self.terminal_image_id, q=2)
+      self.terminal_image_id = None
+
+
+class StableTGPImage(TGPImage, Renderable=_TGPRenderable):
   """Keep a Kitty image alive until its source or rendered size changes."""
 
   _rendered_size: Size | None = None
@@ -41,6 +51,10 @@ class StableTGPImage(TGPImage, Renderable=TGPRenderable):
     self._rendered_size = self.content_size
     return self._renderable
 
+  def refresh_image(self) -> None:
+    self._discard_renderable()
+    self.refresh()
+
   def on_unmount(self) -> None:
     self._discard_renderable()
 
@@ -52,3 +66,15 @@ class StableTGPImage(TGPImage, Renderable=TGPRenderable):
 
 
 ImageWidget = StableTGPImage
+
+
+class _CenteredTGPRenderable(_TGPRenderable):
+  def _send_image_to_terminal(self, width: int, height: int) -> None:
+    self._image_data = PixelData(
+      ImageOps.pad(self._image_data.pil_image.convert("RGBA"), (width, height), color=(0, 0, 0, 0))
+    )
+    super()._send_image_to_terminal(width, height)
+
+
+class CenteredTGPImage(StableTGPImage, Renderable=_CenteredTGPRenderable):
+  """Center an aspect-preserving image in its full widget area, at pixel precision."""

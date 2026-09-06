@@ -84,3 +84,31 @@ ImageCard.preview-failed {
   text-align: center;
   text-overflow: ellipsis;
 }
+
+#detail-filmstrip {
+  height: 9;
+}
+
+.detail-thumbnail {
+  width: 1fr;
+  height: 100%;
+  align: center middle;
+}
+
+.detail-thumbnail-frame {
+  width: 90%;
+  height: 7;
+  padding: 0 1;
+  border: round $border-blurred;
+}
+
+.detail-thumbnail.selected .detail-thumbnail-frame {
+  width: 100%;
+  height: 100%;
+  border: heavy $accent;
+}
+
+.detail-thumbnail-frame .thumbnail {
+  width: 100%;
+  height: 100%;
+}

@@ -13,6 +13,7 @@ from textual.worker import get_current_worker
 from textual.widgets import Input, Static
 
 from rclip.model import Model
+from rclip.tui.media import ImageWidget
 from rclip.tui.transfer import _is_remote_session
 from rclip.tui.transfer import copy_image_to_clipboard
 from rclip.tui.transfer import download_image
@@ -122,7 +123,11 @@ class RclipApp(App[None]):
     self._search(query, self._search_generation, None)
 
   def _load_more(self) -> None:
-    if self._loading_more or (isinstance(self.screen, DetailScreen) and not self._pending_detail_advance):
+    if self._loading_more or (
+      isinstance(self.screen, DetailScreen)
+      and not self._pending_detail_advance
+      and self._selected_index + len(self.screen.thumbnails) // 2 < len(self._cards())
+    ):
       return
     query = self.query_one("#search", Input).value.strip()
     if query:
@@ -197,6 +202,8 @@ class RclipApp(App[None]):
       return
     grid = self.query_one(ResultsGrid)
     if not append:
+      if isinstance(self.screen, DetailScreen):
+        self.action_go_back()
       self.query_one("#gallery-path", Static).update("")
       await grid.remove_children()
       if not self._is_current_search(generation, query):
@@ -215,6 +222,8 @@ class RclipApp(App[None]):
       self._pending_detail_advance = False
       if cards and isinstance(self.screen, DetailScreen):
         self._move_detail(1)
+    if append:
+      self._update_detail()
     if not append:
       grid.scroll_home(animate=False)
       self._selected_index = 0
@@ -315,8 +324,21 @@ class RclipApp(App[None]):
     if index == self._selected_index:
       return
     self._selected_index = index
-    if isinstance(self.screen, DetailScreen):
-      self.screen.show_image(cards[index].result.filepath)
+    self._update_detail()
+
+  def _update_detail(self) -> None:
+    if not isinstance(self.screen, DetailScreen) or not self.screen.thumbnails:
+      return
+    cards = self._cards()
+    filepath = cards[self._selected_index].result.filepath
+    if self.screen.filepath != filepath:
+      self.screen.show_image(filepath)
+    neighbors = len(self.screen.thumbnails) // 2
+    self.screen.show_thumbnails([
+      cards[index].result.filepath if 0 <= index < len(cards) else None
+      for index in range(self._selected_index - neighbors, self._selected_index + neighbors + 1)
+    ])
+    self._load_more()
 
   def action_move_left(self) -> None:
     if isinstance(self.screen, DetailScreen):
@@ -354,13 +376,16 @@ class RclipApp(App[None]):
 
   def action_view(self) -> None:
     if card := self._selected_card():
-      self.push_screen(DetailScreen(card.result.filepath))
+      self.push_screen(DetailScreen(card.result.filepath, self._move_detail))
 
   def action_go_back(self) -> None:
     self._pending_detail_advance = False
     if isinstance(self.screen, DetailScreen):
       selected_index = self._selected_index
       self.pop_screen()
+      # The terminal may have evicted gallery images while the detail view was active.
+      for image in self.query_one(ResultsGrid).query(ImageWidget):
+        image.refresh_image()
       cards = self._cards()
       if selected_index < len(cards):
         self.call_after_refresh(cards[selected_index].focus)
