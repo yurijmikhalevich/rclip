@@ -255,7 +255,10 @@ class RClip:
 
       image = self._db.get_image(filepath=filepath)
       if image and is_image_meta_equal(image, meta):
-        self._db.restore_image(filepath, commit=False)
+        if image["deleted"]:
+          self._db.restore_image(filepath, commit=False)
+        else:
+          self._db.remove_indexing_flag(filepath, commit=False)
         continue
 
       yield filepath, meta
