@@ -531,6 +531,10 @@ def test_gallery_resends_thumbnails_after_detail_browsing(tmp_path: Path, monkey
       await app.workers.wait_for_complete()
       await pilot.pause()
       cards = app.query_one(ResultsGrid).cards
+      for card in cards:
+        card.load_preview()
+      await app.workers.wait_for_complete()
+      await pilot.pause()
       before = [card._image.render() for card in cards]
       assert all(isinstance(renderable, TGPRenderable) for renderable in before)
       await pilot.press("down", "enter", "right", "right", "left", "escape")
@@ -725,15 +729,15 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str, width:
         ]
         async with asyncio.timeout(0.25):
           while app.screen.filepath != path or [thumbnail.filepath for thumbnail in app.screen.thumbnails] != expected:
-            await asyncio.sleep(0.01)
+            await pilot.pause(0.01)
       await pilot.press("right")
       assert app.screen.filepath == paths[-1]
       await pilot.press("left")
       assert app.screen.filepath == paths[-2]
       await pilot.press("escape")
-      await pilot.pause()
-      assert isinstance(app.focused, ImageCard)
-      assert app.focused.result.filepath == paths[-2]
+      async with asyncio.timeout(0.25):
+        while app.focused is not app.query_one(ResultsGrid).cards[-2]:
+          await pilot.pause(0.01)
       assert [card.result.filepath for card in app.query(ImageCard)] == paths
 
   asyncio.run(run())
