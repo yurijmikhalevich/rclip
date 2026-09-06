@@ -711,7 +711,9 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str, width:
     async with app.run_test(size=(width, 24)) as pilot:
       await app.workers.wait_for_complete()
       if query:
-        await pilot.press(*query, "enter")
+        with app.prevent(Input.Changed):
+          app.query_one(Input).value = query
+        await pilot.press("enter")
         await app.workers.wait_for_complete()
       await pilot.pause()
       assert len(app.query(ImageCard)) == 25
