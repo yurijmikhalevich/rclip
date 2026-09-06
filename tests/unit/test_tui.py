@@ -697,13 +697,14 @@ def test_detail_filmstrip_centers_selection_and_navigates(tmp_path: Path) -> Non
 
 
 @pytest.mark.parametrize("query", ["", "cat"])
-def test_detail_navigation_loads_more_results(tmp_path: Path, query: str) -> None:
+@pytest.mark.parametrize("width", [40, 80])
+def test_detail_navigation_loads_more_results(tmp_path: Path, query: str, width: int) -> None:
   paths = [str(tmp_path / f"image-{index}.jpg") for index in range(51)]
   rclip = FakeRclip([RClip.SearchResult(path, 1) for path in paths])
   app = RclipApp(rclip, str(tmp_path), top_k=25)
 
   async def run() -> None:
-    async with app.run_test(size=(80, 24)) as pilot:
+    async with app.run_test(size=(width, 24)) as pilot:
       await app.workers.wait_for_complete()
       if query:
         await pilot.press(*query, "enter")
@@ -714,10 +715,10 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str) -> Non
       assert isinstance(app.screen, DetailScreen)
       for index, path in enumerate(paths[1:], 1):
         await pilot.press("right")
-        if index == 22:
+        if width == 80 and index == 22:
           await pilot.resize_terminal(160, 24)
         await app.workers.wait_for_complete()
-        neighbors = 4 if index >= 22 else 2
+        neighbors = (4 if index >= 22 else 2) if width == 80 else 0
         expected = [
           paths[neighbor] if 0 <= neighbor < len(paths) else None
           for neighbor in range(index - neighbors, index + neighbors + 1)
@@ -738,6 +739,38 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str) -> Non
   asyncio.run(run())
   assert len(rclip.browses) == (1 if query else 3)
   assert rclip.searches == ([(query, str(tmp_path), None, [], [])] if query else [])
+
+
+@pytest.mark.parametrize("result_count", [0, 1])
+def test_search_replacement_closes_obsolete_detail(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, result_count: int
+) -> None:
+  results = [RClip.SearchResult(str(tmp_path / "new.jpg"), 1)][:result_count]
+  rclip = FakeRclip([RClip.SearchResult(str(tmp_path / "old.jpg"), 1)])
+  release = Event()
+
+  def slow_search(*args, **kwargs) -> list[RClip.SearchResult]:
+    assert release.wait(5)
+    return results
+
+  monkeypatch.setattr(rclip, "search", slow_search)
+  app = RclipApp(rclip, str(tmp_path))
+
+  async def run() -> None:
+    async with app.run_test(size=(80, 24)) as pilot:
+      try:
+        await app.workers.wait_for_complete()
+        await pilot.press("c", "a", "t", "enter", "down", "enter")
+        assert isinstance(app.screen, DetailScreen)
+      finally:
+        release.set()
+      await app.workers.wait_for_complete()
+      await pilot.resize_terminal(160, 24)
+      await pilot.pause()
+      assert not isinstance(app.screen, DetailScreen)
+      assert [card.result.filepath for card in app.query(ImageCard)] == [result.filepath for result in results]
+
+  asyncio.run(run())
 
 
 @pytest.mark.parametrize("action", ["left", "right", "escape"])

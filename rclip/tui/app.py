@@ -125,6 +125,7 @@ class RclipApp(App[None]):
   def _load_more(self) -> None:
     if self._loading_more or (
       isinstance(self.screen, DetailScreen)
+      and not self._pending_detail_advance
       and self._selected_index + len(self.screen.thumbnails) // 2 < len(self._cards())
     ):
       return
@@ -201,6 +202,8 @@ class RclipApp(App[None]):
       return
     grid = self.query_one(ResultsGrid)
     if not append:
+      if isinstance(self.screen, DetailScreen):
+        self.action_go_back()
       self.query_one("#gallery-path", Static).update("")
       await grid.remove_children()
       if not self._is_current_search(generation, query):
@@ -219,7 +222,7 @@ class RclipApp(App[None]):
       self._pending_detail_advance = False
       if cards and isinstance(self.screen, DetailScreen):
         self._move_detail(1)
-    if append and isinstance(self.screen, DetailScreen):
+    if append:
       self._update_detail()
     if not append:
       grid.scroll_home(animate=False)
@@ -374,7 +377,6 @@ class RclipApp(App[None]):
   def action_view(self) -> None:
     if card := self._selected_card():
       self.push_screen(DetailScreen(card.result.filepath, self._move_detail))
-      self.call_after_refresh(self._update_detail)
 
   def action_go_back(self) -> None:
     self._pending_detail_advance = False
