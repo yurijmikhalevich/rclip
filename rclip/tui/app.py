@@ -83,6 +83,7 @@ class RclipApp(App[None]):
     directory = _display_directory(self.working_directory)
     yield Input(placeholder=f"Search images in {directory}…", id="search")
     yield ResultsGrid(self._load_more)
+    yield Static("", id="gallery-path", markup=False)
     yield Static(
       "/ Search   hjkl/Arrows Move   Enter View   y Copy   Y Copy path   d Download   q/Ctrl+C Quit",
       classes="hotkeys",
@@ -196,6 +197,7 @@ class RclipApp(App[None]):
       return
     grid = self.query_one(ResultsGrid)
     if not append:
+      self.query_one("#gallery-path", Static).update("")
       await grid.remove_children()
       if not self._is_current_search(generation, query):
         return
@@ -262,6 +264,7 @@ class RclipApp(App[None]):
     cards = self._cards()
     if card in cards:
       self._selected_index = cards.index(card)
+      self.query_one("#gallery-path", Static).update(card.result.filepath)
       self.call_after_refresh(self.query_one(ResultsGrid).update_visible)
 
   def _cards(self) -> Sequence[ImageCard]:

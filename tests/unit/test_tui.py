@@ -13,7 +13,7 @@ from types import SimpleNamespace
 from PIL import Image
 import pytest
 from textual.geometry import Size
-from textual.widgets import Input
+from textual.widgets import Input, Static
 
 from rclip import main as main_module
 from rclip.main import RClip
@@ -416,9 +416,14 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
       assert len(cards) == 2
       assert isinstance(app.focused, Input)
       assert rclip.searches == [("cat", str(tmp_path), None, [], [])]
+      gallery_path = app.query_one("#gallery-path", Static)
+      assert str(gallery_path.content) == ""
+      assert gallery_path.region.bottom == app.query_one(".hotkeys").region.y
+      assert gallery_path.region.height == 1
 
       await pilot.press("down")
       assert app.focused is cards[0]
+      assert str(gallery_path.content) == str(paths[0])
 
       await pilot.press("Y")
       assert copied == [str(paths[0])]
@@ -431,6 +436,7 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
 
       await pilot.press("right")
       assert app.focused is cards[1]
+      assert str(gallery_path.content) == str(paths[1])
       await pilot.press("enter")
       await app.workers.wait_for_complete()
       await pilot.pause()
@@ -448,6 +454,7 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
       await pilot.pause()
       assert not isinstance(app.screen, DetailScreen)
       assert app.focused is cards[1]
+      assert str(gallery_path.content) == str(paths[1])
 
       await pilot.click(cards[0], times=2)
       await pilot.pause()
@@ -460,6 +467,12 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
       assert isinstance(app.focused, Input)
       await pilot.press("q")
       assert app.query_one(Input).value == "q"
+      rclip.results = []
+      await pilot.press("enter")
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert not app.query(ImageCard)
+      assert str(gallery_path.content) == ""
       await pilot.press("ctrl+c")
       assert exits == [True]
 
@@ -772,11 +785,15 @@ def test_search_loads_more_on_scroll(tmp_path: Path) -> None:
       await pilot.pause()
       assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths[:25]]
 
+      await pilot.press("down")
+      gallery_path = app.query_one("#gallery-path", Static)
+      assert str(gallery_path.content) == str(paths[0])
       app.query_one(ResultsGrid).scroll_end(animate=False)
       async with asyncio.timeout(0.25):
         while len(app.query(ImageCard)) != 26:
           await asyncio.sleep(0.01)
       assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths]
+      assert str(gallery_path.content) == str(paths[0])
 
   asyncio.run(run())
 
