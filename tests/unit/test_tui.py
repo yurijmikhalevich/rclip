@@ -11,6 +11,8 @@ from threading import Event, Lock
 from types import SimpleNamespace
 
 from PIL import Image
+from rich.console import Console
+from textual_image.renderable import TGPImage as TGPRenderable
 import pytest
 from textual.geometry import Size
 from textual.widgets import Input, Static
@@ -194,6 +196,23 @@ def test_kitty_image_reuses_its_renderable_until_its_size_changes(
 
   image.on_unmount()
   assert second.cleaned
+
+
+def test_kitty_image_cleanup_deletes_only_its_own_image(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
+  image = StableTGPImage(make_image(tmp_path / "image.jpg"))
+  renderable = image.render()
+  assert isinstance(renderable, TGPRenderable)
+  Console(file=StringIO(), width=20).print(renderable)
+  image_id = renderable.terminal_image_id
+  assert image_id is not None
+  output.seek(0)
+  output.truncate()
+  image.on_unmount()
+  assert output.getvalue() == f"\x1b_Ga=d,d=I,i={image_id},q=2\x1b\\"
+  image.on_unmount()
+  assert output.getvalue() == f"\x1b_Ga=d,d=I,i={image_id},q=2\x1b\\"
 
 
 def test_copy_image_keeps_common_formats_and_converts_others(
@@ -479,6 +498,79 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
   asyncio.run(run())
 
 
+def test_gallery_resends_thumbnails_after_detail_browsing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(sys, "__stdout__", StringIO())
+  paths = [make_image(tmp_path / f"image-{index}.jpg") for index in range(6)]
+  app = RclipApp(FakeRclip([RClip.SearchResult(str(path), 1) for path in paths]), str(tmp_path))
+
+  async def run() -> None:
+    async with app.run_test(size=(100, 40)) as pilot:
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      cards = app.query_one(ResultsGrid).cards
+      before = [card._image.render() for card in cards]
+      assert all(isinstance(renderable, TGPRenderable) for renderable in before)
+      await pilot.press("down", "enter", "right", "right", "left", "escape")
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      for card, previous in zip(cards, before):
+        assert isinstance(previous, TGPRenderable)
+        assert previous.terminal_image_id is None
+        current = card._image.render()
+        assert isinstance(current, TGPRenderable)
+        assert current is not previous
+        assert current.terminal_image_id is not None
+      await pilot.press("right", "left")
+      assert all(card._image.image is not None for card in cards)
+
+  asyncio.run(run())
+
+
+def test_detail_loading_and_error_keep_layout_stable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  path = make_image(tmp_path / "image.jpg")
+  missing = tmp_path / "missing.jpg"
+  app = RclipApp(FakeRclip([RClip.SearchResult(str(item), 1) for item in [path, missing]]), str(tmp_path))
+  started = Event()
+  release = Event()
+
+  def slow_prepare(filepath: str, size: tuple[int, int]):
+    if size == (1920, 1920):
+      started.set()
+      assert release.wait(5)
+    return prepare_image(filepath, size)
+
+  monkeypatch.setattr("rclip.tui.views.prepare_image", slow_prepare)
+
+  async def run() -> None:
+    async with app.run_test(size=(100, 40)) as pilot:
+      try:
+        await app.workers.wait_for_complete()
+        await pilot.press("down", "enter")
+        assert await asyncio.to_thread(started.wait, 1)
+        screen = app.screen
+        assert isinstance(screen, DetailScreen)
+        status = screen.query_one("#detail-status", Static)
+        frame = screen.query_one("#detail-frame")
+        filmstrip = screen.query_one("#detail-filmstrip")
+        regions = frame.region, filmstrip.region
+        assert status.display and not screen._image.display
+        assert frame.region.contains_region(status.region)
+      finally:
+        release.set()
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert not status.display and screen._image.display
+      assert (frame.region, filmstrip.region) == regions
+      await pilot.press("right")
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert status.display and not screen._image.display
+      assert (frame.region, filmstrip.region) == regions
+      assert frame.region.contains_region(status.region)
+
+  asyncio.run(run())
+
+
 def test_detail_filmstrip_centers_selection_and_navigates(tmp_path: Path) -> None:
   paths = [str(make_image(tmp_path / f"image-{index}.jpg")) for index in range(5)]
   app = RclipApp(FakeRclip([RClip.SearchResult(path, 1) for path in paths]), str(tmp_path))
@@ -492,26 +584,41 @@ def test_detail_filmstrip_centers_selection_and_navigates(tmp_path: Path) -> Non
       assert isinstance(screen, DetailScreen)
       assert [thumbnail.filepath for thumbnail in screen.thumbnails] == [None, None, *paths[:3]]
       assert all(thumbnail._image.image is not None for thumbnail in screen.thumbnails[2:])
-      await pilot.click(screen.thumbnails[0])
-      assert screen.filepath == paths[0]
+      assert all(not thumbnail.visible for thumbnail in screen.thumbnails[:2])
+      assert all(thumbnail.visible for thumbnail in screen.thumbnails[2:])
       await pilot.click(screen.thumbnails[4])
       await app.workers.wait_for_complete()
       assert screen.filepath == paths[2]
       assert [thumbnail.filepath for thumbnail in screen.thumbnails] == paths
+      await pilot.pause()
+      selected_size = screen.thumbnails[2]._image.content_size
+      selected_frame = screen.thumbnails[2].query_one(".detail-thumbnail-frame").region
+      for thumbnail in [*screen.thumbnails[:2], *screen.thumbnails[3:]]:
+        assert thumbnail._image.content_size.width < selected_size.width
+        assert thumbnail._image.content_size.height < selected_size.height
+        frame = thumbnail.query_one(".detail-thumbnail-frame").region
+        assert frame.width < selected_frame.width
+        assert frame.height < selected_frame.height
       await pilot.press("right", "right")
       await app.workers.wait_for_complete()
       assert [thumbnail.filepath for thumbnail in screen.thumbnails] == [*paths[2:], None, None]
       assert all(thumbnail._image.image is None for thumbnail in screen.thumbnails[3:])
-      for width, height in [(100, 40), (81, 24), (40, 16)]:
+      assert all(not thumbnail.visible for thumbnail in screen.thumbnails[3:])
+      for width, height, count in [(100, 40, 5), (81, 24, 5), (40, 16, 1), (160, 40, 9)]:
         await pilot.resize_terminal(width, height)
         await pilot.pause()
-        center = screen.thumbnails[2].region
+        assert len(screen.thumbnails) == count
+        assert [thumbnail.filepath for thumbnail in screen.thumbnails] == [
+          paths[index] if 0 <= index < len(paths) else None
+          for index in range(4 - count // 2, 5 + count // 2)
+        ]
+        center = screen.thumbnails[count // 2].region
         assert abs(center.x * 2 + center.width - width) <= 1
         assert screen.query_one("#detail-frame").region.height > 0
       await pilot.press("h", "l", "left")
       await app.workers.wait_for_complete()
       assert screen.filepath == paths[3]
-      assert screen.thumbnails[2].filepath == paths[3]
+      assert screen.thumbnails[len(screen.thumbnails) // 2].filepath == paths[3]
       await pilot.press("escape")
       assert isinstance(app.focused, ImageCard)
       assert app.focused.result.filepath == paths[3]
@@ -537,11 +644,15 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str) -> Non
       assert isinstance(app.screen, DetailScreen)
       for index, path in enumerate(paths[1:], 1):
         await pilot.press("right")
+        if index == 22:
+          await pilot.resize_terminal(160, 24)
         await app.workers.wait_for_complete()
         await pilot.pause(0.1)
         assert app.screen.filepath == path
+        neighbors = len(app.screen.thumbnails) // 2
         assert [thumbnail.filepath for thumbnail in app.screen.thumbnails] == [
-          paths[neighbor] if 0 <= neighbor < len(paths) else None for neighbor in range(index - 2, index + 3)
+          paths[neighbor] if 0 <= neighbor < len(paths) else None
+          for neighbor in range(index - neighbors, index + neighbors + 1)
         ]
       await pilot.press("right")
       assert app.screen.filepath == paths[-1]

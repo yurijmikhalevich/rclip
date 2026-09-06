@@ -13,6 +13,7 @@ from textual.worker import get_current_worker
 from textual.widgets import Input, Static
 
 from rclip.model import Model
+from rclip.tui.media import ImageWidget
 from rclip.tui.transfer import _is_remote_session
 from rclip.tui.transfer import copy_image_to_clipboard
 from rclip.tui.transfer import download_image
@@ -122,7 +123,10 @@ class RclipApp(App[None]):
     self._search(query, self._search_generation, None)
 
   def _load_more(self) -> None:
-    if self._loading_more or (isinstance(self.screen, DetailScreen) and self._selected_index + 2 < len(self._cards())):
+    if self._loading_more or (
+      isinstance(self.screen, DetailScreen)
+      and self._selected_index + len(self.screen.thumbnails) // 2 < len(self._cards())
+    ):
       return
     query = self.query_one("#search", Input).value.strip()
     if query:
@@ -375,6 +379,9 @@ class RclipApp(App[None]):
     if isinstance(self.screen, DetailScreen):
       selected_index = self._selected_index
       self.pop_screen()
+      # The terminal may have evicted gallery images while the detail view was active.
+      for image in self.query_one(ResultsGrid).query(ImageWidget):
+        image.refresh_image()
       cards = self._cards()
       if selected_index < len(cards):
         self.call_after_refresh(cards[selected_index].focus)

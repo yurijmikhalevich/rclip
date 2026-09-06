@@ -92,10 +92,18 @@ ImageCard.preview-failed {
 .detail-thumbnail {
   width: 1fr;
   height: 100%;
-  padding: 0 1;
-  border: round transparent;
+  align: center middle;
 }
 
-.detail-thumbnail.selected {
+.detail-thumbnail-frame {
+  width: 85%;
+  height: 80%;
+  padding: 0 1;
+  border: round $border-blurred;
+}
+
+.detail-thumbnail.selected .detail-thumbnail-frame {
+  width: 100%;
+  height: 100%;
   border: heavy $accent;
 }

@@ -126,16 +126,18 @@ class ResultsGrid(ItemGrid):
 class DetailThumbnail(Static):
   def __init__(self, offset: int, browse: Callable[[int], None]) -> None:
     super().__init__(classes="detail-thumbnail selected" if offset == 0 else "detail-thumbnail")
+    self.visible = False
     self.result_offset = offset
     self.browse = browse
     self.filepath: str | None = None
     self._image = ImageWidget(classes="thumbnail")
 
   def compose(self) -> ComposeResult:
-    with CenterMiddle():
+    with CenterMiddle(classes="detail-thumbnail-frame"):
       yield self._image
 
   def show_image(self, filepath: str | None) -> None:
+    self.visible = filepath is not None
     if filepath == self.filepath:
       return
     self.filepath = filepath
@@ -171,14 +173,15 @@ class DetailScreen(Screen[None]):
     super().__init__()
     self.filepath = filepath
     self._image = ImageWidget(classes="detail-image")
-    self.thumbnails = [DetailThumbnail(offset, browse) for offset in range(-2, 3)]
+    self._image.display = False
+    self._browse = browse
+    self.thumbnails: list[DetailThumbnail] = []
 
   def compose(self) -> ComposeResult:
     with CenterMiddle(id="detail-frame"):
       yield self._image
-    with Horizontal(id="detail-filmstrip"):
-      yield from self.thumbnails
-    yield Static("Loading higher-resolution image…", id="detail-status", markup=False)
+      yield Static("Loading higher-resolution image…", id="detail-status", markup=False)
+    yield Horizontal(id="detail-filmstrip")
     yield Static(self.filepath, id="detail-path", markup=False)
     yield Static(
       "h/l/Arrows Browse   Esc/Double-click Back   y Copy   Y Copy path   d Download   q/Ctrl+C Quit",
@@ -189,8 +192,22 @@ class DetailScreen(Screen[None]):
   def on_mount(self) -> None:
     self._load_detail()
 
+  async def on_resize(self, event: events.Resize) -> None:
+    from rclip.tui.app import RclipApp
+
+    neighbors = max(0, (event.size.width // 16 - 1) // 2)
+    if len(self.thumbnails) == neighbors * 2 + 1:
+      return
+    filmstrip = self.query_one("#detail-filmstrip", Horizontal)
+    await filmstrip.remove_children()
+    self.thumbnails = [DetailThumbnail(offset, self._browse) for offset in range(-neighbors, neighbors + 1)]
+    await filmstrip.mount(*self.thumbnails)
+    if isinstance(self.app, RclipApp):
+      self.app._update_detail()
+
   def show_image(self, filepath: str) -> None:
     self.filepath = filepath
+    self._image.display = False
     self._image.image = None
     status = self.query_one("#detail-status", Static)
     status.update("Loading higher-resolution image…")
@@ -222,6 +239,7 @@ class DetailScreen(Screen[None]):
     if not self.is_attached or filepath != self.filepath:
       return
     self._image.image = detail
+    self._image.display = True
     self.query_one("#detail-status", Static).display = False
 
   def _show_error(self, filepath: str, message: str) -> None:
