@@ -30,20 +30,20 @@ def test_preview_transmits_resized_png_in_kitty_chunks(monkeypatch, capsys, term
 
   output = capsys.readouterr().out
   assert output.endswith("\n")
-  assert output.startswith("\033Ptmux;") == wrapped
-  if wrapped:
-    output = output.replace("\033Ptmux;", "").replace("\033\033", "\033").replace("\033\\\033\\", "\033\\")
-  commands = output.removesuffix("\n").split("\033\\")
+  prefix = "\033Ptmux;\033\033_G" if wrapped else "\033_G"
+  suffix = "\033\033\\\033\\" if wrapped else "\033\\"
+  commands = output.removesuffix("\n").split(suffix)
   assert commands.pop() == ""
   payload = ""
   for index, command in enumerate(commands):
-    header, chunk = command.split(";", 1)
+    assert command.startswith(prefix)
+    header, chunk = command.removeprefix(prefix).split(";", 1)
     more = int(index < len(commands) - 1)
-    expected = f"\033_Ga=T,f=100,q=2,m={more}" if index == 0 else f"\033_Gq=2,m={more}"
+    expected = f"a=T,f=100,q=2,m={more}" if index == 0 else f"q=2,m={more}"
     assert header == expected
     assert 0 < len(chunk) <= 4096
     payload += chunk
-  image = Image.open(BytesIO(base64.b64decode(payload)))
+  image = Image.open(BytesIO(base64.b64decode(payload, validate=True)))
   image.load()
   assert image.format == "PNG"
   assert image.size == (2 * min(height, 100), min(height, 100))
