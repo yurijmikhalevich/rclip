@@ -28,7 +28,7 @@ rclip "two parrots on a branch"
   macOS/Windows and experimental RAW (`arw`, `cr2`, `dng`).
 - **Fast incremental indexing** – only new and changed images are reprocessed on subsequent runs.
 - **Interactive terminal UI** – search a responsive thumbnail grid without leaving the terminal.
-- **Terminal previews** – view images inline in iTerm2, Konsole, wezterm, Mintty, and mlterm.
+- **Terminal previews** – view images inline in terminals supporting Kitty graphics.
 - **Cross-platform** – Linux, macOS (Apple Silicon), and Windows.
 
 ## Installation
@@ -126,7 +126,7 @@ Open the interactive UI and enter a query in its search input:
 rclip --interactive
 ```
 
-The UI uses Kitty's graphics protocol when available and Sixel in terminals such as iTerm2, with a colored half-cell fallback elsewhere. It uses the terminal's default colors and ANSI palette. With an empty query it browses recently modified images, loading more as you scroll. Searches are ranked once and loaded in batches of up to 100 results as you scroll; pass `--top N` to use a smaller search batch. Enter text queries in the UI; image queries remain available in the non-interactive CLI. Cached previews load as they become visible, and opening a result loads a higher-resolution display image.
+The UI requires Kitty graphics with Unicode-placeholder support. There is no fallback for unsupported terminals, which may show missing images or garbled placeholders. It uses the terminal's default colors and ANSI palette. With an empty query it browses recently modified images, loading more as you scroll. Searches are ranked once and loaded in batches of up to 100 results as you scroll; pass `--top N` to use a smaller search batch. Enter text queries in the UI; image queries remain available in the non-interactive CLI. Cached previews load as they become visible, and opening a result loads a higher-resolution display image.
 
 | Key | Action |
 | --- | --- |
@@ -193,7 +193,7 @@ are indexed instead of the RAW original.
 
 ### How do I preview the results?
 
-If you are using either [iTerm2](https://iterm2.com/), [Konsole](https://konsole.kde.org/) (version 22.04 and higher), [wezterm](https://wezfurlong.org/wezterm/), [Mintty](https://mintty.github.io/), or [mlterm](https://mlterm.sourceforge.net/), all you need to do is pass the `--preview` (or `-p`) flag to **rclip**:
+In a terminal supporting Kitty graphics, such as [Kitty](https://sw.kovidgoyal.net/kitty/), [Ghostty](https://ghostty.org/), or recent [iTerm2](https://iterm2.com/), pass the `--preview` (or `-p`) flag to **rclip**. Graphics support is not detected; unsupported terminals may show missing images or escape-sequence text:
 
 ```bash
 rclip -p kitty
@@ -254,7 +254,7 @@ Run `rclip --help` (or `rclip -h`) to see this list in your terminal. The positi
 | `--subtract`, `--sub`, `-s`, `-` `QUERY` | A text query or a path/URL to an image file to subtract from the "original" query. Can be used multiple times. |
 | `--top`, `-t` `N` | Number of top results to display, or search results to load per batch with `--interactive`. Default: `10`, or `100` with `--interactive`; interactive maximum: `100`. |
 | `--interactive`, `-i` | Open the interactive terminal UI and enter text queries there. Does not accept a positional query or `--add`/`--subtract`. Mutually exclusive with `--preview` and `--filepath-only`. |
-| `--preview`, `-p` | Preview results in the terminal (supported in iTerm2, Konsole 22.04+, wezterm, Mintty, mlterm). Mutually exclusive with `--filepath-only`. |
+| `--preview`, `-p` | Preview results in the terminal (requires Kitty graphics). Mutually exclusive with `--filepath-only`. |
 | `--filepath-only`, `-f` | Output only filepaths, without scores or the header. Mutually exclusive with `--preview`. |
 | `--preview-height`, `-H` `PX` | Preview height in pixels. Default: `400`. |
 | `--no-indexing`, `--skip-index`, `--skip-indexing`, `-n` | Skip updating the index. Use only when no images were added, changed, or removed since the last run. |
