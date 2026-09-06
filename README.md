@@ -193,7 +193,7 @@ are indexed instead of the RAW original.
 
 ### How do I preview the results?
 
-In a terminal supporting Kitty graphics, such as [Kitty](https://sw.kovidgoyal.net/kitty/), [Ghostty](https://ghostty.org/), latest [iTerm2](https://iterm2.com/), or [Konsole](https://konsole.kde.org/), pass the `--preview` (or `-p`) flag to **rclip**. Graphics support is not detected; unsupported terminals may show missing images or escape-sequence text:
+In a terminal supporting Kitty graphics, such as [Kitty](https://sw.kovidgoyal.net/kitty/), [Ghostty](https://ghostty.org/), latest [iTerm2](https://iterm2.com/), or [Konsole](https://konsole.kde.org/), pass the `--preview` (or `-p`) flag to **rclip**:
 
 ```bash
 rclip -p kitty
