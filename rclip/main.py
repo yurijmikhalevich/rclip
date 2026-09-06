@@ -334,8 +334,11 @@ class RClip:
         )
 
     if top_k is None:
-      return sorted(iter_results(), key=lambda result: (-result.score, result.filepath))
-    return heapq.nsmallest(top_k, iter_results(), key=lambda result: (-result.score, result.filepath))
+      results = sorted(iter_results(), key=lambda result: (-result.score, result.filepath))
+    else:
+      results = heapq.nsmallest(top_k, iter_results(), key=lambda result: (-result.score, result.filepath))
+    helpers.raise_if_cancelled(cancel_event)
+    return results
 
   def list_images(
     self,
