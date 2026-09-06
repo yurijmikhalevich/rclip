@@ -1062,8 +1062,9 @@ def test_empty_browse_retries_loading_more_after_failure(
         await pilot.press("down", "enter", *(["right"] * 23))
       else:
         grid.scroll_end(animate=False)
-      await app.workers.wait_for_complete()
-      await pilot.pause()
+      async with asyncio.timeout(0.25):
+        while not notifications:
+          await asyncio.sleep(0.01)
       assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths[:25]]
       assert notifications == [("page failed", "Unable to load more images")]
 
@@ -1075,9 +1076,10 @@ def test_empty_browse_retries_loading_more_after_failure(
         grid.scroll_home(animate=False)
         await pilot.pause()
         grid.scroll_end(animate=False)
-      await app.workers.wait_for_complete()
-      await pilot.pause()
-      assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths]
+      expected = [str(path) for path in paths]
+      async with asyncio.timeout(0.25):
+        while [card.result.filepath for card in app.query(ImageCard)] != expected:
+          await asyncio.sleep(0.01)
       if detail:
         assert isinstance(app.screen, DetailScreen)
         assert app.screen.filepath == str(paths[24])
