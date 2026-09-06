@@ -126,16 +126,17 @@ Open the interactive UI and enter a query in its search input:
 rclip --interactive
 ```
 
-The UI requires Kitty graphics with Unicode-placeholder support. It uses the terminal's default colors and ANSI palette. With an empty query it browses recently modified images, loading more as you scroll. Searches are ranked once and loaded in batches of up to 100 results as you scroll; pass `--top N` to use a smaller search batch. Enter text queries in the UI; image queries remain available in the non-interactive CLI. Cached previews load as they become visible, and opening a result loads a higher-resolution display image.
+The UI requires Kitty graphics with Unicode-placeholder support. It uses the terminal's default colors and ANSI palette. With an empty query it browses recently modified images, loading more as you scroll. Searches are ranked once and loaded in batches of up to 100 results as you scroll; pass `--top N` to use a smaller search batch. Enter text queries in the UI; image queries remain available in the non-interactive CLI. Cached previews load as they become visible, and Detail view loads a higher-resolution display image. Grid and Detail are alternative views of the same results: switching preserves the query and selected image. Search is available in both views, with the selected image’s score and path shown below the results.
 
 | Key | Action |
 | --- | --- |
 | `/` | Focus the search input. |
 | Arrow keys or `h`, `j`, `k`, `l` | Move between results. |
-| `Enter` | Open the selected image. |
-| Left/Right or `h`/`l` | Show the previous or next opened image. |
-| Double-click | Open an image, or return to the grid from an opened image. |
-| `Esc` | Return to the grid from an opened image. |
+| `v` | Toggle between Grid and Detail while browsing. |
+| `Enter` | Submit the search query while typing. |
+| Left/Right or `h`/`l` | Show the previous or next image in Detail. |
+| Double-click | Switch views (selecting the clicked image in Grid). |
+| `Esc` | Move focus between search and browsing. |
 | `y` | Copy the selected image to the system clipboard using Kitty's `kitten clipboard`. |
 | `Y` | Copy the selected image path. |
 | `d` | Download the selected original image from an SSH host. |

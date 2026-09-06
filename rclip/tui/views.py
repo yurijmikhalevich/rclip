@@ -7,8 +7,7 @@ from typing import Callable, Sequence, cast
 
 from textual import events, work
 from textual.app import ComposeResult
-from textual.containers import CenterMiddle, Horizontal, ItemGrid
-from textual.screen import Screen
+from textual.containers import CenterMiddle, Horizontal, ItemGrid, Vertical
 from textual.worker import get_current_worker
 from textual.widgets import Label, Static
 
@@ -84,10 +83,10 @@ class ImageCard(Static, can_focus=True):
     if event.button == 1 and event.chain == 2 and isinstance(self.app, RclipApp):
       self.focus()
       self.app.select_card(self)
-      self.app.action_view()
+      self.app.action_toggle_view()
 
 
-class ResultsGrid(ItemGrid):
+class ResultsGrid(ItemGrid, can_focus=True):
   def __init__(self, load_more: Callable[[], None]) -> None:
     super().__init__(
       id="results",
@@ -103,6 +102,8 @@ class ResultsGrid(ItemGrid):
     return cast(Sequence[ImageCard], self.children)
 
   def update_visible(self) -> None:
+    if not self.display:
+      return
     viewport = self.scrollable_content_region
     cards = self.cards
     index = bisect_right(cards, self.scroll_y, key=lambda card: card.virtual_region.bottom)
@@ -169,10 +170,11 @@ class DetailThumbnail(Static):
       self.browse(self.result_offset)
 
 
-class DetailScreen(Screen[None]):
-  def __init__(self, filepath: str, browse: Callable[[int], None]) -> None:
-    super().__init__()
-    self.filepath = filepath
+class DetailView(Vertical, can_focus=True):
+  def __init__(self, browse: Callable[[int], None]) -> None:
+    super().__init__(id="detail")
+    self.display = False
+    self.filepath: str | None = None
     self._image = ImageWidget(classes="detail-image")
     self._image.display = False
     self._browse = browse
@@ -181,17 +183,8 @@ class DetailScreen(Screen[None]):
   def compose(self) -> ComposeResult:
     with CenterMiddle(id="detail-frame"):
       yield self._image
-      yield Static("Loading higher-resolution image…", id="detail-status", markup=False)
+      yield Static("No results", id="detail-status", markup=False)
     yield Horizontal(id="detail-filmstrip")
-    yield Static(self.filepath, id="detail-path", markup=False)
-    yield Static(
-      "h/l/Arrows Browse   Esc/Double-click Back   y Copy   Y Copy path   d Download   q/Ctrl+C Quit",
-      classes="hotkeys",
-      markup=False,
-    )
-
-  def on_mount(self) -> None:
-    self._load_detail()
 
   async def on_resize(self, event: events.Resize) -> None:
     from rclip.tui.app import RclipApp
@@ -204,7 +197,7 @@ class DetailScreen(Screen[None]):
     self.thumbnails = [DetailThumbnail(offset, self._browse) for offset in range(-neighbors, neighbors + 1)]
     await filmstrip.mount(*self.thumbnails)
     if isinstance(self.app, RclipApp):
-      self.app._update_detail()
+      self.app._update_selection()
 
   def show_thumbnails(self, filepaths: list[str | None]) -> None:
     retained = {
@@ -221,26 +214,30 @@ class DetailScreen(Screen[None]):
       thumbnail.show_image(filepath)
       filmstrip.move_child(thumbnail, before=index)
 
-  def show_image(self, filepath: str) -> None:
+  def show_image(self, filepath: str | None) -> None:
+    if filepath == self.filepath:
+      return
     self.filepath = filepath
     self._image.display = False
     self._image.image = None
     status = self.query_one("#detail-status", Static)
-    status.update("Loading higher-resolution image…")
+    status.update("No results" if filepath is None else "Loading higher-resolution image…")
     status.display = True
-    self.query_one("#detail-path", Static).update(filepath)
-    self._load_detail()
+    if filepath is not None:
+      self._load_detail()
 
   def on_click(self, event: events.Click) -> None:
     from rclip.tui.app import RclipApp
 
     if event.button == 1 and event.chain == 2 and isinstance(self.app, RclipApp):
       event.stop()
-      self.app.action_go_back()
+      self.app.action_toggle_view()
 
   @work(thread=True, group="detail", exclusive=True, exit_on_error=False)
   def _load_detail(self) -> None:
     filepath = self.filepath
+    if filepath is None:
+      return
     with _IMAGE_DECODES:
       if get_current_worker().is_cancelled:
         return

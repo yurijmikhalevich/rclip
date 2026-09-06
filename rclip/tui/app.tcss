@@ -65,6 +65,12 @@ ImageCard.preview-failed {
   text-align: center;
 }
 
+#detail {
+  width: 100%;
+  height: 1fr;
+  overflow: hidden hidden;
+}
+
 #detail-frame {
   height: 1fr;
   padding: 1;
@@ -77,7 +83,7 @@ ImageCard.preview-failed {
   max-height: 100%;
 }
 
-#detail-status, #detail-path, #gallery-path {
+#detail-status, #gallery-path {
   height: 1;
   padding: 0 1;
   color: $text-muted;

@@ -17,7 +17,7 @@ from rclip.tui.media import ImageWidget
 from rclip.tui.transfer import _is_remote_session
 from rclip.tui.transfer import copy_image_to_clipboard
 from rclip.tui.transfer import download_image
-from rclip.tui.views import DetailScreen
+from rclip.tui.views import DetailView
 from rclip.tui.views import ImageCard
 from rclip.tui.views import ResultsGrid
 from rclip.tui.views import TuiResult
@@ -49,8 +49,8 @@ class RclipApp(App[None]):
     Binding("k", "move_up", "Up", show=False),
     Binding("up", "move_up_or_focus", "Up", show=False),
     Binding("l,right", "move_right", "Right", show=False),
-    Binding("enter", "view", "View", show=False),
-    Binding("escape", "go_back", "Back", show=False),
+    Binding("v", "toggle_view", "Toggle view", show=False),
+    Binding("escape", "toggle_focus", "Search/Browse", show=False),
     Binding("y", "copy_image", "Copy image", show=False),
     Binding("Y", "copy_path", "Copy path", show=False),
     Binding("d", "download", "Download", show=False),
@@ -79,14 +79,16 @@ class RclipApp(App[None]):
     self._remaining_search_results: list[TuiResult] = []
     self._loading_more = False
     self._pending_detail_advance = False
+    self._detail = DetailView(self._move_detail)
 
   def compose(self) -> ComposeResult:
     directory = _display_directory(self.working_directory)
     yield Input(placeholder=f"Search images in {directory}…", id="search")
     yield ResultsGrid(self._load_more)
+    yield self._detail
     yield Static("", id="gallery-path", markup=False)
     yield Static(
-      "/ Search   hjkl/Arrows Move   Enter View   y Copy   Y Copy path   d Download   q/Ctrl+C Quit",
+      "/ Search   hjkl/Arrows Move   v Detail view   y Copy   Y Copy path   d Download   q/Ctrl+C Quit",
       classes="hotkeys",
       markup=False,
     )
@@ -124,9 +126,9 @@ class RclipApp(App[None]):
 
   def _load_more(self) -> None:
     if self._loading_more or (
-      isinstance(self.screen, DetailScreen)
+      self._detail.display
       and not self._pending_detail_advance
-      and self._selected_index + len(self.screen.thumbnails) // 2 < len(self._cards())
+      and self._selected_index + len(self._detail.thumbnails) // 2 < len(self._cards())
     ):
       return
     query = self.query_one("#search", Input).value.strip()
@@ -202,8 +204,6 @@ class RclipApp(App[None]):
       return
     grid = self.query_one(ResultsGrid)
     if not append:
-      if isinstance(self.screen, DetailScreen):
-        self.action_go_back()
       self.query_one("#gallery-path", Static).update("")
       await grid.remove_children()
       if not self._is_current_search(generation, query):
@@ -220,13 +220,13 @@ class RclipApp(App[None]):
     self._loading_more = False
     if append and self._pending_detail_advance:
       self._pending_detail_advance = False
-      if cards and isinstance(self.screen, DetailScreen):
+      if cards and self._detail.display:
         self._move_detail(1)
-    if append:
-      self._update_detail()
     if not append:
       grid.scroll_home(animate=False)
       self._selected_index = 0
+    if self._detail.display:
+      self._update_selection()
     self.call_after_refresh(grid.update_visible)
     search_input.border_title = None if append or results else "No results"
 
@@ -253,16 +253,12 @@ class RclipApp(App[None]):
       "move_up",
       "move_up_or_focus",
       "quit_navigation",
-      "view",
+      "toggle_view",
     }:
       return False
-    if isinstance(self.screen, DetailScreen) and action in {
-      "focus_search",
+    if self._detail.display and action in {
       "move_down",
-      "move_down_or_focus",
       "move_up",
-      "move_up_or_focus",
-      "view",
     }:
       return False
     if action == "focus_search":
@@ -273,21 +269,17 @@ class RclipApp(App[None]):
     cards = self._cards()
     if card in cards:
       self._selected_index = cards.index(card)
-      self.query_one("#gallery-path", Static).update(card.result.filepath)
+      self._update_selection()
       self.call_after_refresh(self.query_one(ResultsGrid).update_visible)
 
   def _cards(self) -> Sequence[ImageCard]:
     return self.query_one(ResultsGrid).cards
 
   def _selected_card(self) -> ImageCard | None:
-    if isinstance(self.focused, ImageCard):
-      return self.focused
     cards = self._cards()
     return cards[self._selected_index] if self._selected_index < len(cards) else None
 
   def _selected_filepath(self) -> str | None:
-    if isinstance(self.screen, DetailScreen):
-      return self.screen.filepath
     card = self._selected_card()
     return card.result.filepath if card else None
 
@@ -324,30 +316,36 @@ class RclipApp(App[None]):
     if index == self._selected_index:
       return
     self._selected_index = index
-    self._update_detail()
+    self._update_selection()
 
-  def _update_detail(self) -> None:
-    if not isinstance(self.screen, DetailScreen) or not self.screen.thumbnails:
+  def _update_selection(self) -> None:
+    card = self._selected_card()
+    label = ""
+    if card is not None:
+      result = card.result
+      label = result.filepath if result.score is None else f"{result.score:.3f}  {result.filepath}"
+    self.query_one("#gallery-path", Static).update(label)
+    if not self._detail.display:
+      return
+    self._detail.show_image(card.result.filepath if card else None)
+    if not self._detail.thumbnails:
       return
     cards = self._cards()
-    filepath = cards[self._selected_index].result.filepath
-    if self.screen.filepath != filepath:
-      self.screen.show_image(filepath)
-    neighbors = len(self.screen.thumbnails) // 2
-    self.screen.show_thumbnails([
+    neighbors = len(self._detail.thumbnails) // 2
+    self._detail.show_thumbnails([
       cards[index].result.filepath if 0 <= index < len(cards) else None
       for index in range(self._selected_index - neighbors, self._selected_index + neighbors + 1)
     ])
     self._load_more()
 
   def action_move_left(self) -> None:
-    if isinstance(self.screen, DetailScreen):
+    if self._detail.display:
       self._move_detail(-1)
     else:
       self._move(-1)
 
   def action_move_right(self) -> None:
-    if isinstance(self.screen, DetailScreen):
+    if self._detail.display:
       self._move_detail(1)
     else:
       self._move(1)
@@ -359,42 +357,51 @@ class RclipApp(App[None]):
     self._move(self._columns())
 
   def action_move_up_or_focus(self) -> None:
-    if isinstance(self.focused, ImageCard) and self._selected_index < self._columns():
+    if self._detail.display or (isinstance(self.focused, ImageCard) and self._selected_index < self._columns()):
       self.action_focus_search()
     else:
       self.action_move_up()
 
   def action_move_down_or_focus(self) -> None:
     if isinstance(self.focused, Input):
-      if card := self._selected_card():
-        card.focus()
-    else:
+      self.action_toggle_focus()
+    elif not self._detail.display:
       self.action_move_down()
 
   def action_focus_search(self) -> None:
     self.query_one("#search", Input).focus()
 
-  def action_view(self) -> None:
-    if card := self._selected_card():
-      self.push_screen(DetailScreen(card.result.filepath, self._move_detail))
-
-  def action_go_back(self) -> None:
+  def action_toggle_view(self) -> None:
     self._pending_detail_advance = False
-    if isinstance(self.screen, DetailScreen):
-      selected_index = self._selected_index
-      self.pop_screen()
-      # The terminal may have evicted gallery images while the detail view was active.
-      for image in self.query_one(ResultsGrid).query(ImageWidget):
-        image.refresh_image()
-      cards = self._cards()
-      if selected_index < len(cards):
-        self.call_after_refresh(cards[selected_index].focus)
-      return
-    if isinstance(self.focused, Input):
-      if card := self._selected_card():
-        card.focus()
+    grid = self.query_one(ResultsGrid)
+    grid.display = self._detail.display
+    self._detail.display = not grid.display
+    # The terminal may have evicted images while the other view was active.
+    for image in self.query(ImageWidget):
+      image.refresh_image()
+    self.query_one(".hotkeys", Static).update(
+      "/ Search   "
+      + ("h/l/Arrows Browse   v Grid view" if self._detail.display else "hjkl/Arrows Move   v Detail view")
+      + "   y Copy   Y Copy path   d Download   q/Ctrl+C Quit"
+    )
+    self._update_selection()
+    if self._detail.display:
+      self._detail.focus()
+    elif card := self._selected_card():
+      self.call_after_refresh(card.focus)
     else:
+      grid.focus()
+
+  def action_toggle_focus(self) -> None:
+    self._pending_detail_advance = False
+    if not isinstance(self.focused, Input):
       self.action_focus_search()
+    elif self._detail.display:
+      self._detail.focus()
+    elif card := self._selected_card():
+      card.focus()
+    else:
+      self.query_one(ResultsGrid).focus()
 
   def action_copy_path(self) -> None:
     if filepath := self._selected_filepath():
