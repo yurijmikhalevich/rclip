@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 from threading import Event
 from unittest.mock import call, Mock
 import tempfile
@@ -360,4 +361,102 @@ def test_same_hash_different_size_reindexes(monkeypatch):
     assert new_record["vector"] != old_vector
     assert new_record["hash"] == old_hash
 
+    database.close()
+
+
+@pytest.mark.parametrize(
+  "excluded_name,include_hidden,exclude_dirs",
+  [(".worktrees", False, None), (".git", True, None), ("private", True, ["private"])],
+)
+def test_exclusions_preserve_cache_and_apply_to_search_and_browse(
+  tmp_path: Path, excluded_name: str, include_hidden: bool, exclude_dirs: list[str] | None
+):
+  # The same excluded name above the search root must not affect its descendants.
+  root = tmp_path / excluded_name / "checkout"
+  visible = root / "nested" / "photo.jpg"
+  excluded = root / excluded_name / "photo.jpg"
+  dotfile = root / ".photo.jpg"
+  for path in (visible, excluded, dotfile):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (2, 2)).save(path)
+
+  database = DB(tmp_path / "db.sqlite3")
+  model = Mock()
+  model.compute_preprocessed_image_features.side_effect = lambda images, **kwargs: np.ones(
+    (len(images), 512), dtype=np.float32
+  )
+  model.compute_features_for_queries.return_value = np.zeros(512, dtype=np.float32)
+  enabled = RClip(model, database, 8, ["unused"], include_hidden=True)
+  restricted = RClip(model, database, 8, exclude_dirs, include_hidden=include_hidden)
+
+  def results(app: RClip, expected: set[str]):
+    assert {row.filepath for row in app.search("cat", str(root), 10)} == expected
+    assert set(app.list_images(str(root), 10).filepaths) == expected
+    assert len(app.search("cat", str(root), 1)) == 1
+    page = app.list_images(str(root), 1)
+    browsed = list(page.filepaths)
+    assert len(browsed) == 1
+    while page.next_cursor is not None:
+      page = app.list_images(str(root), 1, after=page.next_cursor)
+      browsed.extend(page.filepaths)
+    assert set(browsed) == expected
+    assert len(browsed) == len(expected)
+
+  all_paths = {str(visible), str(excluded), str(dotfile)}
+  visible_paths = {str(visible), str(dotfile)} if include_hidden else {str(visible)}
+  try:
+    enabled.ensure_index(str(root))
+    model.compute_preprocessed_image_features.reset_mock()
+    results(enabled, all_paths)
+    results(restricted, visible_paths)  # --no-indexing must still filter cached results.
+    restricted.ensure_index(str(root))
+    results(restricted, visible_paths)
+    results(enabled, all_paths)
+    enabled.ensure_index(str(root))
+    results(enabled, all_paths)
+    model.compute_preprocessed_image_features.assert_not_called()
+
+    # A parent scan excludes this entire checkout; searching inside it still works.
+    restricted.ensure_index(str(tmp_path))
+    restricted.ensure_index(str(root))
+    results(restricted, visible_paths)
+    results(enabled, all_paths)
+
+    excluded.unlink()
+    restricted.ensure_index(str(root))
+    results(enabled, all_paths)  # Out-of-scope deletions remain unverified.
+    enabled.ensure_index(str(root))
+    results(enabled, all_paths - {str(excluded)})
+  finally:
+    enabled.close()
+    restricted.close()
+    database.close()
+
+
+def test_index_restores_unchanged_deleted_image(tmp_path: Path):
+  photo = tmp_path / "photo.jpg"
+  photo.touch()
+  stat = photo.stat()
+  vector = np.ones(512, dtype=np.float32).tobytes()
+  database = DB(tmp_path / "db.sqlite3")
+  database.upsert_image(
+    NewImage(filepath=str(photo), modified_at=stat.st_mtime, size=stat.st_size, vector=vector, hash=None)
+  )
+  model = Mock()
+  app = _make_rclip(model, database)
+  try:
+    photo.unlink()
+    app.ensure_index(str(tmp_path))
+    assert app.list_images(str(tmp_path), 10).filepaths == []
+    photo.touch()
+    os.utime(photo, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    app.ensure_index(str(tmp_path))
+    assert app.list_images(str(tmp_path), 10).filepaths == [str(photo)]
+    restored = database.get_image(filepath=str(photo))
+    assert restored is not None
+    assert restored["deleted"] is None
+    assert restored["vector"] == vector
+    model.compute_preprocessed_image_features.assert_not_called()
+  finally:
+    app.close()
     database.close()

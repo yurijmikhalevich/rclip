@@ -2,6 +2,8 @@ import os
 import re
 from pathlib import Path
 
+import pytest
+
 from rclip import fs
 
 IMAGE_RE = re.compile(r"^.+\.(jpg|jpeg|png)$", re.I)
@@ -47,3 +49,14 @@ def test_walk_include_hidden_indexes_dot_files_and_dirs(tmp_path: Path):
 
   # .DS_Store doesn't match the image regex regardless, but the sidecar-like hidden dir now gets walked
   assert _walked_names(tmp_path, skip_hidden=False) == ["hidden.jpg", "photo.jpg"]
+
+
+@pytest.mark.parametrize("ancestor", [".worktrees", ".git", "node_modules"])
+def test_walk_exclusions_are_relative_to_root(tmp_path: Path, ancestor: str):
+  root = tmp_path / ancestor / "checkout"
+  _touch(root / "photo.jpg")
+  _touch(root / "nested" / "nested.jpg")
+  _touch(root / ".hidden.jpg")
+  _touch(root / "node_modules" / "excluded.jpg")
+
+  assert _walked_names(root) == ["nested.jpg", "photo.jpg"]

@@ -110,6 +110,12 @@ class RClip:
       self._image_loading_executor = ThreadPoolExecutor(max_workers=self._image_loading_workers)
     return self._image_loading_executor
 
+  def _is_excluded(self, filepath: str, directory: str) -> bool:
+    relative_path = os.path.relpath(filepath, directory)
+    if self._skip_hidden and any(part.startswith(".") for part in relative_path.split(os.path.sep)):
+      return True
+    return self._exclude_dir_regex.match(os.path.join(".", os.path.dirname(relative_path))) is not None
+
   def _shutdown_image_loading_executor(self) -> None:
     if self._image_loading_executor is None:
       return
@@ -249,7 +255,7 @@ class RClip:
 
       image = self._db.get_image(filepath=filepath)
       if image and is_image_meta_equal(image, meta):
-        self._db.remove_indexing_flag(filepath, commit=False)
+        self._db.restore_image(filepath, commit=False)
         continue
 
       yield filepath, meta
@@ -263,6 +269,10 @@ class RClip:
 
     self._db.remove_indexing_flag_from_all_images(commit=False)
     self._db.flag_images_in_a_dir_as_indexing(directory, commit=True)
+    # Excluded paths were not inspected, so leave their cached state alone.
+    for row in self._db.get_image_filepaths_by_dir_path(directory):
+      if self._is_excluded(row["filepath"], directory):
+        self._db.remove_indexing_flag(row["filepath"], commit=False)
 
     with tqdm(total=None, unit="images") as pbar:
 
@@ -317,7 +327,7 @@ class RClip:
           helpers.raise_if_cancelled(cancel_event)
           batch_size += 1
           filepath = image["filepath"]
-          if self._exclude_dir_regex.match(filepath) or filepath in exclude_files:
+          if self._is_excluded(filepath, directory) or filepath in exclude_files:
             continue
           filepaths.append(filepath)
           features.append(np.frombuffer(image["vector"], np.float32))
@@ -353,7 +363,7 @@ class RClip:
     for row in self._db.get_image_filepaths_by_dir_path(directory, after):
       helpers.raise_if_cancelled(cancel_event)
       filepath = row["filepath"]
-      if self._exclude_dir_regex.match(filepath):
+      if self._is_excluded(filepath, directory):
         continue
       if len(results) == limit:
         return RClip.ImagePage(results, last_cursor)

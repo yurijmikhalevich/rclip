@@ -160,6 +160,11 @@ class DB:
     cur = self._con.execute(f"SELECT * FROM images WHERE {query} LIMIT 1", kwargs)
     return cur.fetchone()
 
+  def restore_image(self, filepath: str, commit: bool = True):
+    self._con.execute("UPDATE images SET deleted = NULL, indexing = NULL WHERE filepath = ?", (filepath,))
+    if commit:
+      self._con.commit()
+
   def get_images_by_hash(self, hash_value: str, file_size: int) -> list[Image]:
     cur = self._con.execute(
       "SELECT * FROM images WHERE hash = ? AND size = ? AND deleted IS NULL",
