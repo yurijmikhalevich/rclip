@@ -305,14 +305,16 @@ def init_arg_parser() -> argparse.ArgumentParser:
     "-i",
     action="store_true",
     default=False,
-    help="opens the interactive terminal UI; enter text queries in the UI",
+    help="opens the interactive terminal UI; enter text queries in the UI;"
+    " requires Kitty graphics with Unicode placeholders (e.g. Kitty, Ghostty)",
   )
   display_mode_group.add_argument(
     "--preview",
     "-p",
     action="store_true",
     default=False,
-    help="preview results in the terminal (requires Kitty graphics)",
+    help="preview results in the terminal using Kitty graphics"
+    " (Kitty, Ghostty, iTerm2 3.6+, WezTerm, Konsole)",
   )
   display_mode_group.add_argument(
     "--filepath-only",
