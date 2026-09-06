@@ -1,7 +1,6 @@
 from pathlib import Path
 import sys
 import tempfile
-from threading import Event
 import types
 from typing import Callable, cast
 
@@ -49,25 +48,6 @@ class FakeInferenceSession:
 
   def get_inputs(self) -> list[object]:
     return [types.SimpleNamespace(type="tensor(float)")]
-
-
-def test_similarity_stops_between_query_groups_when_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
-  model = Model()
-  cancel_event = Event()
-  calls: list[list[str]] = []
-
-  def compute(queries: list[str]) -> np.ndarray:
-    calls.append(queries)
-    cancel_event.set()
-    return np.zeros(2, dtype=np.float32)
-
-  monkeypatch.setattr(model, "compute_features_for_queries", compute)
-
-  with pytest.raises(InterruptedError):
-    model.compute_similarities_to_text(
-      np.zeros((1, 2), dtype=np.float32), ["cat"], ["dog"], cancel_event=cancel_event
-    )
-  assert calls == [["cat"]]
 
 
 def test_download_coreml_model_materializes_real_package(monkeypatch: pytest.MonkeyPatch):

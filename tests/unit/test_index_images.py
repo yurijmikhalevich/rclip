@@ -1,6 +1,6 @@
 from pathlib import Path
 from threading import Event
-from unittest.mock import Mock
+from unittest.mock import call, Mock
 import tempfile
 
 import numpy as np
@@ -8,6 +8,7 @@ import PIL
 from PIL import Image
 import pytest
 
+from rclip import main as main_module
 from rclip.db import DB, NewImage
 from rclip.main import ImageMeta, RClip
 from rclip.utils import helpers
@@ -40,25 +41,134 @@ def test_search_stops_loading_vectors_when_cancelled() -> None:
 
   database.get_image_vectors_by_dir_path.side_effect = rows
   model = Mock()
+  model.compute_features_for_queries.return_value = np.zeros(512, dtype=np.float32)
   rclip = _make_rclip(model, database)
 
   with pytest.raises(InterruptedError):
     rclip.search("cat", ".", cancel_event=cancel_event)
-  model.compute_similarities_to_text.assert_not_called()
 
 
-def test_search_can_return_every_ranked_result() -> None:
+def test_search_stops_between_query_groups_when_cancelled() -> None:
+  cancel_event = Event()
+  model = Mock()
+  calls: list[list[str]] = []
+
+  def compute(queries: list[str]) -> np.ndarray:
+    calls.append(queries)
+    cancel_event.set()
+    return np.zeros(512, dtype=np.float32)
+
+  model.compute_features_for_queries.side_effect = compute
+  database = Mock()
+  rclip = _make_rclip(model, database)
+
+  with pytest.raises(InterruptedError):
+    rclip.search("cat", ".", cancel_event=cancel_event)
+  assert calls == [["cat"]]
+  database.get_image_vectors_by_dir_path.assert_not_called()
+
+
+def test_search_stops_when_cancelled_during_final_sort(monkeypatch) -> None:
+  cancel_event = Event()
+  model = Mock()
+  model.compute_features_for_queries.return_value = np.zeros(2, dtype=np.float32)
   database = Mock()
   database.get_image_vectors_by_dir_path.return_value = [
-    {"filepath": f"{index}.jpg", "vector": np.zeros(512, dtype=np.float32).tobytes()}
+    {"filepath": "a.jpg", "vector": np.zeros(2, dtype=np.float32).tobytes()}
+  ]
+
+  def sort_results(results, *, key):
+    def cancelling_key(result):
+      cancel_event.set()
+      return key(result)
+
+    return sorted(results, key=cancelling_key)
+
+  monkeypatch.setattr(main_module, "sorted", sort_results, raising=False)
+  rclip = _make_rclip(model, database)
+
+  with pytest.raises(InterruptedError):
+    rclip.search("cat", ".", top_k=None, cancel_event=cancel_event)
+
+
+@pytest.mark.parametrize("top_k", [1, None])
+def test_search_continues_after_an_entirely_excluded_batch(monkeypatch, tmp_path: Path, top_k) -> None:
+  monkeypatch.setattr(RClip, "SEARCH_BATCH_SIZE", 2)
+  model = Mock()
+  model.compute_features_for_queries.side_effect = [
+    np.array([1, 0], dtype=np.float32),
+    np.zeros(2, dtype=np.float32),
+  ]
+  database = Mock()
+  database.get_image_vectors_by_dir_path.return_value = [
+    {"filepath": str(tmp_path / filepath), "vector": np.array([score, 0], dtype=np.float32).tobytes()}
+    for filepath, score in (
+      ("private/a.jpg", 4),
+      ("query.jpg", 3),
+      ("b.jpg", 1),
+      ("a.jpg", 2),
+    )
+  ]
+  rclip = _make_rclip(model, database, ["private"])
+
+  assert rclip.search(str(tmp_path / "query.jpg"), str(tmp_path), top_k=top_k) == [
+    RClip.SearchResult(str(tmp_path / "a.jpg"), 2),
+    RClip.SearchResult(str(tmp_path / "b.jpg"), 1),
+  ][:top_k]
+
+
+def test_search_keeps_only_global_top_results_across_vector_batches(monkeypatch) -> None:
+  model = Mock()
+  model.compute_features_for_queries.side_effect = [
+    np.array([1, 0], dtype=np.float32),
+    np.array([0, 0], dtype=np.float32),
+  ]
+  database = Mock()
+  database.get_image_vectors_by_dir_path.return_value = [
+    {"filepath": filepath, "vector": np.array(vector, dtype=np.float32).tobytes()}
+    for filepath, vector in (
+      ("z.jpg", [0.8, 0]),
+      ("b.jpg", [0.9, 0]),
+      ("c.jpg", [0.2, 0]),
+      ("a.jpg", [0.9, 0]),
+      ("d.jpg", [0.7, 0]),
+    )
+  ]
+  rclip = _make_rclip(model, database)
+  monkeypatch.setattr(RClip, "SEARCH_BATCH_SIZE", 2)
+  batch_sizes: list[int] = []
+  stack = main_module.np.stack
+
+  def record_stack(features):
+    batch_sizes.append(len(features))
+    return stack(features)
+
+  monkeypatch.setattr(main_module.np, "stack", record_stack)
+
+  results = rclip.search("cat", ".", 3, ["bright"], ["dark"])
+
+  assert [result.filepath for result in results] == ["a.jpg", "b.jpg", "z.jpg"]
+  np.testing.assert_allclose([result.score for result in results], [0.9, 0.9, 0.8])
+  assert model.compute_features_for_queries.call_args_list == [call(["cat", "bright"]), call(["dark"])]
+  assert batch_sizes == [2, 2, 1]
+
+
+def test_search_can_return_every_ranked_result(monkeypatch) -> None:
+  monkeypatch.setattr(RClip, "SEARCH_BATCH_SIZE", 2)
+  database = Mock()
+  database.get_image_vectors_by_dir_path.return_value = [
+    {"filepath": f"{index}.jpg", "vector": np.array([index, 0], dtype=np.float32).tobytes()}
     for index in range(12)
   ]
   model = Mock()
-  model.compute_similarities_to_text.return_value = [(float(index), index) for index in range(12)]
+  model.compute_features_for_queries.side_effect = [
+    np.array([1, 0], dtype=np.float32),
+    np.array([0, 0], dtype=np.float32),
+  ]
   rclip = _make_rclip(model, database)
 
   assert rclip.search("cat", ".", top_k=None) == [
-    RClip.SearchResult(f"{index}.jpg", float(index)) for index in range(12)
+    RClip.SearchResult(f"{index}.jpg", float(index)) for index in reversed(range(12))
   ]
 
 

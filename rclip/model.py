@@ -1,6 +1,5 @@
 import logging
 import re
-from threading import Event
 from typing import Any, List, Optional, Tuple
 
 import numpy as np
@@ -195,30 +194,3 @@ class Model:
     if image_features is None:
       return text_features
     return text_features + image_features
-
-  def compute_similarities_to_text(
-    self,
-    item_features: FeatureVector,
-    positive_queries: List[str],
-    negative_queries: List[str],
-    *,
-    cancel_event: Event | None = None,
-  ) -> List[Tuple[float, int]]:
-    helpers.raise_if_cancelled(cancel_event)
-    positive_features = self.compute_features_for_queries(positive_queries)
-    helpers.raise_if_cancelled(cancel_event)
-    negative_features = self.compute_features_for_queries(negative_queries)
-    helpers.raise_if_cancelled(cancel_event)
-
-    features = positive_features - negative_features
-
-    similarities = features @ item_features.T
-    helpers.raise_if_cancelled(cancel_event)
-    sorted_similarities = sorted(
-      zip(similarities, range(item_features.shape[0])),
-      key=lambda similarity_with_index: similarity_with_index[0],
-      reverse=True,
-    )
-    helpers.raise_if_cancelled(cancel_event)
-
-    return sorted_similarities
