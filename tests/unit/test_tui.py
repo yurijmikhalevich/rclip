@@ -496,12 +496,17 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
 
       await pilot.click("#detail-frame", times=2)
       await pilot.pause()
+      assert app.query_one(DetailView).display
+      await pilot.press("v")
       assert not app.query_one(DetailView).display
       assert app.focused is cards[1]
       assert str(gallery_path.content) == f"0.800  {paths[1]}"
 
       await pilot.click(cards[0], times=2)
       await pilot.pause()
+      assert not app.query_one(DetailView).display
+      assert app.focused is cards[0]
+      await pilot.press("v")
       assert app.query_one(DetailView).display
       await pilot.press("v")
       await pilot.pause()

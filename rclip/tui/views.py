@@ -77,14 +77,6 @@ class ImageCard(Static, can_focus=True):
     if isinstance(self.app, RclipApp):
       self.app.select_card(self)
 
-  def on_click(self, event: events.Click) -> None:
-    from rclip.tui.app import RclipApp
-
-    if event.button == 1 and event.chain == 2 and isinstance(self.app, RclipApp):
-      self.focus()
-      self.app.select_card(self)
-      self.app.action_toggle_view()
-
 
 class ResultsGrid(ItemGrid, can_focus=True):
   def __init__(self, load_more: Callable[[], None]) -> None:
@@ -225,13 +217,6 @@ class DetailView(Vertical, can_focus=True):
     status.display = True
     if filepath is not None:
       self._load_detail()
-
-  def on_click(self, event: events.Click) -> None:
-    from rclip.tui.app import RclipApp
-
-    if event.button == 1 and event.chain == 2 and isinstance(self.app, RclipApp):
-      event.stop()
-      self.app.action_toggle_view()
 
   @work(thread=True, group="detail", exclusive=True, exit_on_error=False)
   def _load_detail(self) -> None:
