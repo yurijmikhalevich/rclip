@@ -193,7 +193,7 @@ are indexed instead of the RAW original.
 
 ### How do I preview the results?
 
-In a terminal supporting Kitty graphics, such as [Kitty](https://sw.kovidgoyal.net/kitty/), [Ghostty](https://ghostty.org/), or recent [iTerm2](https://iterm2.com/), pass the `--preview` (or `-p`) flag to **rclip**. Graphics support is not detected; unsupported terminals may show missing images or escape-sequence text:
+In a terminal supporting Kitty graphics, such as [Kitty](https://sw.kovidgoyal.net/kitty/), [Ghostty](https://ghostty.org/), latest [iTerm2](https://iterm2.com/), or [Konsole](https://konsole.kde.org/), pass the `--preview` (or `-p`) flag to **rclip**. Graphics support is not detected; unsupported terminals may show missing images or escape-sequence text:
 
 ```bash
 rclip -p kitty
@@ -254,7 +254,7 @@ Run `rclip --help` (or `rclip -h`) to see this list in your terminal. The positi
 | `--subtract`, `--sub`, `-s`, `-` `QUERY` | A text query or a path/URL to an image file to subtract from the "original" query. Can be used multiple times. |
 | `--top`, `-t` `N` | Number of top results to display, or search results to load per batch with `--interactive`. Default: `10`, or `100` with `--interactive`; interactive maximum: `100`. |
 | `--interactive`, `-i` | Open the interactive terminal UI and enter text queries there. Does not accept a positional query or `--add`/`--subtract`. Mutually exclusive with `--preview` and `--filepath-only`. |
-| `--preview`, `-p` | Preview results in the terminal (requires Kitty graphics). Mutually exclusive with `--filepath-only`. |
+| `--preview`, `-p` | Preview results in the terminal using Kitty graphics (e.g. Kitty, Ghostty, latest iTerm2, Konsole). Mutually exclusive with `--filepath-only`. |
 | `--filepath-only`, `-f` | Output only filepaths, without scores or the header. Mutually exclusive with `--preview`. |
 | `--preview-height`, `-H` `PX` | Preview height in pixels. Default: `400`. |
 | `--no-indexing`, `--skip-index`, `--skip-indexing`, `-n` | Skip updating the index. Use only when no images were added, changed, or removed since the last run. |
