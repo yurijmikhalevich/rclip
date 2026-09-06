@@ -88,11 +88,21 @@ def test_lists_recent_image_filepaths(tmp_path):
   try:
     photos = tmp_path / "photos"
     old = str(photos / "old.jpg")
-    new = str(photos / "new.jpg")
+    new_a = str(photos / "new-a.jpg")
+    new_b = str(photos / "new-b.jpg")
     database.upsert_image(_new_image(old, modified_at=1))
-    database.upsert_image(_new_image(new, modified_at=2))
+    database.upsert_image(_new_image(new_b, modified_at=2))
+    database.upsert_image(_new_image(new_a, modified_at=2))
     database.upsert_image(_new_image(str(tmp_path / "elsewhere" / "image.jpg"), modified_at=3))
 
-    assert [row["filepath"] for row in database.get_image_filepaths_by_dir_path(str(photos))] == [new, old]
+    assert [row["filepath"] for row in database.get_image_filepaths_by_dir_path(str(photos))] == [
+      new_a,
+      new_b,
+      old,
+    ]
+    assert [row["filepath"] for row in database.get_image_filepaths_by_dir_path(str(photos), (2, new_a))] == [
+      new_b,
+      old,
+    ]
   finally:
     database.close()

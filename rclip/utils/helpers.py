@@ -296,7 +296,8 @@ def init_arg_parser() -> argparse.ArgumentParser:
     "--top",
     "-t",
     type=positive_int_arg_type,
-    help="number of top results to display; default: 10, or 100 with --interactive; interactive maximum: 100",
+    help="number of top results to display, or load per search batch with --interactive;"
+    " default: 10, or 100 with --interactive; interactive maximum: 100",
   )
   display_mode_group = parser.add_mutually_exclusive_group()
   display_mode_group.add_argument(

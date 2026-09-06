@@ -47,6 +47,21 @@ def test_search_stops_loading_vectors_when_cancelled() -> None:
   model.compute_similarities_to_text.assert_not_called()
 
 
+def test_search_can_return_every_ranked_result() -> None:
+  database = Mock()
+  database.get_image_vectors_by_dir_path.return_value = [
+    {"filepath": f"{index}.jpg", "vector": np.zeros(512, dtype=np.float32).tobytes()}
+    for index in range(12)
+  ]
+  model = Mock()
+  model.compute_similarities_to_text.return_value = [(float(index), index) for index in range(12)]
+  rclip = _make_rclip(model, database)
+
+  assert rclip.search("cat", ".", top_k=None) == [
+    RClip.SearchResult(f"{index}.jpg", float(index)) for index in range(12)
+  ]
+
+
 def test_load_images_preserves_order_and_skips_failures(monkeypatch):
   monkeypatch.setattr(helpers, "_ensure_image_loading_configured", lambda: None)
   monkeypatch.setattr(helpers, "read_image", _fail_on_b)
@@ -71,13 +86,18 @@ def test_load_images_preserves_order_and_skips_failures(monkeypatch):
 def test_list_images_applies_exclusions_before_the_limit(tmp_path: Path) -> None:
   database = DB(tmp_path / "db.sqlite3")
   private = tmp_path / "private" / "new.jpg"
-  included = tmp_path / "included.jpg"
-  database.upsert_image(NewImage(filepath=str(private), modified_at=2, size=1, vector=b"x", hash=None))
-  database.upsert_image(NewImage(filepath=str(included), modified_at=1, size=1, vector=b"x", hash=None))
+  first = tmp_path / "first.jpg"
+  second = tmp_path / "second.jpg"
+  database.upsert_image(NewImage(filepath=str(private), modified_at=3, size=1, vector=b"x", hash=None))
+  database.upsert_image(NewImage(filepath=str(first), modified_at=2, size=1, vector=b"x", hash=None))
+  database.upsert_image(NewImage(filepath=str(second), modified_at=1, size=1, vector=b"x", hash=None))
   rclip = _make_rclip(Mock(), database, ["private"])
 
   try:
-    assert rclip.list_images(str(tmp_path), 1) == [str(included)]
+    first_page = rclip.list_images(str(tmp_path), 1)
+    assert first_page.filepaths == [str(first)]
+    assert first_page.next_cursor == RClip.ImageCursor(2, str(first))
+    assert rclip.list_images(str(tmp_path), 1, after=first_page.next_cursor) == RClip.ImagePage([str(second)], None)
   finally:
     rclip.close()
     database.close()

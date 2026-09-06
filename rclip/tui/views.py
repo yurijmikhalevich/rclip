@@ -1,7 +1,9 @@
+from bisect import bisect_right
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
 from threading import Semaphore
+from typing import Callable, Sequence, cast
 
 from textual import events, work
 from textual.app import ComposeResult
@@ -85,26 +87,40 @@ class ImageCard(Static, can_focus=True):
 
 
 class ResultsGrid(ItemGrid):
-  def __init__(self) -> None:
+  def __init__(self, load_more: Callable[[], None]) -> None:
     super().__init__(
       id="results",
       min_column_width=24,
       regular=False,
       stretch_height=False,
     )
+    self._load_more = load_more
 
-  def load_visible_previews(self) -> None:
+  @property
+  def cards(self) -> Sequence[ImageCard]:
+    # Textual types child collections as generic widgets; this grid mounts only image cards.
+    return cast(Sequence[ImageCard], self.children)
+
+  def update_visible(self) -> None:
     viewport = self.scrollable_content_region
-    for card in self.query(ImageCard):
-      if card.region.overlaps(viewport):
-        card.load_preview()
+    cards = self.cards
+    index = bisect_right(cards, self.scroll_y, key=lambda card: card.virtual_region.bottom)
+    visible_bottom = self.scroll_y + viewport.height
+    while index < len(cards):
+      card = cards[index]
+      if card.virtual_region.y >= visible_bottom:
+        break
+      card.load_preview()
+      index += 1
+    if self.max_scroll_y - self.scroll_y <= viewport.height:
+      self._load_more()
 
   def watch_scroll_y(self, old_value: float, new_value: float) -> None:
     super().watch_scroll_y(old_value, new_value)
-    self.call_after_refresh(self.load_visible_previews)
+    self.call_after_refresh(self.update_visible)
 
   def on_resize(self, _event: events.Resize) -> None:
-    self.call_after_refresh(self.load_visible_previews)
+    self.call_after_refresh(self.update_visible)
 
 
 class DetailScreen(Screen[None]):

@@ -27,20 +27,21 @@ from rclip.tui.transfer import copy_image_to_clipboard
 from rclip.tui.transfer import download_image
 from rclip.tui.views import DetailScreen
 from rclip.tui.views import ImageCard
+from rclip.tui.views import ResultsGrid
 from rclip.utils.helpers import init_arg_parser
 
 
 class FakeRclip(RClip):
   def __init__(self, results: list[RClip.SearchResult]) -> None:
     self.results = results
-    self.searches: list[tuple[str, str, int, list[str], list[str]]] = []
-    self.browses: list[tuple[str, int]] = []
+    self.searches: list[tuple[str, str, int | None, list[str], list[str]]] = []
+    self.browses: list[tuple[str, int, RClip.ImageCursor | None]] = []
 
   def search(
     self,
     query: str,
     directory: str,
-    top_k: int = 10,
+    top_k: int | None = 10,
     positive_queries: list[str] = [],
     negative_queries: list[str] = [],
     *,
@@ -49,9 +50,24 @@ class FakeRclip(RClip):
     self.searches.append((query, directory, top_k, positive_queries, negative_queries))
     return self.results[:top_k]
 
-  def list_images(self, directory: str, top_k: int, *, cancel_event: Event | None = None) -> list[str]:
-    self.browses.append((directory, top_k))
-    return [result.filepath for result in self.results[:top_k]]
+  def list_images(
+    self,
+    directory: str,
+    limit: int,
+    *,
+    after: RClip.ImageCursor | None = None,
+    cancel_event: Event | None = None,
+  ) -> RClip.ImagePage:
+    self.browses.append((directory, limit, after))
+    start = 0 if after is None else next(
+      index + 1 for index, result in enumerate(self.results) if result.filepath == after.filepath
+    )
+    results = self.results[start : start + limit]
+    next_cursor = None
+    if start + limit < len(self.results):
+      last_index = start + len(results) - 1
+      next_cursor = RClip.ImageCursor(float(len(self.results) - last_index), results[-1].filepath)
+    return RClip.ImagePage([result.filepath for result in results], next_cursor)
 
 
 def make_image(path: Path, color: str = "red") -> Path:
@@ -116,7 +132,7 @@ def test_interactive_main_rejects_additional_queries_before_setup(option: str, m
     main_module.main()
 
 
-def test_interactive_main_rejects_more_than_100_results_before_setup(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_interactive_main_rejects_search_batches_larger_than_100(monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.setattr(sys, "argv", ["rclip", "--interactive", "--top", "101"])
   monkeypatch.setattr(main_module, "init_rclip", lambda **_options: pytest.fail("must reject before setup"))
 
@@ -268,11 +284,18 @@ def test_tui_reports_searching_and_no_results(monkeypatch: pytest.MonkeyPatch, t
   release = Event()
   rclip = FakeRclip([])
 
-  def list_images(_directory: str, _top_k: int, *, cancel_event: Event | None = None) -> list[str]:
+  def list_images(
+    _directory: str,
+    _top_k: int,
+    *,
+    after: RClip.ImageCursor | None = None,
+    cancel_event: Event | None = None,
+  ) -> RClip.ImagePage:
+    assert after is None
     assert cancel_event is not None
     started.set()
     assert release.wait(2)
-    return []
+    return RClip.ImagePage([], None)
 
   monkeypatch.setattr(rclip, "list_images", list_images)
   app = RclipApp(rclip, str(tmp_path))
@@ -392,7 +415,7 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
       cards = list(app.query(ImageCard))
       assert len(cards) == 2
       assert isinstance(app.focused, Input)
-      assert rclip.searches == [("cat", str(tmp_path), 25, [], [])]
+      assert rclip.searches == [("cat", str(tmp_path), None, [], [])]
 
       await pilot.press("down")
       assert app.focused is cards[0]
@@ -443,6 +466,93 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
   asyncio.run(run())
 
 
+@pytest.mark.parametrize("query", ["", "cat"])
+def test_detail_navigation_loads_more_results(tmp_path: Path, query: str) -> None:
+  paths = [str(tmp_path / f"image-{index}.jpg") for index in range(51)]
+  rclip = FakeRclip([RClip.SearchResult(path, 1) for path in paths])
+  app = RclipApp(rclip, str(tmp_path), top_k=25)
+
+  async def run() -> None:
+    async with app.run_test(size=(80, 24)) as pilot:
+      await app.workers.wait_for_complete()
+      if query:
+        await pilot.press(*query, "enter")
+        await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert len(app.query(ImageCard)) == 25
+      await pilot.press("down", "enter")
+      assert isinstance(app.screen, DetailScreen)
+      for index, path in enumerate(paths[1:], 1):
+        if index % 25 == 0:
+          # Repeated input before the batch arrives must still advance exactly once.
+          app.action_move_right()
+          app.action_move_right()
+        else:
+          await pilot.press("right")
+        await app.workers.wait_for_complete()
+        await pilot.pause(0.1)
+        assert app.screen.filepath == path
+      await pilot.press("right")
+      assert app.screen.filepath == paths[-1]
+      await pilot.press("left")
+      assert app.screen.filepath == paths[-2]
+      await pilot.press("escape")
+      await pilot.pause()
+      assert isinstance(app.focused, ImageCard)
+      assert app.focused.result.filepath == paths[-2]
+      assert [card.result.filepath for card in app.query(ImageCard)] == paths
+
+  asyncio.run(run())
+  assert len(rclip.browses) == (1 if query else 3)
+  assert rclip.searches == ([(query, str(tmp_path), None, [], [])] if query else [])
+
+
+@pytest.mark.parametrize("action", ["left", "escape"])
+def test_detail_navigation_cancels_pending_advance(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, action: str
+) -> None:
+  paths = [str(tmp_path / f"image-{index}.jpg") for index in range(26)]
+  rclip = FakeRclip([RClip.SearchResult(path, 1) for path in paths])
+  list_images = rclip.list_images
+  started = Event()
+  release = Event()
+
+  def slow_list_images(
+    directory: str, limit: int, *, after: RClip.ImageCursor | None = None, cancel_event: Event | None = None
+  ) -> RClip.ImagePage:
+    if after is not None:
+      started.set()
+      assert release.wait(5)
+    return list_images(directory, limit, after=after, cancel_event=cancel_event)
+
+  monkeypatch.setattr(rclip, "list_images", slow_list_images)
+  app = RclipApp(rclip, str(tmp_path))
+
+  async def run() -> None:
+    async with app.run_test(size=(80, 24)) as pilot:
+      try:
+        await app.workers.wait_for_complete()
+        await pilot.press("down", "enter")
+        await pilot.press(*(["right"] * 25))
+        assert await asyncio.to_thread(started.wait, 1)
+        await pilot.press("right", action)
+      finally:
+        release.set()
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert len(app.query(ImageCard)) == 26
+      if action == "left":
+        assert isinstance(app.screen, DetailScreen)
+        assert app.screen.filepath == paths[23]
+      else:
+        assert not isinstance(app.screen, DetailScreen)
+        assert isinstance(app.focused, ImageCard)
+        assert app.focused.result.filepath == paths[24]
+
+  asyncio.run(run())
+  assert len(rclip.browses) == 2
+
+
 def test_new_search_interrupts_the_running_search_and_keeps_one_active(tmp_path: Path) -> None:
   class SlowRclip(FakeRclip):
     def __init__(self) -> None:
@@ -458,7 +568,7 @@ def test_new_search_interrupts_the_running_search_and_keeps_one_active(tmp_path:
       self,
       query: str,
       directory: str,
-      top_k: int = 10,
+      top_k: int | None = 10,
       positive_queries: list[str] = [],
       negative_queries: list[str] = [],
       *,
@@ -506,9 +616,57 @@ def test_new_search_interrupts_the_running_search_and_keeps_one_active(tmp_path:
   asyncio.run(run())
 
 
+def test_new_search_interrupts_loading_more(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  paths = [tmp_path / f"image-{index}.jpg" for index in range(26)]
+  rclip = FakeRclip([RClip.SearchResult(str(path), 1 - index / 10) for index, path in enumerate(paths)])
+  list_images = rclip.list_images
+  page_started = Event()
+  page_cancelled = Event()
+
+  def slow_list_images(
+    directory: str,
+    limit: int,
+    *,
+    after: RClip.ImageCursor | None = None,
+    cancel_event: Event | None = None,
+  ) -> RClip.ImagePage:
+    if after is None:
+      return list_images(directory, limit, cancel_event=cancel_event)
+    assert cancel_event is not None
+    page_started.set()
+    if cancel_event.wait(2):
+      page_cancelled.set()
+      raise InterruptedError
+    raise AssertionError("loading more was not cancelled")
+
+  monkeypatch.setattr(rclip, "list_images", slow_list_images)
+  app = RclipApp(rclip, str(tmp_path), top_k=25)
+
+  async def run() -> None:
+    async with app.run_test() as pilot:
+      await app.workers.wait_for_complete()
+      app.query_one(ResultsGrid).scroll_end(animate=False)
+      await pilot.pause()
+      assert await asyncio.to_thread(page_started.wait, 1)
+
+      search_input = app.query_one(Input)
+      search_input.focus()
+      search_input.value = "cat"
+      await pilot.pause(0.3)
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+
+      assert page_cancelled.is_set()
+      assert rclip.searches == [("cat", str(tmp_path), None, [], [])]
+      assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths[:25]]
+
+  asyncio.run(run())
+
+
 def test_tui_only_loads_visible_previews(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   path = make_image(tmp_path / "image.jpg")
-  rclip = FakeRclip([RClip.SearchResult(str(path), 1 - index / 100) for index in range(100)])
+  filepaths = [str(tmp_path / f"image-{index}.jpg") for index in range(100)]
+  rclip = FakeRclip([RClip.SearchResult(filepath, 1 - index / 100) for index, filepath in enumerate(filepaths)])
   app = RclipApp(rclip, str(tmp_path))
   loaded: list[str] = []
   lock = Lock()
@@ -535,7 +693,7 @@ def test_tui_only_loads_visible_previews(tmp_path: Path, monkeypatch: pytest.Mon
   monkeypatch.setattr("rclip.tui.views.prepare_image", prepare)
 
   async def run() -> None:
-    async with app.run_test(size=(80, 24)):
+    async with app.run_test(size=(80, 24)) as pilot:
       assert await asyncio.to_thread(four_started.wait, 1)
       await asyncio.sleep(0.05)
       assert max_active == 4
@@ -545,13 +703,21 @@ def test_tui_only_loads_visible_previews(tmp_path: Path, monkeypatch: pytest.Mon
 
       assert 0 < len(loaded) < len(app.query(ImageCard))
 
+      grid = app.query_one(ResultsGrid)
+      grid.scroll_end(animate=False)
+      await pilot.pause()
+      grid.update_visible()
+      await pilot.pause()
+      await app.workers.wait_for_complete()
+      assert filepaths[24] in loaded
+
   asyncio.run(run())
 
 
-def test_interactive_top_limits_empty_browse(tmp_path: Path) -> None:
-  path = make_image(tmp_path / "image.jpg")
-  rclip = FakeRclip([RClip.SearchResult(str(path), 1 - index / 50) for index in range(50)])
-  app = RclipApp(rclip, str(tmp_path), top_k=25)
+def test_empty_browse_uses_bounded_batches(tmp_path: Path) -> None:
+  results = [RClip.SearchResult(str(tmp_path / f"image-{index}.jpg"), 1 - index / 50) for index in range(50)]
+  rclip = FakeRclip(results)
+  app = RclipApp(rclip, str(tmp_path), top_k=10)
 
   async def run() -> None:
     async with app.run_test() as pilot:
@@ -559,6 +725,130 @@ def test_interactive_top_limits_empty_browse(tmp_path: Path) -> None:
       await pilot.pause()
 
       assert len(app.query(ImageCard)) == 25
-      assert rclip.browses == [(str(tmp_path), 25)]
+      assert rclip.browses == [(str(tmp_path), 25, None)]
 
   asyncio.run(run())
+
+
+def test_empty_browse_loads_more_as_keyboard_moves_down(tmp_path: Path) -> None:
+  paths = [tmp_path / f"image-{index}.jpg" for index in range(26)]
+  rclip = FakeRclip([RClip.SearchResult(str(path), 1 - index / 10) for index, path in enumerate(paths)])
+  app = RclipApp(rclip, str(tmp_path), top_k=25)
+
+  async def run() -> None:
+    async with app.run_test(size=(80, 24)) as pilot:
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+
+      for _ in range(10):
+        await pilot.press("down")
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+
+      assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths]
+
+  asyncio.run(run())
+
+  cursor = RClip.ImageCursor(2, str(paths[24]))
+  assert rclip.browses == [
+    (str(tmp_path), 25, None),
+    (str(tmp_path), 25, cursor),
+  ]
+
+
+def test_search_loads_more_on_scroll(tmp_path: Path) -> None:
+  paths = [tmp_path / f"image-{index}.jpg" for index in range(26)]
+  rclip = FakeRclip([RClip.SearchResult(str(path), 1 - index / 10) for index, path in enumerate(paths)])
+  app = RclipApp(rclip, str(tmp_path), top_k=25)
+
+  async def run() -> None:
+    async with app.run_test(size=(80, 24)) as pilot:
+      await app.workers.wait_for_complete()
+
+      search_input = app.query_one(Input)
+      search_input.value = "cat"
+      await pilot.pause(0.3)
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths[:25]]
+
+      app.query_one(ResultsGrid).scroll_end(animate=False)
+      async with asyncio.timeout(0.25):
+        while len(app.query(ImageCard)) != 26:
+          await asyncio.sleep(0.01)
+      assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths]
+
+  asyncio.run(run())
+
+  assert rclip.searches == [("cat", str(tmp_path), None, [], [])]
+
+
+@pytest.mark.parametrize("detail", [False, True])
+def test_empty_browse_retries_loading_more_after_failure(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, detail: bool
+) -> None:
+  paths = [tmp_path / f"image-{index}.jpg" for index in range(26)]
+  rclip = FakeRclip([RClip.SearchResult(str(path), 1 - index / 10) for index, path in enumerate(paths)])
+  app = RclipApp(rclip, str(tmp_path), top_k=25)
+  list_images = rclip.list_images
+  failed = False
+  notifications: list[tuple[str, str | None]] = []
+
+  def fail_second_page_once(
+    directory: str,
+    limit: int,
+    *,
+    after: RClip.ImageCursor | None = None,
+    cancel_event: Event | None = None,
+  ) -> RClip.ImagePage:
+    nonlocal failed
+    if after is not None and not failed:
+      failed = True
+      raise RuntimeError("page failed")
+    return list_images(directory, limit, after=after, cancel_event=cancel_event)
+
+  monkeypatch.setattr(rclip, "list_images", fail_second_page_once)
+  monkeypatch.setattr(
+    app,
+    "notify",
+    lambda message, **options: notifications.append((message, options.get("title"))),
+  )
+
+  async def run() -> None:
+    async with app.run_test() as pilot:
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths[:25]]
+
+      grid = app.query_one(ResultsGrid)
+      if detail:
+        await pilot.press("down", "enter", *(["right"] * 25))
+      else:
+        grid.scroll_end(animate=False)
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths[:25]]
+      assert notifications == [("page failed", "Unable to load more images")]
+
+      if detail:
+        assert isinstance(app.screen, DetailScreen)
+        assert app.screen.filepath == str(paths[24])
+        await pilot.press("right")
+      else:
+        grid.scroll_home(animate=False)
+        await pilot.pause()
+        grid.scroll_end(animate=False)
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths]
+      if detail:
+        assert isinstance(app.screen, DetailScreen)
+        assert app.screen.filepath == str(paths[25])
+
+  asyncio.run(run())
+
+  cursor = RClip.ImageCursor(2, str(paths[24]))
+  assert rclip.browses == [
+    (str(tmp_path), 25, None),
+    (str(tmp_path), 25, cursor),
+  ]

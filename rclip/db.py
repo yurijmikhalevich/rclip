@@ -52,6 +52,9 @@ class DB:
     """)
     # Query for images
     self._con.execute("CREATE UNIQUE INDEX IF NOT EXISTS existing_images ON images(filepath) WHERE deleted IS NULL")
+    self._con.execute(
+      "CREATE INDEX IF NOT EXISTS recent_images ON images(modified_at DESC, filepath) WHERE deleted IS NULL"
+    )
     self._con.execute("CREATE TABLE IF NOT EXISTS db_version (version INTEGER)")
     self._con.commit()
 
@@ -170,9 +173,12 @@ class DB:
       (self._get_dirpath_like_pattern(path),),
     )
 
-  def get_image_filepaths_by_dir_path(self, path: str) -> sqlite3.Cursor:
-    return self._con.execute(
-      "SELECT filepath FROM images WHERE filepath LIKE ? ESCAPE '\\' AND deleted IS NULL "
-      "ORDER BY modified_at DESC, filepath",
-      (self._get_dirpath_like_pattern(path),),
-    )
+  def get_image_filepaths_by_dir_path(
+    self, path: str, after: tuple[float, str] | None = None
+  ) -> sqlite3.Cursor:
+    query = "SELECT filepath, modified_at FROM images WHERE filepath LIKE ? ESCAPE '\\' AND deleted IS NULL"
+    parameters: list[object] = [self._get_dirpath_like_pattern(path)]
+    if after is not None:
+      query += " AND modified_at <= ? AND (modified_at < ? OR filepath > ?)"
+      parameters.extend((after[0], after[0], after[1]))
+    return self._con.execute(query + " ORDER BY modified_at DESC, filepath", parameters)
