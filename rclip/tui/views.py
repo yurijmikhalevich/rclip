@@ -12,6 +12,7 @@ from textual.screen import Screen
 from textual.worker import get_current_worker
 from textual.widgets import Label, Static
 
+from rclip.tui.media import CenteredTGPImage
 from rclip.tui.media import ImageWidget
 from rclip.tui.media import prepare_image
 
@@ -130,7 +131,7 @@ class DetailThumbnail(Static):
     self.result_offset = offset
     self.browse = browse
     self.filepath: str | None = None
-    self._image = ImageWidget(classes="thumbnail")
+    self._image = CenteredTGPImage(classes="thumbnail")
 
   def compose(self) -> ComposeResult:
     with CenterMiddle(classes="detail-thumbnail-frame"):

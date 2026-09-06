@@ -1,7 +1,7 @@
 import asyncio
 import base64
 from contextlib import nullcontext
-from io import StringIO
+from io import BytesIO, StringIO
 import os
 from pathlib import Path
 import re
@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from PIL import Image
 from rich.console import Console
 from textual_image.renderable import TGPImage as TGPRenderable
+from textual_image._terminal import CellSize
 import pytest
 from textual.geometry import Size
 from textual.widgets import Input, Static
@@ -21,6 +22,7 @@ from rclip import main as main_module
 from rclip.main import RClip
 from rclip.tui.app import RclipApp
 from rclip.tui.app import _display_directory
+from rclip.tui.media import CenteredTGPImage
 from rclip.tui.media import StableTGPImage
 from rclip.tui.media import prepare_image
 from rclip.tui.transfer import TransferError
@@ -196,6 +198,27 @@ def test_kitty_image_reuses_its_renderable_until_its_size_changes(
 
   image.on_unmount()
   assert second.cleaned
+
+
+@pytest.mark.parametrize("size", [(1200, 800), (800, 1200), (800, 800)])
+def test_strip_preview_pixels_are_centered_and_keep_aspect_ratio(
+  monkeypatch: pytest.MonkeyPatch, size: tuple[int, int]
+) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(17, 33))
+  renderable = CenteredTGPImage._Renderable(Image.new("RGB", size, "red"), 13, 5)
+  Console(file=StringIO(), width=13).print(renderable)
+  chunks = re.findall(r"\x1b_G[^;]*;([A-Za-z0-9+/=]+)\x1b\\", output.getvalue())
+  with Image.open(BytesIO(base64.b64decode("".join(chunks)))) as image:
+    assert image.size == (221, 165)
+    bounds = image.getbbox()
+    assert bounds is not None
+    left, top, right, bottom = bounds
+    assert abs(left - (image.width - right)) <= 1
+    assert abs(top - (image.height - bottom)) <= 1
+    assert abs((right - left) - (bottom - top) * size[0] / size[1]) <= 1
+    assert left > 0 or top > 0
 
 
 def test_kitty_image_cleanup_deletes_only_its_own_image(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -640,10 +663,10 @@ def test_detail_filmstrip_centers_selection_and_navigates(tmp_path: Path) -> Non
         assert thumbnail._image.content_size.height < selected_size.height
         frame = thumbnail.query_one(".detail-thumbnail-frame").region
         assert 0 < selected_frame.width - frame.width <= 2
-        assert selected_frame.height - frame.height == 1
+        assert selected_frame.height - frame.height == 2
         slot = thumbnail.region
         preview = thumbnail._image.region
-        assert abs(frame.y * 2 + frame.height - (slot.y * 2 + slot.height)) <= 1
+        assert frame.y - slot.y == slot.bottom - frame.bottom == 1
         assert abs(preview.x * 2 + preview.width - (frame.x * 2 + frame.width)) <= 1
         assert abs(preview.y * 2 + preview.height - (frame.y * 2 + frame.height)) <= 1
       await pilot.press("right", "right")

@@ -4,6 +4,7 @@ from PIL import Image as PILImage
 from PIL import ImageOps
 from textual.app import RenderResult
 from textual.geometry import Size
+from textual_image._pixeldata import PixelData
 from textual_image.renderable import TGPImage as TGPRenderable
 from textual_image.renderable.tgp import _send_tgp_message
 from textual_image.widget import TGPImage
@@ -65,3 +66,15 @@ class StableTGPImage(TGPImage, Renderable=_TGPRenderable):
 
 
 ImageWidget = StableTGPImage
+
+
+class _CenteredTGPRenderable(_TGPRenderable):
+  def _send_image_to_terminal(self, width: int, height: int) -> None:
+    self._image_data = PixelData(
+      ImageOps.pad(self._image_data.pil_image.convert("RGBA"), (width, height), color=(0, 0, 0, 0))
+    )
+    super()._send_image_to_terminal(width, height)
+
+
+class CenteredTGPImage(StableTGPImage, Renderable=_CenteredTGPRenderable):
+  """Center an aspect-preserving image in its full widget area, at pixel precision."""
