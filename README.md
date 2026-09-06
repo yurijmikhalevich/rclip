@@ -28,7 +28,7 @@ rclip "two parrots on a branch"
   macOS/Windows and experimental RAW (`arw`, `cr2`, `dng`).
 - **Fast incremental indexing** – only new and changed images are reprocessed on subsequent runs.
 - **Interactive terminal UI** – search a responsive thumbnail grid without leaving the terminal.
-- **Terminal previews** – view images inline in terminals supporting Kitty graphics.
+- **Terminal previews** – view images inline in terminals supporting Kitty graphics, such as Kitty, Ghostty, latest iTerm2, and Konsole.
 - **Cross-platform** – Linux, macOS (Apple Silicon), and Windows.
 
 ## Installation
