@@ -641,6 +641,11 @@ def test_detail_filmstrip_centers_selection_and_navigates(tmp_path: Path) -> Non
         frame = thumbnail.query_one(".detail-thumbnail-frame").region
         assert 0 < selected_frame.width - frame.width <= 2
         assert selected_frame.height - frame.height == 1
+        slot = thumbnail.region
+        preview = thumbnail._image.region
+        assert abs(frame.y * 2 + frame.height - (slot.y * 2 + slot.height)) <= 1
+        assert abs(preview.x * 2 + preview.width - (frame.x * 2 + frame.width)) <= 1
+        assert abs(preview.y * 2 + preview.height - (frame.y * 2 + frame.height)) <= 1
       await pilot.press("right", "right")
       await app.workers.wait_for_complete()
       assert [thumbnail.filepath for thumbnail in screen.thumbnails] == [*paths[2:], None, None]
