@@ -8,18 +8,30 @@ import pytest
 from rclip.utils import preview as preview_module
 
 
-@pytest.mark.parametrize("term", ["xterm-kitty", "xterm-256color", "tmux-256color"])
+@pytest.mark.parametrize(
+  "term,tmux,wrapped",
+  [
+    ("xterm-kitty", "", False),
+    ("xterm-256color", "", False),
+    ("screen-256color", "", False),
+    ("screen-256color", "/tmp/tmux-test/default,123,0", True),
+    ("xterm-256color", "/tmp/tmux-test/default,123,0", True),
+    ("tmux-256color", "", True),
+  ],
+)
 @pytest.mark.parametrize("height", [1, 50, 400])
-def test_preview_transmits_resized_png_in_kitty_chunks(monkeypatch, capsys, term, height):
+def test_preview_transmits_resized_png_in_kitty_chunks(monkeypatch, capsys, term, tmux, wrapped, height):
   original = Image.frombytes("RGB", (200, 100), Random(0).randbytes(60000))
   monkeypatch.setattr(preview_module, "read_image", lambda _filepath, **_kw: original.copy())
   monkeypatch.setenv("TERM", term)
+  monkeypatch.setenv("TMUX", tmux)
 
   preview_module.preview("cat.jpg", height)
 
   output = capsys.readouterr().out
   assert output.endswith("\n")
-  if term.startswith("tmux"):
+  assert output.startswith("\033Ptmux;") == wrapped
+  if wrapped:
     output = output.replace("\033Ptmux;", "").replace("\033\033", "\033").replace("\033\\\033\\", "\033\\")
   commands = output.removesuffix("\n").split("\033\\")
   assert commands.pop() == ""

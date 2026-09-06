@@ -41,7 +41,7 @@ def preview(filepath: str, img_height_px: int):
     more = int(offset + 4096 < len(img_str))
     command = f"a=T,f=100,q=2,m={more}" if offset == 0 else f"q=2,m={more}"
     sequence = f"\033_G{command};{chunk}\033\\"
-    if os.getenv("TERM", "").startswith(("screen", "tmux")):
+    if os.getenv("TMUX") or os.getenv("TERM", "").startswith("tmux"):
       sequence = "\033Ptmux;" + sequence.replace("\033", "\033\033") + "\033\\"
     print(sequence, end="")
   print()
