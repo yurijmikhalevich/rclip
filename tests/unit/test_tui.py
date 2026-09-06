@@ -717,13 +717,14 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str) -> Non
         if index == 22:
           await pilot.resize_terminal(160, 24)
         await app.workers.wait_for_complete()
-        await pilot.pause(0.1)
-        assert app.screen.filepath == path
-        neighbors = len(app.screen.thumbnails) // 2
-        assert [thumbnail.filepath for thumbnail in app.screen.thumbnails] == [
+        neighbors = 4 if index >= 22 else 2
+        expected = [
           paths[neighbor] if 0 <= neighbor < len(paths) else None
           for neighbor in range(index - neighbors, index + neighbors + 1)
         ]
+        async with asyncio.timeout(0.25):
+          while app.screen.filepath != path or [thumbnail.filepath for thumbnail in app.screen.thumbnails] != expected:
+            await asyncio.sleep(0.01)
       await pilot.press("right")
       assert app.screen.filepath == paths[-1]
       await pilot.press("left")
