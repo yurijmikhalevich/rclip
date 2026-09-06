@@ -122,7 +122,7 @@ class RclipApp(App[None]):
     self._search(query, self._search_generation, None)
 
   def _load_more(self) -> None:
-    if self._loading_more or (isinstance(self.screen, DetailScreen) and not self._pending_detail_advance):
+    if self._loading_more or (isinstance(self.screen, DetailScreen) and self._selected_index + 2 < len(self._cards())):
       return
     query = self.query_one("#search", Input).value.strip()
     if query:
@@ -215,6 +215,8 @@ class RclipApp(App[None]):
       self._pending_detail_advance = False
       if cards and isinstance(self.screen, DetailScreen):
         self._move_detail(1)
+    if append and isinstance(self.screen, DetailScreen):
+      self._update_detail()
     if not append:
       grid.scroll_home(animate=False)
       self._selected_index = 0
@@ -315,8 +317,19 @@ class RclipApp(App[None]):
     if index == self._selected_index:
       return
     self._selected_index = index
-    if isinstance(self.screen, DetailScreen):
-      self.screen.show_image(cards[index].result.filepath)
+    self._update_detail()
+
+  def _update_detail(self) -> None:
+    if not isinstance(self.screen, DetailScreen):
+      return
+    cards = self._cards()
+    filepath = cards[self._selected_index].result.filepath
+    if self.screen.filepath != filepath:
+      self.screen.show_image(filepath)
+    for thumbnail in self.screen.thumbnails:
+      index = self._selected_index + thumbnail.result_offset
+      thumbnail.show_image(cards[index].result.filepath if 0 <= index < len(cards) else None)
+    self._load_more()
 
   def action_move_left(self) -> None:
     if isinstance(self.screen, DetailScreen):
@@ -354,7 +367,8 @@ class RclipApp(App[None]):
 
   def action_view(self) -> None:
     if card := self._selected_card():
-      self.push_screen(DetailScreen(card.result.filepath))
+      self.push_screen(DetailScreen(card.result.filepath, self._move_detail))
+      self.call_after_refresh(self._update_detail)
 
   def action_go_back(self) -> None:
     self._pending_detail_advance = False

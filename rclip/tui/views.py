@@ -7,7 +7,7 @@ from typing import Callable, Sequence, cast
 
 from textual import events, work
 from textual.app import ComposeResult
-from textual.containers import CenterMiddle, ItemGrid
+from textual.containers import CenterMiddle, Horizontal, ItemGrid
 from textual.screen import Screen
 from textual.worker import get_current_worker
 from textual.widgets import Label, Static
@@ -123,15 +123,61 @@ class ResultsGrid(ItemGrid):
     self.call_after_refresh(self.update_visible)
 
 
+class DetailThumbnail(Static):
+  def __init__(self, offset: int, browse: Callable[[int], None]) -> None:
+    super().__init__(classes="detail-thumbnail selected" if offset == 0 else "detail-thumbnail")
+    self.result_offset = offset
+    self.browse = browse
+    self.filepath: str | None = None
+    self._image = ImageWidget(classes="thumbnail")
+
+  def compose(self) -> ComposeResult:
+    with CenterMiddle():
+      yield self._image
+
+  def show_image(self, filepath: str | None) -> None:
+    if filepath == self.filepath:
+      return
+    self.filepath = filepath
+    self._image.image = None
+    self._load_preview()
+
+  @work(thread=True, exclusive=True, exit_on_error=False)
+  def _load_preview(self) -> None:
+    filepath = self.filepath
+    if filepath is None:
+      return
+    with _IMAGE_DECODES:
+      if get_current_worker().is_cancelled:
+        return
+      try:
+        preview = prepare_image(filepath, PREVIEW_SIZE)
+      except Exception:
+        return
+      self.app.call_from_thread(self._show_preview, filepath, preview)
+
+  def _show_preview(self, filepath: str, preview: BytesIO) -> None:
+    if self.is_attached and filepath == self.filepath:
+      self._image.image = preview
+
+  def on_click(self, event: events.Click) -> None:
+    event.stop()
+    if event.button == 1 and event.chain == 1 and self.filepath is not None:
+      self.browse(self.result_offset)
+
+
 class DetailScreen(Screen[None]):
-  def __init__(self, filepath: str) -> None:
+  def __init__(self, filepath: str, browse: Callable[[int], None]) -> None:
     super().__init__()
     self.filepath = filepath
     self._image = ImageWidget(classes="detail-image")
+    self.thumbnails = [DetailThumbnail(offset, browse) for offset in range(-2, 3)]
 
   def compose(self) -> ComposeResult:
     with CenterMiddle(id="detail-frame"):
       yield self._image
+    with Horizontal(id="detail-filmstrip"):
+      yield from self.thumbnails
     yield Static("Loading higher-resolution image…", id="detail-status", markup=False)
     yield Static(self.filepath, id="detail-path", markup=False)
     yield Static(
