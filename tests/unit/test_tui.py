@@ -773,7 +773,9 @@ def test_search_loads_more_on_scroll(tmp_path: Path) -> None:
       assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths[:25]]
 
       app.query_one(ResultsGrid).scroll_end(animate=False)
-      await pilot.pause(0.1)
+      async with asyncio.timeout(0.25):
+        while len(app.query(ImageCard)) != 26:
+          await asyncio.sleep(0.01)
       assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths]
 
   asyncio.run(run())
