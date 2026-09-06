@@ -36,7 +36,7 @@ def walk(
         if skip_hidden and entry.name.startswith("."):
           continue
         if entry.is_dir():
-          if not exclude_dir_re.match(entry.path):
+          if not exclude_dir_re.match(os.path.join(".", os.path.relpath(entry.path, directory))):
             dirs_to_process.append(entry.path)
         elif entry.is_file() and file_re.match(entry.name):
           yield entry

@@ -358,7 +358,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
     "--include-hidden",
     action="store_true",
     default=False,
-    help="index dot-prefixed hidden files and directories"
+    help="index and search dot-prefixed hidden files and directories"
     " (e.g. .DS_Store, ._IMG_1234.JPG, .Spotlight-V100);"
     " by default they are skipped since they are usually OS metadata rather than user files",
   )
