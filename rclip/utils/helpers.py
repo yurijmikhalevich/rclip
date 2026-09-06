@@ -312,7 +312,8 @@ def init_arg_parser() -> argparse.ArgumentParser:
     "-p",
     action="store_true",
     default=False,
-    help="preview results in the terminal (supported in iTerm2, Konsole 22.04+, wezterm, Mintty, mlterm)",
+    help="preview results in the terminal using Kitty graphics"
+    " (e.g. Kitty, Ghostty, latest iTerm2, Konsole)",
   )
   display_mode_group.add_argument(
     "--filepath-only",

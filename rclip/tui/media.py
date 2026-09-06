@@ -4,9 +4,7 @@ from PIL import Image as PILImage
 from PIL import ImageOps
 from textual.app import RenderResult
 from textual.geometry import Size
-from textual_image.renderable import Image as TerminalRenderable
 from textual_image.renderable import TGPImage as TGPRenderable
-from textual_image.widget import Image as TerminalImage
 from textual_image.widget import TGPImage
 
 from rclip.utils import helpers
@@ -53,4 +51,4 @@ class StableTGPImage(TGPImage, Renderable=TGPRenderable):
     self._rendered_size = None
 
 
-ImageWidget = StableTGPImage if TerminalRenderable is TGPRenderable else TerminalImage
+ImageWidget = StableTGPImage

@@ -1,33 +1,51 @@
 import base64
 from io import BytesIO
+from random import Random
 
 from PIL import Image
+import pytest
 
 from rclip.utils import preview as preview_module
 
 
-def test_preview_uses_terminal_cell_dimensions_when_available(monkeypatch, capsys):
-  monkeypatch.setattr(preview_module, "read_image", lambda _filepath, **_kw: Image.new("RGB", (200, 100), "red"))
-  monkeypatch.setattr(preview_module, "_get_preview_dimensions", lambda _width, _height: ("10", "5"))
+@pytest.mark.parametrize(
+  "term,tmux,wrapped",
+  [
+    ("xterm-kitty", "", False),
+    ("xterm-256color", "", False),
+    ("screen-256color", "", False),
+    ("screen-256color", "/tmp/tmux-test/default,123,0", True),
+    ("xterm-256color", "/tmp/tmux-test/default,123,0", True),
+    ("tmux-256color", "", True),
+  ],
+)
+@pytest.mark.parametrize("height", [1, 50, 400])
+def test_preview_transmits_resized_png_in_kitty_chunks(monkeypatch, capsys, term, tmux, wrapped, height):
+  original = Image.frombytes("RGB", (200, 100), Random(0).randbytes(60000))
+  monkeypatch.setattr(preview_module, "read_image", lambda _filepath, **_kw: original.copy())
+  monkeypatch.setenv("TERM", term)
+  monkeypatch.setenv("TMUX", tmux)
 
-  preview_module.preview("cat.jpg", 50)
+  preview_module.preview("cat.jpg", height)
 
-  output = capsys.readouterr().out.rstrip("\n")
-  start_sequence = preview_module._get_start_sequence()
-  end_sequence = preview_module._get_end_sequence()
-
-  assert ";width=10;height=5:" in output
-  assert output.startswith(f"{start_sequence}1337;File=inline=1;size=")
-  assert output.endswith(end_sequence)
-
-  metadata, encoded_image = output.split(":", 1)
-  assert metadata.startswith(f"{start_sequence}1337;File=inline=1;size=")
-
-  image = Image.open(BytesIO(base64.b64decode(encoded_image.removesuffix(end_sequence))))
-  assert image.size == (100, 50)
-
-
-def test_get_preview_dimensions_falls_back_to_pixels_when_tty_geometry_is_unavailable(monkeypatch):
-  monkeypatch.setattr(preview_module.sys.stdout, "isatty", lambda: False)
-
-  assert preview_module._get_preview_dimensions(120, 60) == ("120px", "60px")
+  output = capsys.readouterr().out
+  assert output.endswith("\n")
+  prefix = "\033Ptmux;\033\033_G" if wrapped else "\033_G"
+  suffix = "\033\033\\\033\\" if wrapped else "\033\\"
+  commands = output.removesuffix("\n").split(suffix)
+  assert commands.pop() == ""
+  payload = ""
+  for index, command in enumerate(commands):
+    assert command.startswith(prefix)
+    header, chunk = command.removeprefix(prefix).split(";", 1)
+    more = int(index < len(commands) - 1)
+    expected = f"a=T,f=100,q=2,m={more}" if index == 0 else f"q=2,m={more}"
+    assert header == expected
+    assert 0 < len(chunk) <= 4096
+    payload += chunk
+  image = Image.open(BytesIO(base64.b64decode(payload, validate=True)))
+  image.load()
+  assert image.format == "PNG"
+  assert image.size == (2 * min(height, 100), min(height, 100))
+  if height == 400:
+    assert len(commands) > 1
