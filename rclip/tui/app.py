@@ -77,6 +77,7 @@ class RclipApp(App[None]):
     self._next_cursor: RClip.ImageCursor | None = None
     self._remaining_search_results: list[TuiResult] = []
     self._loading_more = False
+    self._pending_detail_advance = False
 
   def compose(self) -> ComposeResult:
     directory = _display_directory(self.working_directory)
@@ -112,6 +113,7 @@ class RclipApp(App[None]):
 
   def _begin_search(self, query: str) -> None:
     self._search_generation += 1
+    self._pending_detail_advance = False
     self._loading_more = False
     self._next_cursor = None
     self._remaining_search_results = []
@@ -119,7 +121,7 @@ class RclipApp(App[None]):
     self._search(query, self._search_generation, None)
 
   def _load_more(self) -> None:
-    if self._loading_more or isinstance(self.screen, DetailScreen):
+    if self._loading_more or (isinstance(self.screen, DetailScreen) and not self._pending_detail_advance):
       return
     query = self.query_one("#search", Input).value.strip()
     if query:
@@ -207,6 +209,10 @@ class RclipApp(App[None]):
       return
     self._next_cursor = next_cursor
     self._loading_more = False
+    if append and self._pending_detail_advance:
+      self._pending_detail_advance = False
+      if cards and isinstance(self.screen, DetailScreen):
+        self._move_detail(1)
     if not append:
       grid.scroll_home(animate=False)
       self._selected_index = 0
@@ -218,6 +224,7 @@ class RclipApp(App[None]):
     if not self._is_current_search(generation, query):
       return
     self._loading_more = False
+    self._pending_detail_advance = False
     search_input.border_title = None
     self.notify(message, title="Unable to load more images" if append else "Search failed", severity="error")
 
@@ -291,8 +298,15 @@ class RclipApp(App[None]):
     return len(cards)
 
   def _move_detail(self, offset: int) -> None:
+    self._pending_detail_advance = False
     cards = self._cards()
     if not cards:
+      return
+    if self._selected_index + offset >= len(cards) and (
+      self._loading_more or self._next_cursor or self._remaining_search_results
+    ):
+      self._pending_detail_advance = True
+      self._load_more()
       return
     index = min(max(self._selected_index + offset, 0), len(cards) - 1)
     if index == self._selected_index:
@@ -340,6 +354,7 @@ class RclipApp(App[None]):
       self.push_screen(DetailScreen(card.result.filepath))
 
   def action_go_back(self) -> None:
+    self._pending_detail_advance = False
     if isinstance(self.screen, DetailScreen):
       selected_index = self._selected_index
       self.pop_screen()
