@@ -468,7 +468,7 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
       assert app.focused is cards[0]
       assert str(gallery_path.content) == f"0.900  {paths[0]}"
 
-      await pilot.press("Y")
+      await pilot.press("p")
       assert copied == [str(paths[0])]
       await pilot.press("s")
       assert downloaded == [str(paths[0])]
@@ -599,8 +599,8 @@ def test_modifier_hotkeys_respect_visible_target_and_preserve_search(
       assert search.cursor_position == 1
 
       # Letter aliases remain text while editing, including in detail view.
-      await pilot.press("o", "y", "Y", "s", "q")
-      assert search.value == "coyYsqat"
+      await pilot.press("o", "y", "p", "s", "q")
+      assert search.value == "coypsqat"
       assert detail.display and exits == []
       assert len(copied_images) == len(copied_paths) == len(downloaded) == 2
 

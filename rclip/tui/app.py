@@ -55,7 +55,7 @@ class RclipApp(App[None], inherit_bindings=False):
     Binding("enter", "open_detail", "Open", show=False),
     Binding("escape", "escape", "Search/Browse", show=False),
     Binding("ctrl+y,y", "copy_image", "Copy image", show=False),
-    Binding("ctrl+p,Y", "copy_path", "Copy path", show=False),
+    Binding("ctrl+p,p", "copy_path", "Copy path", show=False),
     Binding("ctrl+s,s", "download", "Download", show=False),
     Binding("ctrl+c", "quit", "Quit", show=False, priority=True),
   ]
@@ -456,7 +456,7 @@ class RclipApp(App[None], inherit_bindings=False):
     else:
       keys.append("hjkl/Arrows Move   o Detail view")
     if self.check_action("copy_image", ()):
-      keys.append("^Y Copy   ^P Copy path   ^S Download" if search_focused else "y Copy   Y Copy path   s Download")
+      keys.append("^Y Copy   ^P Copy path   ^S Download" if search_focused else "y Copy   p Copy path   s Download")
     keys.append("^C Quit")
     self.query_one(".hotkeys", Static).update("   ".join(keys))
 

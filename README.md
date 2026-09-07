@@ -133,7 +133,7 @@ The UI requires Kitty graphics with Unicode-placeholder support. It uses the ter
 | Focus search | Ctrl+F | / |
 | Toggle grid/detail | Ctrl+O | o |
 | Copy image | Ctrl+Y | y |
-| Copy image path | Ctrl+P | Y |
+| Copy image path | Ctrl+P | p |
 | Download image | Ctrl+S | s |
 | Quit | Ctrl+C | |
 
