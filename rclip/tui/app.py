@@ -5,7 +5,7 @@ from pathlib import Path
 from threading import Lock
 from typing import TYPE_CHECKING, ClassVar, Sequence
 
-from textual import work
+from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
@@ -36,13 +36,14 @@ def _display_directory(directory: str) -> str:
   return str(Path("~") / relative)
 
 
-class RclipApp(App[None]):
+class RclipApp(App[None], inherit_bindings=False):
   TITLE = "rclip"
+  ENABLE_COMMAND_PALETTE = False
   CSS_PATH = "app.tcss"
   BROWSE_BATCH_SIZE = 25
 
   BINDINGS: ClassVar[list[Binding]] = [
-    Binding("/", "focus_search", "Search", show=False),
+    Binding("ctrl+f,/", "focus_search", "Search", show=False),
     Binding("h,left", "move_left", "Left", show=False),
     # Making j or k switch focus would prevent typing that key in the search input.
     Binding("j", "move_down", "Down", show=False),
@@ -50,14 +51,13 @@ class RclipApp(App[None]):
     Binding("k", "move_up", "Up", show=False),
     Binding("up", "move_up_or_focus", "Up", show=False),
     Binding("l,right", "move_right", "Right", show=False),
-    Binding("v", "toggle_view", "Toggle view", show=False),
-    Binding("escape", "toggle_focus", "Search/Browse", show=False),
-    Binding("y", "copy_image", "Copy image", show=False),
-    Binding("Y", "copy_path", "Copy path", show=False),
-    Binding("d", "download", "Download", show=False),
-    Binding("q", "quit_navigation", "Quit", show=False),
+    Binding("ctrl+o,o", "toggle_view", "Toggle view", show=False),
+    Binding("enter", "open_detail", "Open", show=False),
+    Binding("escape", "escape", "Search/Browse", show=False),
+    Binding("ctrl+y,y", "copy_image", "Copy image", show=False),
+    Binding("ctrl+p,p", "copy_path", "Copy path", show=False),
+    Binding("ctrl+s,s", "download", "Download", show=False),
     Binding("ctrl+c", "quit", "Quit", show=False, priority=True),
-    Binding("ctrl+q", "quit", "Quit", show=False, priority=True),
   ]
 
   def __init__(
@@ -99,11 +99,7 @@ class RclipApp(App[None]):
     yield ResultsGrid(self._load_more)
     yield self._detail
     yield Static("", id="gallery-path", markup=False)
-    yield Static(
-      "/ Search   hjkl/Arrows Move   v Detail view   y Copy   Y Copy path   d Download   q/Ctrl+C Quit",
-      classes="hotkeys",
-      markup=False,
-    )
+    yield Static("", classes="hotkeys", markup=False)
 
   def on_mount(self) -> None:
     self.query_one("#search", Input).focus()
@@ -259,18 +255,18 @@ class RclipApp(App[None]):
 
   def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
     if isinstance(self.focused, Input) and action in {
-      "copy_image",
-      "copy_path",
-      "download",
       "move_down",
       "move_left",
       "move_right",
       "move_up",
       "move_up_or_focus",
-      "quit_navigation",
-      "toggle_view",
+      "open_detail",
     }:
       return False
+    if action in {"copy_image", "copy_path", "download"}:
+      return self._selected_card() is not None and (self._detail.display or isinstance(self.focused, ImageCard))
+    if action == "open_detail":
+      return not self._detail.display and isinstance(self.focused, ImageCard)
     if self._detail.display and action in {
       "move_down",
       "move_up",
@@ -340,6 +336,7 @@ class RclipApp(App[None]):
       result = card.result
       label = result.filepath if result.score is None else f"{result.score:.3f}  {result.filepath}"
     self.query_one("#gallery-path", Static).update(label)
+    self._update_hotkeys()
     if not self._detail.display:
       return
     self._detail.show_image(card.result.filepath if card else None)
@@ -387,6 +384,7 @@ class RclipApp(App[None]):
     self.query_one("#search", Input).focus()
 
   def action_toggle_view(self) -> None:
+    search_focused = isinstance(self.focused, Input)
     self._pending_detail_advance = False
     grid = self.query_one(ResultsGrid)
     grid.display = self._detail.display
@@ -394,13 +392,10 @@ class RclipApp(App[None]):
     # The terminal may have evicted images while the other view was active.
     for image in self.query(ImageWidget):
       image.refresh_image()
-    self.query_one(".hotkeys", Static).update(
-      "/ Search   "
-      + ("h/l/Arrows Browse   v Grid view" if self._detail.display else "hjkl/Arrows Move   v Detail view")
-      + "   y Copy   Y Copy path   d Download   q/Ctrl+C Quit"
-    )
     self._update_selection()
-    if self._detail.display:
+    if search_focused:
+      self.action_focus_search()
+    elif self._detail.display:
       self._detail.focus()
     else:
       self.call_after_refresh((self._selected_card() or grid).focus)
@@ -436,8 +431,34 @@ class RclipApp(App[None]):
     else:
       self.notify("Saved to ~/Downloads", title=Path(filepath).name)
 
-  def action_quit_navigation(self) -> None:
-    self.exit()
+  def action_open_detail(self) -> None:
+    self.action_toggle_view()
+
+  def action_escape(self) -> None:
+    if isinstance(self.focused, Input):
+      self.action_toggle_focus()
+    elif self._detail.display:
+      self.action_toggle_view()
+
+  def on_descendant_focus(self, event: events.DescendantFocus) -> None:
+    self._update_hotkeys()
+
+  def on_descendant_blur(self, event: events.DescendantBlur) -> None:
+    self.call_after_refresh(self._update_hotkeys)
+
+  def _update_hotkeys(self) -> None:
+    search_focused = isinstance(self.focused, Input)
+    keys = ["Down Browse"] if search_focused else ["/ Search"]
+    if search_focused:
+      keys.append("^O Grid view" if self._detail.display else "^O Detail view")
+    elif self._detail.display:
+      keys.append("h/l/Arrows Browse   Esc Grid view")
+    else:
+      keys.append("hjkl/Arrows Move   o Detail view")
+    if self.check_action("copy_image", ()):
+      keys.append("^Y Copy   ^P Copy path   ^S Download" if search_focused else "y Copy   p Copy path   s Download")
+    keys.append("^C Quit")
+    self.query_one(".hotkeys", Static).update("   ".join(keys))
 
   @work(thread=True, group="clipboard", exclusive=True, exit_on_error=False)
   def _copy_image(self, filepath: str) -> None:
