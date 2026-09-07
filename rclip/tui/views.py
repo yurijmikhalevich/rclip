@@ -233,12 +233,12 @@ class DetailView(Vertical, can_focus=True):
       filmstrip.move_child(thumbnail, before=index)
 
   def show_image(self, filepath: str | None, neighbors: Sequence[str] = ()) -> None:
-    wanted = {filepath, *neighbors} if filepath is not None else set()
+    wanted = [filepath, *neighbors] if filepath is not None else []
     self._details = {path: detail for path, detail in self._details.items() if path in wanted}
     for path in list(self._detail_workers):
       if path not in wanted:
         self._detail_workers.pop(path).cancel()
-    for path in ([filepath, *neighbors] if filepath is not None else []):
+    for path in wanted:
       if path not in self._details and path not in self._detail_workers:
         self._detail_workers[path] = self._load_detail(path)
     if filepath == self.filepath:
@@ -250,11 +250,7 @@ class DetailView(Vertical, can_focus=True):
     status.update("No results" if filepath is None else "Loading higher-resolution image…")
     status.display = True
     if filepath in self._details:
-      detail = self._details[filepath]
-      if isinstance(detail, BytesIO):
-        self._show_detail(filepath, detail)
-      else:
-        self._show_error(filepath, detail)
+      self._show_detail(filepath, self._details[filepath])
 
   @work(thread=True, group="detail", exit_on_error=False)
   def _load_detail(self, filepath: str) -> None:
@@ -275,18 +271,15 @@ class DetailView(Vertical, can_focus=True):
       return
     del self._detail_workers[filepath]
     self._details[filepath] = detail
-    if isinstance(detail, BytesIO):
-      self._show_detail(filepath, detail)
-    else:
-      self._show_error(filepath, detail)
+    self._show_detail(filepath, detail)
 
-  def _show_detail(self, filepath: str, detail: BytesIO) -> None:
+  def _show_detail(self, filepath: str, detail: BytesIO | str) -> None:
     if not self.is_attached or filepath != self.filepath:
+      return
+    status = self.query_one("#detail-status", Static)
+    if isinstance(detail, str):
+      status.update(f"Unable to load image: {detail}")
       return
     self._image.image = detail
     self._image.display = True
-    self.query_one("#detail-status", Static).display = False
-
-  def _show_error(self, filepath: str, message: str) -> None:
-    if self.is_attached and filepath == self.filepath:
-      self.query_one("#detail-status", Static).update(f"Unable to load image: {message}")
+    status.display = False
