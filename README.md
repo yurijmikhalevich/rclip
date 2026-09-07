@@ -128,23 +128,22 @@ rclip --interactive
 
 The UI requires Kitty graphics with Unicode-placeholder support. It uses the terminal's default colors and ANSI palette. With an empty query it browses recently modified images, loading more as you scroll. Searches are ranked once and loaded in batches of up to 100 results as you scroll; pass `--top N` to use a smaller search batch. Enter text queries in the UI; image queries remain available in the non-interactive CLI. Cached previews load as they become visible, and Detail view loads a higher-resolution display image.
 
-| Key | Action |
-| --- | --- |
-| `/` | Focus the search input. |
-| Arrow keys or `h`, `j`, `k`, `l` | Move between results. |
-| `v` | Toggle between Grid and Detail while browsing. |
-| `Enter` | Submit the search query while typing. |
-| Left/Right or `h`/`l` | Show the previous or next image in Detail. |
-| `Esc` | Move focus between search and browsing. |
-| `y` | Copy the selected image to the system clipboard using Kitty's `kitten clipboard`. |
-| `Y` | Copy the selected image path. |
-| `d` | Download the selected original image from an SSH host. |
-| `q` | Quit while navigating results. |
-| `Ctrl+C` or `Ctrl+Q` | Quit from anywhere, including the search input. |
+| Action | Shortcut | Browse alias |
+| --- | --- | --- |
+| Focus search | Ctrl+F | / |
+| Toggle grid/detail | Ctrl+O | o |
+| Copy image | Ctrl+Y | y |
+| Copy image path | Ctrl+P | Y |
+| Download image | Ctrl+S | s |
+| Quit | Ctrl+C | |
+
+Use Ctrl on macOS too. In search, Enter runs the query immediately and Down or Esc focuses the results. In the grid, arrows or hjkl navigate and Enter opens detail; in detail, Left/Right or h/l browse images. Esc returns from detail to the grid. Use Ctrl+F or / to return from browsing to search. Double-click a grid image to open detail and the main detail image to return; click a filmstrip thumbnail to select it.
+
+Copy and download act on the focused grid result or the displayed detail image. They are unavailable while search is focused in the grid. In detail, their modifier shortcuts work while typing, and Ctrl+O preserves search focus and cursor position in either view. Download transfers remote images to your computer through a supported terminal.
 
 Image copying requires Kitty 0.27 or newer and a discoverable `kitten` executable; the rest of the UI does not invoke Kitty executables.
 
-Over SSH, `d` downloads the original file to `~/Downloads` on the terminal host. Kitty 0.30+ requires a remote `kitten` executable (`kitten ssh` provides it) and asks for confirmation; iTerm2 3.5+ is also supported. If detection fails, set `RCLIP_DOWNLOAD_PROTOCOL` to `kitty` or `iterm2`. Locally, `d` only shows the file path.
+Over SSH, `Ctrl+S` or `s` downloads the original file to `~/Downloads` on the terminal host. Kitty 0.30+ requires a remote `kitten` executable (`kitten ssh` provides it) and asks for confirmation; iTerm2 3.5+ is also supported. If detection fails, set `RCLIP_DOWNLOAD_PROTOCOL` to `kitty` or `iterm2`. Locally, the same shortcuts only shows the file path.
 
 ### Similar image search (image-to-image search)
 

@@ -71,6 +71,15 @@ class ImageCard(Static, can_focus=True):
     self._loaded = True
     self.add_class("preview-failed")
 
+  def on_click(self, event: events.Click) -> None:
+    from rclip.tui.app import RclipApp
+
+    if event.button == 1 and event.chain == 2 and isinstance(self.app, RclipApp):
+      event.stop()
+      self.focus()
+      self.app.select_card(self)
+      self.app.action_open_detail()
+
   def on_focus(self) -> None:
     from rclip.tui.app import RclipApp
 
@@ -177,6 +186,21 @@ class DetailView(Vertical, can_focus=True):
       yield self._image
       yield Static("No results", id="detail-status", markup=False)
     yield Horizontal(id="detail-filmstrip")
+
+  def on_click(self, event: events.Click) -> None:
+    from rclip.tui.app import RclipApp
+
+    frame = self.query_one("#detail-frame")
+    if (
+      event.button == 1
+      and event.chain == 2
+      and event.widget is not None
+      and (event.widget is frame or frame in event.widget.ancestors)
+      and isinstance(self.app, RclipApp)
+    ):
+      event.stop()
+      self.focus()
+      self.app.action_toggle_view()
 
   async def on_resize(self, event: events.Resize) -> None:
     from rclip.tui.app import RclipApp

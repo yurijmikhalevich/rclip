@@ -75,7 +75,7 @@ ImageCard.preview-failed {
 }
 
 .hotkeys {
-  height: 1;
+  height: auto;
   padding: 0 1;
   background: $surface;
   color: $text-muted;
