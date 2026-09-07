@@ -448,15 +448,15 @@ class RclipApp(App[None], inherit_bindings=False):
 
   def _update_hotkeys(self) -> None:
     search_focused = isinstance(self.focused, Input)
-    keys = ["Down/Esc Browse"] if search_focused else ["^F / Search"]
+    keys = ["Down Browse"] if search_focused else ["/ Search"]
     if search_focused:
       keys.append("^O Grid view" if self._detail.display else "^O Detail view")
     elif self._detail.display:
-      keys.append("h/l/Arrows Browse   Esc/^O Grid view")
+      keys.append("h/l/Arrows Browse   Esc Grid view")
     else:
-      keys.append("hjkl/Arrows Move   Enter/^O Detail view")
+      keys.append("hjkl/Arrows Move   o Detail view")
     if self.check_action("copy_image", ()):
-      keys.append("^Y Copy   ^P Copy path   ^S Download")
+      keys.append("^Y Copy   ^P Copy path   ^S Download" if search_focused else "y Copy   Y Copy path   s Download")
     keys.append("^C Quit")
     self.query_one(".hotkeys", Static).update("   ".join(keys))
 
