@@ -137,7 +137,7 @@ The UI requires Kitty graphics with Unicode-placeholder support. It uses the ter
 | Download image | Ctrl+S | s |
 | Quit | Ctrl+C | |
 
-Use Ctrl on macOS too. In search, Enter runs the query immediately and Down or Esc focuses the results. In the grid, arrows or hjkl navigate and Enter opens detail; in detail, Left/Right or h/l browse images. Esc returns from detail to the grid. Use Ctrl+F or / to return from browsing to search. Double-click a grid image to open detail and the main detail image to return; click a filmstrip thumbnail to select it.
+In search, Enter runs the query immediately and Down or Esc focuses the results. In the grid, arrows or hjkl navigate and Enter opens detail; in detail, Left/Right or h/l browse images. Esc returns from detail to the grid. Use Ctrl+F or / to return from browsing to search. Double-click a grid image to open detail and the main detail image to return; click a filmstrip thumbnail to select it.
 
 Copy and download act on the focused grid result or the displayed detail image. They are unavailable while search is focused in the grid. In detail, their modifier shortcuts work while typing, and Ctrl+O preserves search focus and cursor position in either view. Download transfers remote images to your computer through a supported terminal.
 
