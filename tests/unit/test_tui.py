@@ -29,7 +29,7 @@ from rclip.tui.transfer import TransferError
 from rclip.tui.transfer import _download_protocol
 from rclip.tui.transfer import copy_image_to_clipboard
 from rclip.tui.transfer import download_image
-from rclip.tui.views import DetailScreen
+from rclip.tui.views import DetailView
 from rclip.tui.views import ImageCard
 from rclip.tui.views import ResultsGrid
 from rclip.utils.helpers import init_arg_parser
@@ -465,7 +465,7 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
 
       await pilot.press("down")
       assert app.focused is cards[0]
-      assert str(gallery_path.content) == str(paths[0])
+      assert str(gallery_path.content) == f"0.900  {paths[0]}"
 
       await pilot.press("Y")
       assert copied == [str(paths[0])]
@@ -478,32 +478,40 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
 
       await pilot.press("right")
       assert app.focused is cards[1]
-      assert str(gallery_path.content) == str(paths[1])
+      assert str(gallery_path.content) == f"0.800  {paths[1]}"
+      detail = app.query_one(DetailView)
       await pilot.press("enter")
+      assert not detail.display
+      await pilot.press("v")
       await app.workers.wait_for_complete()
       await pilot.pause()
-      assert isinstance(app.screen, DetailScreen)
-      assert app.screen.filepath == str(paths[1])
+      assert detail.display
+      assert detail.filepath == str(paths[1])
 
       await pilot.press("left")
       await app.workers.wait_for_complete()
-      assert app.screen.filepath == str(paths[0])
+      assert detail.filepath == str(paths[0])
       await pilot.press("right")
       await app.workers.wait_for_complete()
-      assert app.screen.filepath == str(paths[1])
+      assert detail.filepath == str(paths[1])
 
       await pilot.click("#detail-frame", times=2)
       await pilot.pause()
-      assert not isinstance(app.screen, DetailScreen)
+      assert detail.display
+      await pilot.press("v")
+      assert not detail.display
       assert app.focused is cards[1]
-      assert str(gallery_path.content) == str(paths[1])
+      assert str(gallery_path.content) == f"0.800  {paths[1]}"
 
       await pilot.click(cards[0], times=2)
       await pilot.pause()
-      assert isinstance(app.screen, DetailScreen)
-      await pilot.press("escape")
+      assert not detail.display
+      assert app.focused is cards[0]
+      await pilot.press("v")
+      assert detail.display
+      await pilot.press("v")
       await pilot.pause()
-      assert not isinstance(app.screen, DetailScreen)
+      assert not detail.display
 
       await pilot.press("/")
       assert isinstance(app.focused, Input)
@@ -517,6 +525,67 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
       assert str(gallery_path.content) == ""
       await pilot.press("ctrl+c")
       assert exits == [True]
+
+  asyncio.run(run())
+
+
+def test_search_in_detail_preserves_view_and_updates_selection(tmp_path: Path) -> None:
+  paths = [str(make_image(tmp_path / f"image-{index}.jpg")) for index in range(3)]
+  rclip = FakeRclip([RClip.SearchResult(path, 0.9 - index / 10) for index, path in enumerate(paths)])
+  app = RclipApp(rclip, str(tmp_path))
+
+  async def run() -> None:
+    async with app.run_test(size=(100, 40)) as pilot:
+      await app.workers.wait_for_complete()
+      await pilot.press("down", "right", "v")
+      detail = app.query_one(DetailView)
+      search = app.query_one(Input)
+      status = app.query_one("#gallery-path", Static)
+      assert detail.display and detail.filepath == paths[1]
+      assert str(status.content) == paths[1]
+      assert search.visible and search.region.bottom <= detail.region.y
+
+      await pilot.press("/")
+      assert app.focused is search
+      await pilot.press("v")
+      assert search.value == "v"
+      assert detail.display
+      rclip.results = [RClip.SearchResult(paths[2], 0.75), RClip.SearchResult(paths[0], 0.25)]
+      await pilot.press("enter")
+      await app.workers.wait_for_complete()
+      assert detail.display and detail.filepath == paths[2]
+      assert str(status.content) == f"0.750  {paths[2]}"
+      assert app.focused is search
+      await pilot.press("escape", "right")
+      assert app.focused is detail
+      assert detail.filepath == paths[0]
+      assert str(status.content) == f"0.250  {paths[0]}"
+      await pilot.press("v")
+      assert not detail.display
+      assert isinstance(app.focused, ImageCard)
+      assert app.focused.result.filepath == paths[0]
+      assert search.value == "v"
+      assert [card.result.filepath for card in app.query(ImageCard)] == [paths[2], paths[0]]
+      await pilot.press("v", "up")
+      assert detail.display and app.focused is search
+
+      rclip.results = []
+      await pilot.press("x", "enter")
+      await app.workers.wait_for_complete()
+      assert detail.display and detail.filepath is None
+      assert detail._image.image is None
+      assert all(thumbnail.filepath is None for thumbnail in detail.thumbnails)
+      assert str(status.content) == ""
+      assert search.border_title == "No results"
+      await pilot.press("down", "v", "v")
+      assert detail.display and app.focused is detail
+
+      rclip.results = [RClip.SearchResult(paths[1], 0.8)]
+      await pilot.press("/", "backspace", "enter")
+      await app.workers.wait_for_complete()
+      assert search.value == ""
+      assert detail.display and detail.filepath == paths[1]
+      assert str(status.content) == paths[1]
 
   asyncio.run(run())
 
@@ -537,7 +606,7 @@ def test_gallery_resends_thumbnails_after_detail_browsing(tmp_path: Path, monkey
       await pilot.pause()
       before = [card._image.render() for card in cards]
       assert all(isinstance(renderable, TGPRenderable) for renderable in before)
-      await pilot.press("down", "enter", "right", "right", "left", "escape")
+      await pilot.press("down", "v", "right", "right", "left", "v")
       await app.workers.wait_for_complete()
       await pilot.pause()
       for card, previous in zip(cards, before):
@@ -572,10 +641,10 @@ def test_detail_loading_and_error_keep_layout_stable(tmp_path: Path, monkeypatch
     async with app.run_test(size=(100, 40)) as pilot:
       try:
         await app.workers.wait_for_complete()
-        await pilot.press("down", "enter")
+        await pilot.press("down", "v")
         assert await asyncio.to_thread(started.wait, 1)
-        screen = app.screen
-        assert isinstance(screen, DetailScreen)
+        screen = app.query_one(DetailView)
+        assert screen.display
         status = screen.query_one("#detail-status", Static)
         frame = screen.query_one("#detail-frame")
         filmstrip = screen.query_one("#detail-filmstrip")
@@ -615,10 +684,10 @@ def test_filmstrip_reuses_loaded_neighbors_while_new_thumbnail_loads(
   async def run() -> None:
     async with app.run_test(size=(100, 40)) as pilot:
       await app.workers.wait_for_complete()
-      await pilot.press("down", "enter", "right", "right")
+      await pilot.press("down", "v", "right", "right")
       await app.workers.wait_for_complete()
-      screen = app.screen
-      assert isinstance(screen, DetailScreen)
+      screen = app.query_one(DetailView)
+      assert screen.display
       loaded = {thumbnail.filepath: (thumbnail, thumbnail._image.image) for thumbnail in screen.thumbnails}
       monkeypatch.setattr("rclip.tui.views.prepare_image", slow_prepare)
       try:
@@ -647,10 +716,10 @@ def test_detail_filmstrip_centers_selection_and_navigates(tmp_path: Path) -> Non
   async def run() -> None:
     async with app.run_test(size=(100, 40)) as pilot:
       await app.workers.wait_for_complete()
-      await pilot.press("down", "enter")
+      await pilot.press("down", "v")
       await app.workers.wait_for_complete()
-      screen = app.screen
-      assert isinstance(screen, DetailScreen)
+      screen = app.query_one(DetailView)
+      assert screen.display
       assert [thumbnail.filepath for thumbnail in screen.thumbnails] == [None, None, *paths[:3]]
       assert all(thumbnail._image.image is not None for thumbnail in screen.thumbnails[2:])
       assert all(not thumbnail.visible for thumbnail in screen.thumbnails[:2])
@@ -693,7 +762,7 @@ def test_detail_filmstrip_centers_selection_and_navigates(tmp_path: Path) -> Non
       await app.workers.wait_for_complete()
       assert screen.filepath == paths[3]
       assert screen.thumbnails[len(screen.thumbnails) // 2].filepath == paths[3]
-      await pilot.press("escape")
+      await pilot.press("v")
       assert isinstance(app.focused, ImageCard)
       assert app.focused.result.filepath == paths[3]
 
@@ -717,8 +786,9 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str, width:
         await app.workers.wait_for_complete()
       await pilot.pause()
       assert len(app.query(ImageCard)) == 25
-      await pilot.press("down", "enter")
-      assert isinstance(app.screen, DetailScreen)
+      detail = app.query_one(DetailView)
+      await pilot.press("down", "v")
+      assert detail.display
       for index, path in enumerate(paths[1:], 1):
         await pilot.press("right")
         if width == 80 and index == 22:
@@ -731,13 +801,13 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str, width:
           for neighbor in range(index - neighbors, index + neighbors + 1)
         ]
         async with asyncio.timeout(0.25):
-          while app.screen.filepath != path or [thumbnail.filepath for thumbnail in app.screen.thumbnails] != expected:
+          while detail.filepath != path or [thumbnail.filepath for thumbnail in detail.thumbnails] != expected:
             await pilot.pause(0.01)
       await pilot.press("right")
-      assert app.screen.filepath == paths[-1]
+      assert detail.filepath == paths[-1]
       await pilot.press("left")
-      assert app.screen.filepath == paths[-2]
-      await pilot.press("escape")
+      assert detail.filepath == paths[-2]
+      await pilot.press("v")
       await pilot.pause()
       async with asyncio.timeout(0.25):
         while app.focused is not app.query_one(ResultsGrid).cards[-2]:
@@ -750,7 +820,7 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str, width:
 
 
 @pytest.mark.parametrize("result_count", [0, 1])
-def test_search_replacement_closes_obsolete_detail(
+def test_search_replacement_preserves_detail(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch, result_count: int
 ) -> None:
   results = [RClip.SearchResult(str(tmp_path / "new.jpg"), 1)][:result_count]
@@ -768,20 +838,23 @@ def test_search_replacement_closes_obsolete_detail(
     async with app.run_test(size=(80, 24)) as pilot:
       try:
         await app.workers.wait_for_complete()
-        await pilot.press("c", "a", "t", "enter", "down", "enter")
-        assert isinstance(app.screen, DetailScreen)
+        await pilot.press("c", "a", "t", "enter", "down", "v")
+        assert app.query_one(DetailView).display
       finally:
         release.set()
       await app.workers.wait_for_complete()
       await pilot.resize_terminal(160, 24)
       await pilot.pause()
-      assert not isinstance(app.screen, DetailScreen)
+      detail = app.query_one(DetailView)
+      assert detail.display
+      assert detail.filepath == (results[0].filepath if results else None)
+      assert str(app.query_one("#gallery-path", Static).content) == (f"1.000  {results[0].filepath}" if results else "")
       assert [card.result.filepath for card in app.query(ImageCard)] == [result.filepath for result in results]
 
   asyncio.run(run())
 
 
-@pytest.mark.parametrize("action", ["left", "right", "escape"])
+@pytest.mark.parametrize("action", ["left", "right", "v"])
 def test_detail_navigation_handles_pending_advance(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch, action: str
 ) -> None:
@@ -806,7 +879,7 @@ def test_detail_navigation_handles_pending_advance(
     async with app.run_test(size=(80, 24)) as pilot:
       try:
         await app.workers.wait_for_complete()
-        await pilot.press("down", "enter")
+        await pilot.press("down", "v")
         await pilot.press(*(["right"] * 25))
         assert await asyncio.to_thread(started.wait, 1)
         await pilot.press("right", action)
@@ -815,11 +888,11 @@ def test_detail_navigation_handles_pending_advance(
       await app.workers.wait_for_complete()
       await pilot.pause()
       assert len(app.query(ImageCard)) == 26
-      if action != "escape":
-        assert isinstance(app.screen, DetailScreen)
-        assert app.screen.filepath == paths[23 if action == "left" else 25]
+      if action != "v":
+        assert app.query_one(DetailView).display
+        assert app.query_one(DetailView).filepath == paths[23 if action == "left" else 25]
       else:
-        assert not isinstance(app.screen, DetailScreen)
+        assert not app.query_one(DetailView).display
         assert isinstance(app.focused, ImageCard)
         assert app.focused.result.filepath == paths[24]
 
@@ -1048,13 +1121,13 @@ def test_search_loads_more_on_scroll(tmp_path: Path) -> None:
 
       await pilot.press("down")
       gallery_path = app.query_one("#gallery-path", Static)
-      assert str(gallery_path.content) == str(paths[0])
+      assert str(gallery_path.content) == f"1.000  {paths[0]}"
       app.query_one(ResultsGrid).scroll_end(animate=False)
       async with asyncio.timeout(0.25):
         while len(app.query(ImageCard)) != 26:
           await asyncio.sleep(0.01)
       assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths]
-      assert str(gallery_path.content) == str(paths[0])
+      assert str(gallery_path.content) == f"1.000  {paths[0]}"
 
   asyncio.run(run())
 
@@ -1100,7 +1173,7 @@ def test_empty_browse_retries_loading_more_after_failure(
 
       grid = app.query_one(ResultsGrid)
       if detail:
-        await pilot.press("down", "enter", *(["right"] * 23))
+        await pilot.press("down", "v", *(["right"] * 23))
       else:
         grid.scroll_end(animate=False)
       async with asyncio.timeout(0.25):
@@ -1110,8 +1183,8 @@ def test_empty_browse_retries_loading_more_after_failure(
       assert notifications == [("page failed", "Unable to load more images")]
 
       if detail:
-        assert isinstance(app.screen, DetailScreen)
-        assert app.screen.filepath == str(paths[23])
+        assert app.query_one(DetailView).display
+        assert app.query_one(DetailView).filepath == str(paths[23])
         await pilot.press("right")
       else:
         grid.scroll_home(animate=False)
@@ -1122,8 +1195,8 @@ def test_empty_browse_retries_loading_more_after_failure(
         while [card.result.filepath for card in app.query(ImageCard)] != expected:
           await asyncio.sleep(0.01)
       if detail:
-        assert isinstance(app.screen, DetailScreen)
-        assert app.screen.filepath == str(paths[24])
+        assert app.query_one(DetailView).display
+        assert app.query_one(DetailView).filepath == str(paths[24])
 
   asyncio.run(run())
 
