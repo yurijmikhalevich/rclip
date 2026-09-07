@@ -8,6 +8,7 @@ from typing import AbstractSet, NotRequired, Optional, TypedDict, cast
 import jinja2
 from packaging.markers import default_environment
 from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 import requests
 import sys
 
@@ -92,6 +93,8 @@ TEMPLATE = env.from_string("""class Rclip < Formula
       end
     end
 {% endif %}
+
+    system "python{{ target_python_version }}", "-m", "pip", "--python=#{libexec}/bin/python", "check"
 
     system libexec/"bin/python", "-m", "rclip._compliance", "collect",
            "--root", libexec, "--output", share/"doc/rclip",
@@ -205,47 +208,45 @@ def render_resource_block(resource: PackageResource, indent: str = "  ") -> str:
 def make_graph(package_name: str, skip_pypi_packages: set[str]):
   marker_env = get_marker_environment({"sys_platform": "linux", "platform_system": "Linux"})
   result = OrderedDict()
-  queue = [package_name]
+  queue = [Requirement(package_name)]
   visited = set()
   while queue:
     pkg = queue.pop(0)
-    key = pkg.lower().replace("-", "_")
+    key = (canonicalize_name(pkg.name), frozenset(pkg.extras))
     if key in visited:
       continue
     visited.add(key)
-    if key in EXTRA_MACOS_RESOURCE_KEYS:
+    if pkg.name.lower().replace("-", "_") in EXTRA_MACOS_RESOURCE_KEYS:
       continue
-    try:
-      dist = importlib.metadata.distribution(pkg)
-    except importlib.metadata.PackageNotFoundError:
-      continue
+    dist = importlib.metadata.distribution(pkg.name)
     actual_name = dist.metadata["Name"]
     version = dist.metadata["Version"]
     if actual_name.lower() in MAKE_GRAPH_IGNORED:
       continue
-    if actual_name.lower() in skip_pypi_packages:
-      result[actual_name.lower().replace("_", "-")] = {
-        "name": actual_name,
-        "version": version,
-      }
-    else:
-      resp = requests.get(f"https://pypi.org/pypi/{actual_name}/{version}/json", timeout=REQUEST_TIMEOUT)
-      resp.raise_for_status()
-      data = resp.json()
-      sdist = next((url_entry for url_entry in data["urls"] if url_entry["packagetype"] == "sdist"), None)
-      url_info = sdist or next(iter(data["urls"]), None)
-      result[actual_name.lower().replace("_", "-")] = {
-        "name": actual_name,
-        "version": version,
-        "url": url_info["url"] if url_info else "",
-        "checksum": url_info["digests"]["sha256"] if url_info else "",
-        "checksum_type": "sha256",
-        "homepage": data["info"]["home_page"] or "",
-      }
+    if actual_name.lower().replace("_", "-") not in result:
+      if actual_name.lower() in skip_pypi_packages:
+        result[actual_name.lower().replace("_", "-")] = {
+          "name": actual_name,
+          "version": version,
+        }
+      else:
+        resp = requests.get(f"https://pypi.org/pypi/{actual_name}/{version}/json", timeout=REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+        sdist = next((url_entry for url_entry in data["urls"] if url_entry["packagetype"] == "sdist"), None)
+        url_info = sdist or next(iter(data["urls"]), None)
+        result[actual_name.lower().replace("_", "-")] = {
+          "name": actual_name,
+          "version": version,
+          "url": url_info["url"] if url_info else "",
+          "checksum": url_info["digests"]["sha256"] if url_info else "",
+          "checksum_type": "sha256",
+          "homepage": data["info"]["home_page"] or "",
+        }
     for req_str in dist.requires or []:
       req = Requirement(req_str)
-      if "extra" not in str(req.marker or "") and (req.marker is None or req.marker.evaluate(marker_env)):
-        queue.append(req.name)
+      if req.marker is None or any(req.marker.evaluate({**marker_env, "extra": extra}) for extra in {"", *pkg.extras}):
+        queue.append(req)
   return result
 
 
@@ -283,33 +284,31 @@ def get_macos_arm_wheel_resource(package_name: str, version: str, tag: str) -> P
 def get_macos_only_resources() -> OrderedDict[str, PackageResource]:
   marker_env = get_marker_environment({"sys_platform": "darwin", "platform_system": "Darwin"})
   resources: dict[str, PackageResource] = {}
-  queue = list(EXTRA_MACOS_RESOURCES)
+  queue = [Requirement(name) for name in EXTRA_MACOS_RESOURCES]
   visited = set()
   while queue:
-    package_name = queue.pop(0)
-    key = package_name.lower().replace("-", "_")
+    pkg = queue.pop(0)
+    key = (canonicalize_name(pkg.name), frozenset(pkg.extras))
     if key in visited:
       continue
     visited.add(key)
 
-    dist = importlib.metadata.distribution(package_name)
+    dist = importlib.metadata.distribution(pkg.name)
     actual_name = dist.metadata["Name"]
     version = dist.metadata["Version"]
     normalized_name = actual_name.lower().replace("_", "-")
-    if normalized_name == MACOS_WHEEL_RESOURCE:
-      resources[normalized_name] = get_macos_arm_wheel_resource(actual_name, version, TARGET_PYTHON_TAG)
-    else:
-      resources[normalized_name] = get_pypi_resource(actual_name, version)
+    if normalized_name not in resources:
+      if normalized_name == MACOS_WHEEL_RESOURCE:
+        resources[normalized_name] = get_macos_arm_wheel_resource(actual_name, version, TARGET_PYTHON_TAG)
+      else:
+        resources[normalized_name] = get_pypi_resource(actual_name, version)
 
     for req_str in dist.requires or []:
       req = Requirement(req_str)
       if req.name.lower() in BREW_DEPS:
         continue
-      if "extra" in str(req.marker or ""):
-        continue
-      if req.marker is not None and not req.marker.evaluate(marker_env):
-        continue
-      queue.append(req.name)
+      if req.marker is None or any(req.marker.evaluate({**marker_env, "extra": extra}) for extra in {"", *pkg.extras}):
+        queue.append(req)
 
   return OrderedDict(sorted(resources.items()))
 
