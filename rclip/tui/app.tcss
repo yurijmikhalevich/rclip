@@ -15,6 +15,23 @@ Screen {
   border: heavy $border;
 }
 
+#gallery-labels {
+  height: 1;
+  padding: 0 1;
+}
+
+#search-scope, #results-order {
+  width: 1fr;
+  height: 1;
+  color: $text-muted;
+  text-overflow: ellipsis;
+}
+
+#results-order {
+  margin-left: 2;
+  text-align: right;
+}
+
 #results {
   height: 1fr;
   grid-gutter: 1;
