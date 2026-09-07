@@ -604,6 +604,13 @@ def test_modifier_hotkeys_respect_visible_target_and_preserve_search(
       assert detail.display and exits == []
       assert len(copied_images) == len(copied_paths) == len(downloaded) == 2
 
+      # Finish the edited query before navigating its replacement result cards.
+      await pilot.press("enter")
+      await app.workers.wait_for_complete()
+      async with asyncio.timeout(1):
+        while search.border_title == "Searching…":
+          await pilot.pause()
+
       await pilot.press("ctrl+o")
       assert not detail.display and app.focused is search
       await pilot.press("ctrl+y", "ctrl+p", "ctrl+s")
