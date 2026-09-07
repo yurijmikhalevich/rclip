@@ -387,21 +387,16 @@ class RclipApp(App[None]):
     self._update_selection()
     if self._detail.display:
       self._detail.focus()
-    elif card := self._selected_card():
-      self.call_after_refresh(card.focus)
     else:
-      grid.focus()
+      self.call_after_refresh((self._selected_card() or grid).focus)
 
   def action_toggle_focus(self) -> None:
     self._pending_detail_advance = False
     if not isinstance(self.focused, Input):
       self.action_focus_search()
-    elif self._detail.display:
-      self._detail.focus()
-    elif card := self._selected_card():
-      card.focus()
     else:
-      self.query_one(ResultsGrid).focus()
+      target = self._detail if self._detail.display else self._selected_card() or self.query_one(ResultsGrid)
+      target.focus()
 
   def action_copy_path(self) -> None:
     if filepath := self._selected_filepath():

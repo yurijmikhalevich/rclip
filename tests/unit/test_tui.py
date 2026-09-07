@@ -479,38 +479,39 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
       await pilot.press("right")
       assert app.focused is cards[1]
       assert str(gallery_path.content) == f"0.800  {paths[1]}"
+      detail = app.query_one(DetailView)
       await pilot.press("enter")
-      assert not app.query_one(DetailView).display
+      assert not detail.display
       await pilot.press("v")
       await app.workers.wait_for_complete()
       await pilot.pause()
-      assert app.query_one(DetailView).display
-      assert app.query_one(DetailView).filepath == str(paths[1])
+      assert detail.display
+      assert detail.filepath == str(paths[1])
 
       await pilot.press("left")
       await app.workers.wait_for_complete()
-      assert app.query_one(DetailView).filepath == str(paths[0])
+      assert detail.filepath == str(paths[0])
       await pilot.press("right")
       await app.workers.wait_for_complete()
-      assert app.query_one(DetailView).filepath == str(paths[1])
+      assert detail.filepath == str(paths[1])
 
       await pilot.click("#detail-frame", times=2)
       await pilot.pause()
-      assert app.query_one(DetailView).display
+      assert detail.display
       await pilot.press("v")
-      assert not app.query_one(DetailView).display
+      assert not detail.display
       assert app.focused is cards[1]
       assert str(gallery_path.content) == f"0.800  {paths[1]}"
 
       await pilot.click(cards[0], times=2)
       await pilot.pause()
-      assert not app.query_one(DetailView).display
+      assert not detail.display
       assert app.focused is cards[0]
       await pilot.press("v")
-      assert app.query_one(DetailView).display
+      assert detail.display
       await pilot.press("v")
       await pilot.pause()
-      assert not app.query_one(DetailView).display
+      assert not detail.display
 
       await pilot.press("/")
       assert isinstance(app.focused, Input)
@@ -785,8 +786,9 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str, width:
         await app.workers.wait_for_complete()
       await pilot.pause()
       assert len(app.query(ImageCard)) == 25
+      detail = app.query_one(DetailView)
       await pilot.press("down", "v")
-      assert app.query_one(DetailView).display
+      assert detail.display
       for index, path in enumerate(paths[1:], 1):
         await pilot.press("right")
         if width == 80 and index == 22:
@@ -799,15 +801,12 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str, width:
           for neighbor in range(index - neighbors, index + neighbors + 1)
         ]
         async with asyncio.timeout(0.25):
-          while (
-            app.query_one(DetailView).filepath != path
-            or [thumbnail.filepath for thumbnail in app.query_one(DetailView).thumbnails] != expected
-          ):
+          while detail.filepath != path or [thumbnail.filepath for thumbnail in detail.thumbnails] != expected:
             await pilot.pause(0.01)
       await pilot.press("right")
-      assert app.query_one(DetailView).filepath == paths[-1]
+      assert detail.filepath == paths[-1]
       await pilot.press("left")
-      assert app.query_one(DetailView).filepath == paths[-2]
+      assert detail.filepath == paths[-2]
       await pilot.press("v")
       await pilot.pause()
       async with asyncio.timeout(0.25):
