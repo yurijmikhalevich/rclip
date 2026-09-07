@@ -1040,7 +1040,7 @@ def test_tui_only_loads_visible_previews(tmp_path: Path, monkeypatch: pytest.Mon
   monkeypatch.setattr("rclip.tui.views.prepare_image", prepare)
 
   async def run() -> None:
-    async with app.run_test(size=(80, 24)) as pilot:
+    async with app.run_test(size=(80, 26)) as pilot:
       assert await asyncio.to_thread(four_started.wait, 1)
       await asyncio.sleep(0.05)
       assert max_active == 4
