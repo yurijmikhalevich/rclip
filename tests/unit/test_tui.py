@@ -15,6 +15,7 @@ from rich.console import Console
 from textual_image.renderable import TGPImage as TGPRenderable
 from textual_image._terminal import CellSize
 import pytest
+from textual import events
 from textual.geometry import Size
 from textual.widgets import Input, Static
 
@@ -520,6 +521,33 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
       assert str(gallery_path.content) == ""
       await pilot.press("ctrl+c")
       assert exits == [True]
+
+  asyncio.run(run())
+
+
+@pytest.mark.parametrize(("forward", "back"), [("right", "left"), ("down", "up")])
+def test_grid_navigation_keeps_selection_after_queued_arrows(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, forward: str, back: str
+) -> None:
+  results = [RClip.SearchResult(str(tmp_path / f"image-{index}.jpg"), 1) for index in range(15)]
+  app = RclipApp(FakeRclip(results), str(tmp_path))
+  monkeypatch.setattr(ImageCard, "load_preview", lambda self: None)
+
+  async def run() -> None:
+    async with app.run_test(size=(100, 40)) as pilot:
+      await app.workers.wait_for_complete()
+      await pilot.press("down")
+      cards = app.query_one(ResultsGrid).cards
+      # Terminal input can arrive in a batch before deferred focus events run.
+      step = 1 if forward == "right" else app._columns()
+      for key in [forward, forward, back]:
+        app.post_message(events.Key(key, None))
+      await pilot.pause()
+      assert app.focused is cards[step]
+      assert app._selected_index == step
+      await pilot.press(back)
+      assert app.focused is cards[0]
+      assert app._selected_index == 0
 
   asyncio.run(run())
 

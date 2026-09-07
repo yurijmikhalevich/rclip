@@ -83,7 +83,7 @@ class ImageCard(Static, can_focus=True):
   def on_focus(self) -> None:
     from rclip.tui.app import RclipApp
 
-    if isinstance(self.app, RclipApp):
+    if isinstance(self.app, RclipApp) and self.app.focused is self:
       self.app.select_card(self)
 
 
