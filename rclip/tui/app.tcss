@@ -23,7 +23,6 @@ Screen {
 #search-scope, #results-order {
   width: 1fr;
   height: 1;
-  color: $text-muted;
   text-overflow: ellipsis;
 }
 
@@ -77,8 +76,6 @@ ImageCard.preview-failed {
 .hotkeys {
   height: auto;
   padding: 0 1;
-  background: $surface;
-  color: $text-muted;
   text-align: center;
 }
 

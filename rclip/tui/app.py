@@ -8,7 +8,10 @@ from typing import TYPE_CHECKING, ClassVar, Sequence
 from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.color import Color
 from textual.containers import Horizontal
+from textual.content import Content
+from textual.style import Style
 from textual.timer import Timer
 from textual.worker import get_current_worker
 from textual.widgets import Input, Static
@@ -85,9 +88,9 @@ class RclipApp(App[None], inherit_bindings=False):
   def get_css_variables(self) -> dict[str, str]:
     variables = super().get_css_variables()
     if self.current_theme.name == "ansi-dark":
-      # Keep borders visible while respecting the terminal's ANSI palette.
-      variables["border-blurred"] = "ansi_white"
-      variables["border"] = "ansi_bright_green"
+      # Keep inactive borders subdued and selection visible on light and dark terminals.
+      variables["border-blurred"] = "ansi_bright_black"
+      variables["border"] = variables["scrollbar-active"]
     return variables
 
   def compose(self) -> ComposeResult:
@@ -446,19 +449,29 @@ class RclipApp(App[None], inherit_bindings=False):
   def on_descendant_blur(self, event: events.DescendantBlur) -> None:
     self.call_after_refresh(self._update_hotkeys)
 
+  def _highlight(self, text: str) -> Content:
+    background = Color.parse(self.get_css_variables()["scrollbar"])
+    style = Style(background=background, foreground=Color.parse("white"))
+    return Content.assemble((text, style))
+
   def _update_hotkeys(self) -> None:
     search_focused = isinstance(self.focused, Input)
-    keys = ["Down Browse"] if search_focused else ["/ Search"]
+    keys = [("Down", "Browse")] if search_focused else [("/", "Search")]
     if search_focused:
-      keys.append("^O Grid view" if self._detail.display else "^O Detail view")
+      keys.append(("^O", "Grid view" if self._detail.display else "Detail view"))
     elif self._detail.display:
-      keys.append("h/l/Arrows Browse   Esc Grid view")
+      keys.extend([("h/l/Arrows", "Browse"), ("Esc", "Grid view")])
     else:
-      keys.append("hjkl/Arrows Move   o Detail view")
+      keys.extend([("hjkl/Arrows", "Move"), ("o", "Detail view")])
     if self.check_action("copy_image", ()):
-      keys.append("^Y Copy   ^P Copy path   ^S Download" if search_focused else "y Copy   p Copy path   s Download")
-    keys.append("^C Quit")
-    self.query_one(".hotkeys", Static).update("   ".join(keys))
+      keys.extend(
+        (f"^{key.upper()}" if search_focused else key, label)
+        for key, label in [("y", "Copy"), ("p", "Copy path"), ("s", "Download")]
+      )
+    keys.append(("^C", "Quit"))
+    self.query_one(".hotkeys", Static).update(Content("   ").join(
+      Content.assemble(self._highlight(f" {key} "), f" {label}") for key, label in keys
+    ))
 
   @work(thread=True, group="clipboard", exclusive=True, exit_on_error=False)
   def _copy_image(self, filepath: str) -> None:
