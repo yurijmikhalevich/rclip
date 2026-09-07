@@ -81,6 +81,14 @@ class RclipApp(App[None]):
     self._pending_detail_advance = False
     self._detail = DetailView(self._move_detail)
 
+  def get_css_variables(self) -> dict[str, str]:
+    variables = super().get_css_variables()
+    if self.current_theme.name == "ansi-dark":
+      # Keep borders visible while respecting the terminal's ANSI palette.
+      variables["border-blurred"] = "ansi_white"
+      variables["border"] = "ansi_bright_green"
+    return variables
+
   def compose(self) -> ComposeResult:
     directory = _display_directory(self.working_directory)
     yield Input(placeholder=f"Search images in {directory}…", id="search")

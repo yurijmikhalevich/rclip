@@ -7,12 +7,12 @@ Screen {
 #search {
   height: 3;
   margin: 1 1 0 1;
-  border: round $border-blurred;
+  border: solid $border-blurred;
   background: $surface;
 }
 
 #search:focus {
-  border: round $accent;
+  border: heavy $border;
 }
 
 #results {
@@ -26,13 +26,13 @@ Screen {
 ImageCard {
   height: 16;
   layout: vertical;
-  border: round $border-blurred;
+  border: solid $border-blurred;
   background: $surface;
   padding: 0 1;
 }
 
 ImageCard:focus {
-  border: heavy $accent;
+  border: heavy $border;
   background: $block-hover-background;
 }
 
@@ -54,7 +54,7 @@ ImageCard:focus {
 }
 
 ImageCard.preview-failed {
-  border: round $error;
+  border: solid $error;
 }
 
 .hotkeys {
@@ -105,13 +105,13 @@ ImageCard.preview-failed {
   width: 90%;
   height: 7;
   padding: 0 1;
-  border: round $border-blurred;
+  border: solid $border-blurred;
 }
 
 .detail-thumbnail.selected .detail-thumbnail-frame {
   width: 100%;
   height: 100%;
-  border: heavy $accent;
+  border: heavy $border;
 }
 
 .detail-thumbnail-frame .thumbnail {
