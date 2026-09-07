@@ -694,6 +694,7 @@ def test_search_in_detail_preserves_view_and_updates_selection(tmp_path: Path) -
 
 def test_gallery_resends_thumbnails_after_detail_browsing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   monkeypatch.setattr(sys, "__stdout__", StringIO())
+  console = Console(file=StringIO(), width=100, height=40)
   paths = [make_image(tmp_path / f"image-{index}.jpg") for index in range(6)]
   app = RclipApp(FakeRclip([RClip.SearchResult(str(path), 1) for path in paths]), str(tmp_path))
 
@@ -707,7 +708,10 @@ def test_gallery_resends_thumbnails_after_detail_browsing(tmp_path: Path, monkey
       await app.workers.wait_for_complete()
       await pilot.pause()
       before = [card._image.render() for card in cards]
-      assert all(isinstance(renderable, TGPRenderable) for renderable in before)
+      for renderable in before:
+        assert isinstance(renderable, TGPRenderable)
+        list(console.render(renderable))
+        assert renderable.terminal_image_id is not None
       await pilot.press("down", "o", "right", "right", "left", "o")
       await app.workers.wait_for_complete()
       await pilot.pause()
@@ -717,6 +721,8 @@ def test_gallery_resends_thumbnails_after_detail_browsing(tmp_path: Path, monkey
         current = card._image.render()
         assert isinstance(current, TGPRenderable)
         assert current is not previous
+        # Widget.render() only returns the renderable; Rich performs the image transfer.
+        list(console.render(current))
         assert current.terminal_image_id is not None
       await pilot.press("right", "left")
       assert all(card._image.image is not None for card in cards)
