@@ -34,6 +34,7 @@ Screen {
 
 #results {
   height: 1fr;
+  margin-top: 1;
   grid-gutter: 1;
   grid-rows: 16;
   overflow-x: hidden;
