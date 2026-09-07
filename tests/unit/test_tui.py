@@ -724,6 +724,96 @@ def test_gallery_resends_thumbnails_after_detail_browsing(tmp_path: Path, monkey
   asyncio.run(run())
 
 
+@pytest.mark.parametrize("width", [30, 100])
+def test_detail_preloads_only_adjacent_images_and_navigates_immediately(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, width: int
+) -> None:
+  paths = [str(make_image(tmp_path / f"image-{index}.jpg")) for index in range(5)]
+  app = RclipApp(FakeRclip([RClip.SearchResult(path, 1) for path in paths]), str(tmp_path))
+  loaded: list[str] = []
+
+  def track_prepare(filepath: str, size: tuple[int, int]):
+    if size == (1920, 1920):
+      loaded.append(filepath)
+    return prepare_image(filepath, size)
+
+  monkeypatch.setattr("rclip.tui.views.prepare_image", track_prepare)
+
+  async def run() -> None:
+    async with app.run_test(size=(width, 40)) as pilot:
+      await app.workers.wait_for_complete()
+      await pilot.press("down")
+      app.select_card(app.query_one(ResultsGrid).cards[2])
+      app.action_open_detail()
+      await app.workers.wait_for_complete()
+      screen = app.query_one(DetailView)
+      assert sorted(loaded) == paths[1:4]
+      prepared = dict(screen._details)
+      for move, index in [(app.action_move_left, 1), (app.action_move_right, 2)]:
+        move()
+        # Check before yielding: navigation must display the cached image synchronously.
+        assert screen.filepath == paths[index]
+        assert screen._image.image is prepared[paths[index]]
+        assert screen._image.display
+        assert not screen.query_one("#detail-status", Static).display
+      async with asyncio.timeout(1):
+        while set(screen._details) != set(paths[1:4]):
+          await asyncio.sleep(0.001)
+      assert set(screen._details) == set(paths[1:4])
+      assert loaded.count(paths[1]) == loaded.count(paths[2]) == 1
+      app.action_move_left()
+      async with asyncio.timeout(1):
+        while set(screen._details) != set(paths[:3]):
+          await asyncio.sleep(0.001)
+      app.action_move_left()
+      assert set(screen._details) == set(paths[:2])
+
+  asyncio.run(run())
+
+
+def test_detail_reuses_inflight_preload_and_ignores_evicted_completion(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  paths = [str(make_image(tmp_path / f"image-{index}.jpg")) for index in range(4)]
+  app = RclipApp(FakeRclip([RClip.SearchResult(path, 1) for path in paths]), str(tmp_path))
+  started = Event()
+  release = Event()
+  loaded: list[str] = []
+
+  def slow_prepare(filepath: str, size: tuple[int, int]):
+    if size == (1920, 1920):
+      loaded.append(filepath)
+      if filepath in paths[:2]:
+        started.set()
+        assert release.wait(5)
+    return prepare_image(filepath, size)
+
+  monkeypatch.setattr("rclip.tui.views.prepare_image", slow_prepare)
+
+  async def run() -> None:
+    async with app.run_test(size=(100, 40)) as pilot:
+      try:
+        await app.workers.wait_for_complete()
+        await pilot.press("down", "o")
+        assert await asyncio.to_thread(started.wait, 1)
+        screen = app.query_one(DetailView)
+        pending = screen._detail_workers[paths[1]]
+        app.action_move_right()
+        assert screen._detail_workers[paths[1]] is pending
+        app.action_move_right()
+      finally:
+        release.set()
+      async with asyncio.timeout(1):
+        while set(screen._details) != set(paths[1:]):
+          await asyncio.sleep(0.001)
+      assert screen.filepath == paths[2]
+      assert screen._image.image is screen._details[paths[2]]
+      assert set(screen._details) == set(paths[1:])
+      assert loaded.count(paths[1]) == 1
+
+  asyncio.run(run())
+
+
 def test_detail_loading_and_error_keep_layout_stable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   path = make_image(tmp_path / "image.jpg")
   missing = tmp_path / "missing.jpg"

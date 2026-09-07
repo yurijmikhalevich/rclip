@@ -342,10 +342,14 @@ class RclipApp(App[None], inherit_bindings=False):
     self._update_hotkeys()
     if not self._detail.display:
       return
-    self._detail.show_image(card.result.filepath if card else None)
+    cards = self._cards()
+    self._detail.show_image(card.result.filepath if card else None, [
+      cards[index].result.filepath
+      for index in (self._selected_index - 1, self._selected_index + 1)
+      if 0 <= index < len(cards)
+    ])
     if not self._detail.thumbnails:
       return
-    cards = self._cards()
     neighbors = len(self._detail.thumbnails) // 2
     self._detail.show_thumbnails([
       cards[index].result.filepath if 0 <= index < len(cards) else None

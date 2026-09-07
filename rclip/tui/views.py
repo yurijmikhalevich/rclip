@@ -8,7 +8,7 @@ from typing import Callable, Sequence, cast
 from textual import events, work
 from textual.app import ComposeResult
 from textual.containers import CenterMiddle, Horizontal, ItemGrid, Vertical
-from textual.worker import get_current_worker
+from textual.worker import Worker, get_current_worker
 from textual.widgets import Label, Static
 
 from rclip.tui.media import CenteredTGPImage
@@ -180,6 +180,8 @@ class DetailView(Vertical, can_focus=True):
     self._image.display = False
     self._browse = browse
     self.thumbnails: list[DetailThumbnail] = []
+    self._details: dict[str, BytesIO | str] = {}
+    self._detail_workers: dict[str, Worker[None]] = {}
 
   def compose(self) -> ComposeResult:
     with CenterMiddle(id="detail-frame"):
@@ -230,7 +232,15 @@ class DetailView(Vertical, can_focus=True):
       thumbnail.show_image(filepath)
       filmstrip.move_child(thumbnail, before=index)
 
-  def show_image(self, filepath: str | None) -> None:
+  def show_image(self, filepath: str | None, neighbors: Sequence[str] = ()) -> None:
+    wanted = {filepath, *neighbors} if filepath is not None else set()
+    self._details = {path: detail for path, detail in self._details.items() if path in wanted}
+    for path in list(self._detail_workers):
+      if path not in wanted:
+        self._detail_workers.pop(path).cancel()
+    for path in ([filepath, *neighbors] if filepath is not None else []):
+      if path not in self._details and path not in self._detail_workers:
+        self._detail_workers[path] = self._load_detail(path)
     if filepath == self.filepath:
       return
     self.filepath = filepath
@@ -239,23 +249,36 @@ class DetailView(Vertical, can_focus=True):
     status = self.query_one("#detail-status", Static)
     status.update("No results" if filepath is None else "Loading higher-resolution image…")
     status.display = True
-    if filepath is not None:
-      self._load_detail()
+    if filepath in self._details:
+      detail = self._details[filepath]
+      if isinstance(detail, BytesIO):
+        self._show_detail(filepath, detail)
+      else:
+        self._show_error(filepath, detail)
 
-  @work(thread=True, group="detail", exclusive=True, exit_on_error=False)
-  def _load_detail(self) -> None:
-    filepath = self.filepath
-    if filepath is None:
-      return
+  @work(thread=True, group="detail", exit_on_error=False)
+  def _load_detail(self, filepath: str) -> None:
+    worker = get_current_worker()
     with _IMAGE_DECODES:
-      if get_current_worker().is_cancelled:
+      if worker.is_cancelled:
         return
+      detail: BytesIO | str
       try:
         detail = prepare_image(filepath, DETAIL_SIZE)
       except Exception as error:
-        self.app.call_from_thread(self._show_error, filepath, str(error))
-      else:
-        self.app.call_from_thread(self._show_detail, filepath, detail)
+        detail = str(error)
+      if not worker.is_cancelled:
+        self.app.call_from_thread(self._detail_ready, filepath, worker, detail)
+
+  def _detail_ready(self, filepath: str, worker: Worker[None], detail: BytesIO | str) -> None:
+    if not self.is_attached or self._detail_workers.get(filepath) is not worker:
+      return
+    del self._detail_workers[filepath]
+    self._details[filepath] = detail
+    if isinstance(detail, BytesIO):
+      self._show_detail(filepath, detail)
+    else:
+      self._show_error(filepath, detail)
 
   def _show_detail(self, filepath: str, detail: BytesIO) -> None:
     if not self.is_attached or filepath != self.filepath:
