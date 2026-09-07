@@ -92,6 +92,8 @@ class RclipApp(App[None]):
   def compose(self) -> ComposeResult:
     directory = _display_directory(self.working_directory)
     yield Input(placeholder=f"Search images in {directory}…", id="search")
+    yield Static(f"{directory} · Including subfolders", id="search-scope", markup=False)
+    yield Static("All images · Recently modified first", id="results-order", markup=False)
     yield ResultsGrid(self._load_more)
     yield self._detail
     yield Static("", id="gallery-path", markup=False)
@@ -226,6 +228,9 @@ class RclipApp(App[None]):
       return
     self._next_cursor = next_cursor
     self._loading_more = False
+    self.query_one("#results-order", Static).update(
+      "Search results · Most similar first" if query else "All images · Recently modified first"
+    )
     if append and self._pending_detail_advance:
       self._pending_detail_advance = False
       if cards and self._detail.display:

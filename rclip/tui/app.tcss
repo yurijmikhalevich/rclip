@@ -15,6 +15,13 @@ Screen {
   border: heavy $border;
 }
 
+#search-scope, #results-order {
+  height: 1;
+  padding: 0 1;
+  color: $text-muted;
+  text-overflow: ellipsis;
+}
+
 #results {
   height: 1fr;
   grid-gutter: 1;
