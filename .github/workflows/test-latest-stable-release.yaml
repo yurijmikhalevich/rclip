@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: '0 0 * * *'
 
+permissions:
+  contents: read
+
 jobs:
   get_last_release_tag:
     runs-on: ubuntu-22.04
@@ -12,8 +15,10 @@ jobs:
       tag: ${{ steps.extract_tag.outputs.tag }}
     steps:
       - id: extract_tag
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          TAG=$(curl -s https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest | jq -r '.tag_name')
+          TAG=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest | jq -r '.tag_name')
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "Last release tag: $TAG"
 
@@ -74,8 +79,10 @@ jobs:
           ref: ${{ needs.get_last_release_tag.outputs.tag }}
       - run: sudo apt-get install -y fuse
       - name: Download & install rclip AppImage
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          url=$(curl -s "https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest" \
+          url=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest" \
             | jq -r '.assets[] | select(.name | endswith(".AppImage")).browser_download_url')
           wget -O rclip.AppImage "$url"
           chmod +x rclip.AppImage
@@ -103,8 +110,11 @@ jobs:
         with:
           ref: ${{ needs.get_last_release_tag.outputs.tag }}
       - name: Download & install rclip MSI
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $url = Invoke-RestMethod -Uri "https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest"
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN" }
+          $url = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/yurijmikhalevich/rclip/releases/latest"
           $asset = $url.assets | Where-Object { $_.name -like "*.msi" } | Select-Object -First 1
           Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "rclip.msi"
           Start-Process msiexec.exe -Wait -ArgumentList "/i rclip.msi /quiet"
