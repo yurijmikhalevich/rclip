@@ -1,3 +1,4 @@
+from functools import cache
 import os
 from pathlib import Path
 import shutil
@@ -45,11 +46,16 @@ def _run_kitten(command: list[str], timeout: float | None = None) -> str:
     return output
 
 
-def _require_kitty() -> str:
-  executable = _kitten_executable()
+@cache
+def _probe_kitty(executable: str) -> None:
   response = _run_kitten([executable, "query_terminal", "--wait-for", "1", "name"], timeout=2)
   if response.strip() != "name: xterm-kitty":
     raise TransferError("Image copy and download require Kitty")
+
+
+def _require_kitty() -> str:
+  executable = _kitten_executable()
+  _probe_kitty(executable)
   return executable
 
 

@@ -20,6 +20,7 @@ from rclip.model import Model
 from rclip.tui.media import ImageWidget
 from rclip.tui.transfer import _is_remote_session
 from rclip.tui.transfer import _kitten_executable
+from rclip.tui.transfer import _probe_kitty
 from rclip.tui.transfer import copy_image_to_clipboard
 from rclip.tui.transfer import download_image
 from rclip.tui.views import DetailView
@@ -490,4 +491,5 @@ class RclipApp(App[None], inherit_bindings=False):
 
 
 def run_tui(rclip: RClip, working_directory: str, top_k: int) -> None:
+  _probe_kitty.cache_clear()
   RclipApp(rclip, working_directory, top_k).run()

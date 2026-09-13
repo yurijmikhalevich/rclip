@@ -25,17 +25,26 @@ from rclip import main as main_module
 from rclip.main import RClip
 from rclip.tui.app import RclipApp
 from rclip.tui.app import _display_directory
+from rclip.tui.app import run_tui
 from rclip.tui.media import CenteredTGPImage
 from rclip.tui.media import StableTGPImage
 from rclip.tui.media import prepare_image
 from rclip.tui.transfer import TransferError
 from rclip.tui.transfer import _run_kitten
+from rclip.tui.transfer import _probe_kitty
 from rclip.tui.transfer import copy_image_to_clipboard
 from rclip.tui.transfer import download_image
 from rclip.tui.views import DetailView
 from rclip.tui.views import ImageCard
 from rclip.tui.views import ResultsGrid
 from rclip.utils.helpers import init_arg_parser
+
+
+@pytest.fixture(autouse=True)
+def clear_kitty_probe_cache() -> Iterator[None]:
+  _probe_kitty.cache_clear()
+  yield
+  _probe_kitty.cache_clear()
 
 
 class FakeRclip(RClip):
@@ -360,6 +369,55 @@ def test_tui_reports_searching_and_no_results(monkeypatch: pytest.MonkeyPatch, t
       assert app.query_one(Input).border_title == "No results"
 
   asyncio.run(run())
+
+
+def test_new_tui_session_clears_probe_without_querying(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+  query = MagicMock(return_value="name: xterm-kitty")
+  app = MagicMock()
+  monkeypatch.setattr("rclip.tui.transfer._run_kitten", query)
+  monkeypatch.setattr("rclip.tui.app.RclipApp", app)
+  _probe_kitty("kitten")
+  run_tui(FakeRclip([]), str(tmp_path), 100)
+  app.return_value.run.assert_called_once()
+  assert query.call_count == 1
+  _probe_kitty("kitten")
+  assert query.call_count == 2
+
+
+@pytest.mark.parametrize("failure", [None, "unsupported", "timeout"])
+def test_successful_kitty_probe_is_shared_by_transfers(
+  monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failure: str | None
+) -> None:
+  source = str(make_image(tmp_path / "image.jpg"))
+  commands: list[str] = []
+  executable = MagicMock(return_value="kitten")
+
+  def run(command: list[str], timeout: float | None = None) -> str:
+    commands.append(command[1])
+    if command[1] == "query_terminal":
+      if failure == "timeout":
+        raise TransferError("Kitty did not respond in time")
+      return "name: xterm-ghostty" if failure else "name: xterm-kitty"
+    return ""
+
+  monkeypatch.setattr("rclip.tui.transfer._kitten_executable", executable)
+  monkeypatch.setattr("rclip.tui.transfer._run_kitten", run)
+  if failure:
+    for operation in (copy_image_to_clipboard, download_image):
+      with pytest.raises(TransferError):
+        operation(source)
+    assert commands == ["query_terminal", "query_terminal"]
+    commands.clear()
+    failure = None
+  copy_image_to_clipboard(source)
+  download_image(source)
+  copy_image_to_clipboard(source)
+  assert commands == ["query_terminal", "clipboard", "transfer", "clipboard"]
+  assert executable.call_count >= 3
+  executable.side_effect = TransferError("kitten unavailable")
+  with pytest.raises(TransferError, match="kitten unavailable"):
+    download_image(source)
+  assert commands == ["query_terminal", "clipboard", "transfer", "clipboard"]
 
 
 @pytest.mark.parametrize("operation", [copy_image_to_clipboard, download_image])
