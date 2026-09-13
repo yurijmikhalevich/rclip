@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 import os
 from pathlib import Path
 from threading import Lock
@@ -39,6 +41,24 @@ def _display_directory(directory: str) -> str:
   except ValueError:
     return str(path)
   return str(Path("~") / relative)
+
+
+@contextmanager
+def _safe_suspend(app: App[None]) -> Iterator[None]:
+  """Suspend the TUI, guaranteeing that it is resumed even if the body raises.
+
+  Textual's `App.suspend` skips `resume_application_mode` when the suspended body raises, which
+  closes the driver and leaves the TUI blank until the process exits. Swallow the error inside the
+  `with` block and re-raise it afterwards so the driver sees a clean exit.
+  """
+  failure: BaseException | None = None
+  with app.suspend():
+    try:
+      yield
+    except BaseException as error:
+      failure = error
+  if failure is not None:
+    raise failure
 
 
 class RclipApp(App[None], inherit_bindings=False):
@@ -433,7 +453,7 @@ class RclipApp(App[None], inherit_bindings=False):
       return
     try:
       _kitten_executable()
-      with self.suspend():
+      with _safe_suspend(self):
         download_image(filepath)
     except Exception as error:
       self.notify(str(error), title="Unable to download image", severity="error")
@@ -482,7 +502,7 @@ class RclipApp(App[None], inherit_bindings=False):
   def _copy_image(self, filepath: str) -> None:
     try:
       _kitten_executable()
-      with self.suspend():
+      with _safe_suspend(self):
         copy_image_to_clipboard(filepath)
     except Exception as error:
       self.notify(str(error), title="Unable to copy image", severity="error")
