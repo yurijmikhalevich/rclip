@@ -107,6 +107,9 @@ class ResultsGrid(ItemGrid, can_focus=True):
       return
     viewport = self.scrollable_content_region
     cards = self.cards
+    # Newly mounted cards have no region until their layout is ready.
+    if cards and not cards[-1].virtual_region:
+      return
     index = bisect_right(cards, self.scroll_y, key=lambda card: card.virtual_region.bottom)
     visible_bottom = self.scroll_y + viewport.height
     while index < len(cards):

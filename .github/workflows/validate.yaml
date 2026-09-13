@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        batch: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        batch: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     runs-on: macos-26
     timeout-minutes: 15
     steps:
@@ -48,5 +48,5 @@ jobs:
         run: |
           for attempt in {1..30}; do
             echo "Pagination attempt ${attempt}/30"
-            uv run pytest 'tests/unit/test_tui.py::test_detail_navigation_loads_more_results[80-cat]' -q || exit 1
+            uv run pytest 'tests/unit/test_tui.py::test_detail_navigation_loads_more_results[80-cat]' tests/unit/test_tui.py::test_search_loads_more_on_scroll -q || exit 1
           done
