@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        batch: [1, 2, 3, 4, 5, 6, 7]
+        batch: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     runs-on: macos-26
     timeout-minutes: 15
     steps:
