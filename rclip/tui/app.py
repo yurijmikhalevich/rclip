@@ -19,6 +19,7 @@ from textual.widgets import Input, Static
 from rclip.model import Model
 from rclip.tui.media import ImageWidget
 from rclip.tui.transfer import _is_remote_session
+from rclip.tui.transfer import _kitten_executable
 from rclip.tui.transfer import copy_image_to_clipboard
 from rclip.tui.transfer import download_image
 from rclip.tui.views import DetailView
@@ -77,7 +78,6 @@ class RclipApp(App[None], inherit_bindings=False):
     self._search_timer: Timer | None = None
     self._search_lock = Lock()
     self._search_generation = 0
-    self._clipboard_lock = Lock()
     self._selected_index = 0
     self._next_cursor: RClip.ImageCursor | None = None
     self._remaining_search_results: list[TuiResult] = []
@@ -431,6 +431,7 @@ class RclipApp(App[None], inherit_bindings=False):
       self.notify(filepath, title="Image is already local")
       return
     try:
+      _kitten_executable()
       with self.suspend():
         download_image(filepath)
     except Exception as error:
@@ -477,20 +478,15 @@ class RclipApp(App[None], inherit_bindings=False):
       Content.assemble(self._highlight(f" {key} "), f" {label}") for key, label in keys
     ))
 
-  @work(thread=True, group="clipboard", exclusive=True, exit_on_error=False)
   def _copy_image(self, filepath: str) -> None:
-    worker = get_current_worker()
-    with self._clipboard_lock:
-      if worker.is_cancelled:
-        return
-      try:
+    try:
+      _kitten_executable()
+      with self.suspend():
         copy_image_to_clipboard(filepath)
-      except Exception as error:
-        if not worker.is_cancelled:
-          self.call_from_thread(self.notify, str(error), title="Unable to copy image", severity="error")
-      else:
-        if not worker.is_cancelled:
-          self.call_from_thread(self.notify, "Image copied", title=Path(filepath).name)
+    except Exception as error:
+      self.notify(str(error), title="Unable to copy image", severity="error")
+    else:
+      self.notify("Image copied", title=Path(filepath).name)
 
 
 def run_tui(rclip: RClip, working_directory: str, top_k: int) -> None:

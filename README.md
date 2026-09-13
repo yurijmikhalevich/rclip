@@ -141,9 +141,9 @@ In search, Enter runs the query immediately and Down or Esc focuses the results.
 
 Copy and download act on the focused grid result or the displayed detail image. They are unavailable while search is focused in the grid. In detail, their modifier shortcuts work while typing, and Ctrl+O preserves search focus and cursor position in either view. Download transfers remote images to your computer through a supported terminal.
 
-Image copying requires Kitty 0.27 or newer and a discoverable `kitten` executable; the rest of the UI does not invoke Kitty executables.
+Image copying requires Kitty 0.27 or newer and a discoverable `kitten` executable. Copy and download check the terminal when invoked, without delaying TUI startup. These actions temporarily suspend the TUI.
 
-Over SSH, `Ctrl+S` or `s` downloads the original file to `~/Downloads` on the terminal host. Kitty 0.30+ requires a remote `kitten` executable (`kitten ssh` provides it) and asks for confirmation; iTerm2 3.5+ is also supported. If detection fails, set `RCLIP_DOWNLOAD_PROTOCOL` to `kitty` or `iterm2`. Locally, the same shortcuts only shows the file path.
+Over SSH, `Ctrl+S` or `s` downloads the original file to `~/Downloads` on the terminal host. This requires Kitty 0.30+ and a remote `kitten` executable (`kitten ssh` provides it), and Kitty asks for confirmation. Locally, the same shortcuts only show the file path.
 
 ### Similar image search (image-to-image search)
 
