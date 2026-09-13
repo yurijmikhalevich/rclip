@@ -37,6 +37,7 @@ from rclip.tui.transfer import download_image
 from rclip.tui.views import DetailView
 from rclip.tui.views import ImageCard
 from rclip.tui.views import ResultsGrid
+from rclip.tui.views import TuiResult
 from rclip.utils.helpers import init_arg_parser
 
 
@@ -1064,10 +1065,49 @@ def test_detail_filmstrip_centers_selection_and_navigates(tmp_path: Path) -> Non
 
 @pytest.mark.parametrize("query", ["", "cat"])
 @pytest.mark.parametrize("width", [40, 80])
-def test_detail_navigation_loads_more_results(tmp_path: Path, query: str, width: int) -> None:
+def test_detail_navigation_loads_more_results(
+  tmp_path: Path, query: str, width: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
   paths = [str(tmp_path / f"image-{index}.jpg") for index in range(51)]
   rclip = FakeRclip([RClip.SearchResult(path, 1) for path in paths])
   app = RclipApp(rclip, str(tmp_path), top_k=25)
+  trace: list[str] = []
+  show_results = app._show_results
+  update_visible = ResultsGrid.update_visible
+
+  def record(event: str, grid: ResultsGrid) -> None:
+    trace.append(
+      f"{asyncio.get_running_loop().time():.6f} {event}: "
+      f"generation={app._search_generation} query={app.query_one(Input).value!r} "
+      f"loading={app._loading_more} remaining={len(app._remaining_search_results)} "
+      f"cursor={app._next_cursor!r} scroll={grid.scroll_y} max_scroll={grid.max_scroll_y} "
+      f"viewport={grid.scrollable_content_region!r} virtual_size={grid.virtual_size!r} "
+      f"cards={[(Path(card.result.filepath).name, card.virtual_region) for card in grid.cards]!r}"
+    )
+
+  async def traced_show_results(
+    generation: int,
+    search_query: str,
+    results: list[TuiResult],
+    next_cursor: RClip.ImageCursor | None,
+    append: bool,
+  ) -> None:
+    event = (
+      f"show generation={generation} query={search_query!r} append={append} "
+      f"results={[Path(result.filepath).name for result in results]!r}"
+    )
+    grid = app.query_one(ResultsGrid)
+    record(f"start {event}", grid)
+    await show_results(generation, search_query, results, next_cursor, append)
+    record(f"end {event}", grid)
+
+  def traced_update_visible(grid: ResultsGrid) -> None:
+    record("before update_visible", grid)
+    update_visible(grid)
+    record("after update_visible", grid)
+
+  monkeypatch.setattr(app, "_show_results", traced_show_results)
+  monkeypatch.setattr(ResultsGrid, "update_visible", traced_update_visible)
 
   async def run() -> None:
     async with app.run_test(size=(width, 24)) as pilot:
@@ -1107,7 +1147,10 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str, width:
           await pilot.pause(0.01)
       assert [card.result.filepath for card in app.query(ImageCard)] == paths
 
-  asyncio.run(run())
+  try:
+    asyncio.run(run())
+  finally:
+    print("\nPagination trace:\n" + "\n".join(trace))
   assert len(rclip.browses) == (1 if query else 3)
   assert rclip.searches == ([(query, str(tmp_path), None, [], [])] if query else [])
 
