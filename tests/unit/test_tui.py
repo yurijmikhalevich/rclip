@@ -277,10 +277,8 @@ def test_copy_image_suspends_until_finished(monkeypatch: pytest.MonkeyPatch, tmp
   @contextmanager
   def suspend() -> Iterator[None]:
     actions.append("suspend")
-    try:
-      yield
-    finally:
-      actions.append("resume")
+    yield
+    actions.append("resume")
 
   def copy(filepath: str) -> None:
     assert filepath == "image.jpg"
@@ -295,6 +293,34 @@ def test_copy_image_suspends_until_finished(monkeypatch: pytest.MonkeyPatch, tmp
   monkeypatch.setattr(app, "notify", lambda message, **options: actions.append(message))
   app._copy_image("image.jpg")
   assert actions == ["suspend", "copy", "resume", "permission denied" if failure else "Image copied"]
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_download_suspends_until_finished(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failure: bool) -> None:
+  app = RclipApp(FakeRclip([]), str(tmp_path))
+  actions: list[str] = []
+
+  @contextmanager
+  def suspend() -> Iterator[None]:
+    actions.append("suspend")
+    yield
+    actions.append("resume")
+
+  def download(filepath: str) -> None:
+    assert filepath == "image.jpg"
+    assert actions == ["suspend"]
+    actions.append("download")
+    if failure:
+      raise TransferError("permission denied")
+
+  monkeypatch.setattr(app, "suspend", suspend)
+  monkeypatch.setattr(app, "_selected_filepath", lambda: "image.jpg")
+  monkeypatch.setattr("rclip.tui.app._kitten_executable", lambda: "kitten")
+  monkeypatch.setattr("rclip.tui.app._is_remote_session", lambda: True)
+  monkeypatch.setattr("rclip.tui.app.download_image", download)
+  monkeypatch.setattr(app, "notify", lambda message, **options: actions.append(message))
+  app.action_download()
+  assert actions == ["suspend", "download", "resume", "permission denied" if failure else "Saved to ~/Downloads"]
 
 
 @pytest.mark.parametrize("action", ["copy", "download"])
