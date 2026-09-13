@@ -30,6 +30,10 @@ jobs:
       - run: make test
 
   diagnose-pagination:
+    strategy:
+      fail-fast: false
+      matrix:
+        batch: [1, 2, 3, 4, 5, 6, 7]
     runs-on: macos-26
     timeout-minutes: 15
     steps:
