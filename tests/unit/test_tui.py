@@ -1,6 +1,7 @@
 import asyncio
 import base64
-from contextlib import nullcontext
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, nullcontext
 from io import BytesIO, StringIO
 import os
 from pathlib import Path
@@ -9,6 +10,7 @@ import subprocess
 import sys
 from threading import Event, Lock
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from PIL import Image
 from rich.console import Console
@@ -23,17 +25,26 @@ from rclip import main as main_module
 from rclip.main import RClip
 from rclip.tui.app import RclipApp
 from rclip.tui.app import _display_directory
+from rclip.tui.app import run_tui
 from rclip.tui.media import CenteredTGPImage
 from rclip.tui.media import StableTGPImage
 from rclip.tui.media import prepare_image
 from rclip.tui.transfer import TransferError
-from rclip.tui.transfer import _download_protocol
+from rclip.tui.transfer import _run_kitten
+from rclip.tui.transfer import _probe_kitty
 from rclip.tui.transfer import copy_image_to_clipboard
 from rclip.tui.transfer import download_image
 from rclip.tui.views import DetailView
 from rclip.tui.views import ImageCard
 from rclip.tui.views import ResultsGrid
 from rclip.utils.helpers import init_arg_parser
+
+
+@pytest.fixture(autouse=True)
+def clear_kitty_probe_cache() -> Iterator[None]:
+  _probe_kitty.cache_clear()
+  yield
+  _probe_kitty.cache_clear()
 
 
 class FakeRclip(RClip):
@@ -258,49 +269,54 @@ def test_copy_image_keeps_common_formats_and_converts_others(
   assert copied == [(".jpg", "JPEG"), (".png", "PNG")]
 
 
-def test_clipboard_kitten_failure_is_reported(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-  monkeypatch.setattr("rclip.tui.transfer._kitten_executable", lambda: "kitten")
-  monkeypatch.setattr(
-    subprocess,
-    "run",
-    lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 1, stderr="permission denied"),
-  )
+@pytest.mark.parametrize("failure", [False, True])
+def test_copy_image_suspends_until_finished(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failure: bool) -> None:
+  app = RclipApp(FakeRclip([]), str(tmp_path))
+  actions: list[str] = []
 
-  with pytest.raises(TransferError, match="permission denied"):
-    copy_image_to_clipboard(str(make_image(tmp_path / "image.jpg")))
-
-
-def test_latest_clipboard_action_finishes_last(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-  first_started = Event()
-  release_first = Event()
-  copied: list[str] = []
-  notifications: list[str] = []
+  @contextmanager
+  def suspend() -> Iterator[None]:
+    actions.append("suspend")
+    try:
+      yield
+    finally:
+      actions.append("resume")
 
   def copy(filepath: str) -> None:
-    copied.append(filepath)
-    if filepath == "first":
-      first_started.set()
-      assert release_first.wait(2)
+    assert filepath == "image.jpg"
+    assert actions == ["suspend"]
+    actions.append("copy")
+    if failure:
+      raise TransferError("permission denied")
 
-  app = RclipApp(FakeRclip([]), str(tmp_path))
+  monkeypatch.setattr(app, "suspend", suspend)
+  monkeypatch.setattr("rclip.tui.app._kitten_executable", lambda: "kitten")
   monkeypatch.setattr("rclip.tui.app.copy_image_to_clipboard", copy)
-  monkeypatch.setattr(app, "notify", lambda message, **_options: notifications.append(message))
+  monkeypatch.setattr(app, "notify", lambda message, **options: actions.append(message))
+  app._copy_image("image.jpg")
+  assert actions == ["suspend", "copy", "resume", "permission denied" if failure else "Image copied"]
 
-  async def run() -> None:
-    async with app.run_test():
-      await app.workers.wait_for_complete()
-      app._copy_image("first")
-      assert await asyncio.to_thread(first_started.wait, 1)
-      app._copy_image("second")
-      await asyncio.sleep(0.05)
-      assert copied == ["first"]
-      release_first.set()
-      await app.workers.wait_for_complete()
 
-  asyncio.run(run())
+@pytest.mark.parametrize("action", ["copy", "download"])
+def test_missing_kitten_does_not_suspend(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, action: str) -> None:
+  app = RclipApp(FakeRclip([]), str(tmp_path))
+  suspend = MagicMock()
+  notifications: list[str] = []
 
-  assert copied == ["first", "second"]
-  assert notifications == ["Image copied"]
+  def missing() -> str:
+    raise TransferError("could not find Kitty's `kitten` executable")
+
+  monkeypatch.setattr("rclip.tui.app._kitten_executable", missing)
+  monkeypatch.setattr("rclip.tui.app._is_remote_session", lambda: True)
+  monkeypatch.setattr(app, "_selected_filepath", lambda: "image.jpg")
+  monkeypatch.setattr(app, "suspend", suspend)
+  monkeypatch.setattr(app, "notify", lambda message, **options: notifications.append(message))
+  if action == "copy":
+    app.action_copy_image()
+  else:
+    app.action_download()
+  suspend.assert_not_called()
+  assert notifications == ["could not find Kitty's `kitten` executable"]
 
 
 def test_tui_rejects_image_query(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -355,74 +371,125 @@ def test_tui_reports_searching_and_no_results(monkeypatch: pytest.MonkeyPatch, t
   asyncio.run(run())
 
 
-def test_download_protocol_can_be_detected_or_overridden(monkeypatch: pytest.MonkeyPatch) -> None:
-  for name in (
-    "KITTY_PUBLIC_KEY",
-    "KITTY_WINDOW_ID",
-    "LC_TERMINAL",
-    "RCLIP_DOWNLOAD_PROTOCOL",
-    "TERM",
-    "TERM_PROGRAM",
-  ):
-    monkeypatch.delenv(name, raising=False)
-
-  with pytest.raises(TransferError, match="could not detect"):
-    _download_protocol()
-
-  monkeypatch.setenv("TERM", "xterm-kitty")
-  assert _download_protocol() == "kitty"
-
-  monkeypatch.setenv("RCLIP_DOWNLOAD_PROTOCOL", "iterm2")
-  assert _download_protocol() == "iterm2"
-
-  monkeypatch.setenv("RCLIP_DOWNLOAD_PROTOCOL", "unknown")
-  with pytest.raises(TransferError, match="must be `kitty` or `iterm2`"):
-    _download_protocol()
+def test_new_tui_session_clears_probe_without_querying(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+  query = MagicMock(return_value="name: xterm-kitty")
+  app = MagicMock()
+  monkeypatch.setattr("rclip.tui.transfer._run_kitten", query)
+  monkeypatch.setattr("rclip.tui.app.RclipApp", app)
+  _probe_kitty("kitten")
+  run_tui(FakeRclip([]), str(tmp_path), 100)
+  app.return_value.run.assert_called_once()
+  assert query.call_count == 1
+  _probe_kitty("kitten")
+  assert query.call_count == 2
 
 
-def test_download_image_uses_kitty_transfer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("failure", [None, "unsupported", "timeout"])
+def test_successful_kitty_probe_is_shared_by_transfers(
+  monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failure: str | None
+) -> None:
+  source = str(make_image(tmp_path / "image.jpg"))
+  commands: list[str] = []
+  executable = MagicMock(return_value="kitten")
+
+  def run(command: list[str], timeout: float | None = None) -> str:
+    commands.append(command[1])
+    if command[1] == "query_terminal":
+      if failure == "timeout":
+        raise TransferError("Kitty did not respond in time")
+      return "name: xterm-ghostty" if failure else "name: xterm-kitty"
+    return ""
+
+  monkeypatch.setattr("rclip.tui.transfer._kitten_executable", executable)
+  monkeypatch.setattr("rclip.tui.transfer._run_kitten", run)
+  if failure:
+    for operation in (copy_image_to_clipboard, download_image):
+      with pytest.raises(TransferError):
+        operation(source)
+    assert commands == ["query_terminal", "query_terminal"]
+    commands.clear()
+    failure = None
+  copy_image_to_clipboard(source)
+  download_image(source)
+  copy_image_to_clipboard(source)
+  assert commands == ["query_terminal", "clipboard", "transfer", "clipboard"]
+  assert executable.call_count >= 3
+  executable.side_effect = TransferError("kitten unavailable")
+  with pytest.raises(TransferError, match="kitten unavailable"):
+    download_image(source)
+  assert commands == ["query_terminal", "clipboard", "transfer", "clipboard"]
+
+
+@pytest.mark.parametrize("operation", [copy_image_to_clipboard, download_image])
+@pytest.mark.parametrize("response", ["name: xterm-kitty\n", "name: xterm-ghostty\n", "name:\n", "", "invalid"])
+def test_transfer_probes_before_sending(
+  monkeypatch: pytest.MonkeyPatch, tmp_path: Path, operation: Callable[[str], None], response: str
+) -> None:
   source = make_image(tmp_path / "image.jpg")
-  commands: list[tuple[list[str], dict[str, object]]] = []
+  commands: list[tuple[list[str], float | None]] = []
 
-  def run(command: list[str], **options: object) -> subprocess.CompletedProcess[str]:
-    commands.append((command, options))
-    return subprocess.CompletedProcess(command, 0, stderr="")
+  def run(command: list[str], timeout: float | None = None) -> str:
+    commands.append((command, timeout))
+    return response
 
-  monkeypatch.setenv("SSH_CONNECTION", "client 1 server 2")
-  monkeypatch.setenv("RCLIP_DOWNLOAD_PROTOCOL", "kitty")
   monkeypatch.setattr("rclip.tui.transfer._kitten_executable", lambda: "kitten")
-  monkeypatch.setattr(subprocess, "run", run)
+  monkeypatch.setattr("rclip.tui.transfer._run_kitten", run)
+  # Environment hints and the removed override must not bypass the probe.
+  monkeypatch.setenv("TERM", "xterm-kitty")
+  monkeypatch.setenv("RCLIP_DOWNLOAD_PROTOCOL", "iterm2")
+  if response == "name: xterm-kitty\n":
+    operation(str(source))
+    expected = (
+      (["kitten", "clipboard", str(source)], 30) if operation is copy_image_to_clipboard
+      else (["kitten", "transfer", str(source), "Downloads/"], None)
+    )
+    assert commands[1:] == [expected]
+  else:
+    with pytest.raises(TransferError, match="require Kitty"):
+      operation(str(source))
+    assert len(commands) == 1
+  assert commands[0] == (["kitten", "query_terminal", "--wait-for", "1", "name"], 2)
 
-  download_image(str(source))
 
-  assert commands == [(["kitten", "transfer", str(source), "Downloads/"], {"stderr": subprocess.PIPE, "text": True})]
-
-
-def test_download_image_reports_missing_kitten(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-  monkeypatch.setenv("RCLIP_DOWNLOAD_PROTOCOL", "kitty")
+@pytest.mark.parametrize("operation", [copy_image_to_clipboard, download_image])
+def test_transfer_reports_missing_kitten(
+  monkeypatch: pytest.MonkeyPatch, tmp_path: Path, operation: Callable[[str], None]
+) -> None:
   monkeypatch.delenv("KITTY_INSTALLATION_DIR", raising=False)
   monkeypatch.setattr("rclip.tui.transfer.shutil.which", lambda _: None)
-
+  spawn = MagicMock()
+  monkeypatch.setattr(subprocess, "Popen", spawn)
   with pytest.raises(TransferError, match="could not find Kitty"):
-    download_image(str(make_image(tmp_path / "image.jpg")))
+    operation(str(make_image(tmp_path / "image.jpg")))
+  spawn.assert_not_called()
 
 
-def test_download_image_streams_the_original_to_iterm2(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-  source = make_image(tmp_path / "image with spaces.jpg")
-  output = StringIO()
-  monkeypatch.setenv("SSH_TTY", "/dev/pts/1")
-  monkeypatch.setenv("RCLIP_DOWNLOAD_PROTOCOL", "iterm2")
-  monkeypatch.setenv("TERM", "xterm-256color")
-  monkeypatch.setattr(sys, "stdout", output)
+@pytest.mark.parametrize("force_kill", [False, True])
+def test_kitten_timeout_terminates_and_reaps(monkeypatch: pytest.MonkeyPatch, force_kill: bool) -> None:
+  process = MagicMock()
+  process.__enter__.return_value = process
+  timeout = subprocess.TimeoutExpired(["kitten"], 2)
+  process.communicate.side_effect = [timeout, timeout, ("", "")] if force_kill else [timeout, ("", "")]
+  monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
+  with pytest.raises(TransferError, match="did not respond"):
+    _run_kitten(["kitten"], timeout=2)
+  assert [call[0] for call in process.method_calls] == (
+    ["communicate", "terminate", "communicate", "kill", "communicate"] if force_kill
+    else ["communicate", "terminate", "communicate"]
+  )
+  assert process.communicate.call_args_list[0].kwargs == {"timeout": 2}
+  assert process.communicate.call_args_list[1].kwargs == {"timeout": 3}
 
-  download_image(str(source))
 
-  sequences = output.getvalue()
-  encoded_name = base64.b64encode(source.name.encode()).decode("ascii")
-  assert f"1337;MultipartFile=name={encoded_name};size={source.stat().st_size};inline=0\a" in sequences
-  assert sequences.endswith("1337;FileEnd\a")
-  parts = re.findall(r"1337;FilePart=([A-Za-z0-9+/=]+)\a", sequences)
-  assert b"".join(base64.b64decode(part) for part in parts) == source.read_bytes()
+@pytest.mark.parametrize("returncode,error", [(1, "permission denied"), (1, "")])
+def test_kitten_failure_is_reported(monkeypatch: pytest.MonkeyPatch, returncode: int, error: str) -> None:
+  process = MagicMock()
+  process.__enter__.return_value = process
+  process.communicate.return_value = ("", error)
+  process.returncode = returncode
+  monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: process)
+  with pytest.raises(TransferError, match=error or "kitten exited with status 1"):
+    _run_kitten(["kitten"])
 
 
 def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -444,6 +511,7 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
     lambda message, **options: notifications.append((message, options.get("title"))),
   )
   monkeypatch.setattr(app, "suspend", nullcontext)
+  monkeypatch.setattr("rclip.tui.app._kitten_executable", lambda: "kitten")
   monkeypatch.setattr("rclip.tui.app.download_image", downloaded.append)
   monkeypatch.setenv("SSH_CONNECTION", "client 1 server 2")
   monkeypatch.setattr(app, "exit", lambda *args, **kwargs: exits.append(True))
@@ -564,6 +632,7 @@ def test_modifier_hotkeys_respect_visible_target_and_preserve_search(
   monkeypatch.setattr(app, "_copy_image", copied_images.append)
   monkeypatch.setattr(app, "copy_to_clipboard", copied_paths.append)
   monkeypatch.setattr(app, "suspend", nullcontext)
+  monkeypatch.setattr("rclip.tui.app._kitten_executable", lambda: "kitten")
   monkeypatch.setattr("rclip.tui.app.download_image", downloaded.append)
   monkeypatch.setenv("SSH_CONNECTION", "client 1 server 2")
   monkeypatch.setattr(app, "exit", lambda *args, **kwargs: exits.append(True))
