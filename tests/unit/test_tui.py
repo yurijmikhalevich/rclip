@@ -1140,18 +1140,15 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str, width:
           paths[neighbor] if 0 <= neighbor < len(paths) else None
           for neighbor in range(index - neighbors, index + neighbors + 1)
         ]
-        async with asyncio.timeout(0.5):
-          while detail.filepath != path or [thumbnail.filepath for thumbnail in detail.thumbnails] != expected:
-            await pilot.pause(0.01)
+        assert detail.filepath == path
+        assert [thumbnail.filepath for thumbnail in detail.thumbnails] == expected
       await pilot.press("right")
       assert detail.filepath == paths[-1]
       await pilot.press("left")
       assert detail.filepath == paths[-2]
       await pilot.press("o")
       await pilot.pause()
-      async with asyncio.timeout(0.25):
-        while app.focused is not app.query_one(ResultsGrid).cards[-2]:
-          await pilot.pause(0.01)
+      assert app.focused is app.query_one(ResultsGrid).cards[-2]
       assert [card.result.filepath for card in app.query(ImageCard)] == paths
 
   asyncio.run(run())
