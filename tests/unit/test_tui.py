@@ -32,6 +32,7 @@ from rclip.tui.media import prepare_image
 from rclip.tui.transfer import TransferError
 from rclip.tui.transfer import _run_kitten
 from rclip.tui.transfer import _probe_kitty
+from rclip.tui.transfer import _supports_query_terminal
 from rclip.tui.transfer import copy_image_to_clipboard
 from rclip.tui.transfer import download_image
 from rclip.tui.views import DetailView
@@ -398,8 +399,9 @@ def test_tui_reports_searching_and_no_results(monkeypatch: pytest.MonkeyPatch, t
 
 
 def test_new_tui_session_clears_probe_without_querying(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-  query = MagicMock(return_value="name: xterm-kitty")
+  query = MagicMock(return_value="name: kitty")
   app = MagicMock()
+  monkeypatch.setattr("rclip.tui.transfer._supports_query_terminal", lambda _: True)
   monkeypatch.setattr("rclip.tui.transfer._run_kitten", query)
   monkeypatch.setattr("rclip.tui.app.RclipApp", app)
   _probe_kitty("kitten")
@@ -423,10 +425,11 @@ def test_successful_kitty_probe_is_shared_by_transfers(
     if command[1] == "query_terminal":
       if failure == "timeout":
         raise TransferError("Kitty did not respond in time")
-      return "name: xterm-ghostty" if failure else "name: xterm-kitty"
+      return "name: xterm-ghostty" if failure else "name: kitty"
     return ""
 
   monkeypatch.setattr("rclip.tui.transfer._kitten_executable", executable)
+  monkeypatch.setattr("rclip.tui.transfer._supports_query_terminal", lambda _: True)
   monkeypatch.setattr("rclip.tui.transfer._run_kitten", run)
   if failure:
     for operation in (copy_image_to_clipboard, download_image):
@@ -447,7 +450,9 @@ def test_successful_kitty_probe_is_shared_by_transfers(
 
 
 @pytest.mark.parametrize("operation", [copy_image_to_clipboard, download_image])
-@pytest.mark.parametrize("response", ["name: xterm-kitty\n", "name: xterm-ghostty\n", "name:\n", "", "invalid"])
+@pytest.mark.parametrize(
+  "response", ["name: kitty\n", "name: xterm-kitty\n", "name: xterm-ghostty\n", "name:\n", "", "invalid"]
+)
 def test_transfer_probes_before_sending(
   monkeypatch: pytest.MonkeyPatch, tmp_path: Path, operation: Callable[[str], None], response: str
 ) -> None:
@@ -459,11 +464,12 @@ def test_transfer_probes_before_sending(
     return response
 
   monkeypatch.setattr("rclip.tui.transfer._kitten_executable", lambda: "kitten")
+  monkeypatch.setattr("rclip.tui.transfer._supports_query_terminal", lambda _: True)
   monkeypatch.setattr("rclip.tui.transfer._run_kitten", run)
   # Environment hints and the removed override must not bypass the probe.
   monkeypatch.setenv("TERM", "xterm-kitty")
   monkeypatch.setenv("RCLIP_DOWNLOAD_PROTOCOL", "iterm2")
-  if response == "name: xterm-kitty\n":
+  if response == "name: kitty\n":
     operation(str(source))
     expected = (
       (["kitten", "clipboard", str(source)], 30) if operation is copy_image_to_clipboard
@@ -475,6 +481,47 @@ def test_transfer_probes_before_sending(
       operation(str(source))
     assert len(commands) == 1
   assert commands[0] == (["kitten", "query_terminal", "--wait-for", "1", "name"], 2)
+
+
+def test_kitten_query_capability_is_detected_without_a_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+  commands: list[list[str]] = []
+
+  def run(command: list[str], timeout: float | None = None) -> str:
+    commands.append(command)
+    return ""
+
+  monkeypatch.setattr("rclip.tui.transfer._run_kitten", run)
+  assert _supports_query_terminal("kitten")
+  assert commands == [["kitten", "query_terminal", "--help"]]
+
+  def unsupported(command: list[str], timeout: float | None = None) -> str:
+    raise TransferError("query_terminal is not a known subcommand for kitten")
+
+  monkeypatch.setattr("rclip.tui.transfer._run_kitten", unsupported)
+  assert not _supports_query_terminal("kitten")
+
+
+@pytest.mark.parametrize("operation", [copy_image_to_clipboard, download_image])
+def test_transfer_skips_probe_for_old_kitten(
+  monkeypatch: pytest.MonkeyPatch, tmp_path: Path, operation: Callable[[str], None]
+) -> None:
+  source = str(make_image(tmp_path / "image.jpg"))
+  commands: list[list[str]] = []
+
+  def run(command: list[str], timeout: float | None = None) -> str:
+    commands.append(command)
+    return ""
+
+  monkeypatch.setattr("rclip.tui.transfer._kitten_executable", lambda: "kitten")
+  monkeypatch.setattr("rclip.tui.transfer._supports_query_terminal", lambda _: False)
+  monkeypatch.setattr("rclip.tui.transfer._run_kitten", run)
+
+  operation(source)
+
+  if operation is copy_image_to_clipboard:
+    assert commands == [["kitten", "clipboard", source]]
+  else:
+    assert commands == [["kitten", "transfer", source, "Downloads/"]]
 
 
 @pytest.mark.parametrize("operation", [copy_image_to_clipboard, download_image])
