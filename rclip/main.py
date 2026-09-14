@@ -35,7 +35,7 @@ def get_image_meta(entry: os.DirEntry[str]) -> ImageMeta:
   return ImageMeta(modified_at=stat.st_mtime, size=stat.st_size)
 
 
-def is_image_meta_equal(image: db.Image, meta: ImageMeta) -> bool:
+def is_image_meta_equal(image: db.ImageState, meta: ImageMeta) -> bool:
   return meta["modified_at"] == image["modified_at"] and meta["size"] == image["size"]
 
 
@@ -253,7 +253,7 @@ class RClip:
       images_processed += 1
       pbar.update()
 
-      image = self._db.get_image(filepath=filepath)
+      image = self._db.get_image_state(filepath)
       if image and is_image_meta_equal(image, meta):
         if image["deleted"]:
           self._db.restore_image(filepath, commit=False)

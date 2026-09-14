@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import sqlite3
 from threading import Event
 from unittest.mock import call, Mock
 import tempfile
@@ -17,6 +18,10 @@ from rclip.utils import helpers
 
 def _make_rclip(model, database, exclude_dirs=None):
   return RClip(model, database, indexing_batch_size=8, exclude_dirs=exclude_dirs)
+
+
+def _get_stored_image(database: DB, filepath: str) -> "sqlite3.Row | None":
+  return database._con.execute("SELECT * FROM images WHERE filepath = ?", (filepath,)).fetchone()
 
 
 def _fail_on_b(path: str) -> Image.Image:
@@ -310,7 +315,7 @@ def test_rename_reuses_vector_without_recomputing(monkeypatch):
     model.compute_preprocessed_image_features.assert_not_called()
 
     # New path has the old vector
-    new_record = database.get_image(filepath="/new/path/renamed_cat.jpg")
+    new_record = _get_stored_image(database, "/new/path/renamed_cat.jpg")
     assert new_record is not None
     assert new_record["vector"] == old_vector
     assert new_record["hash"] == old_hash
@@ -355,7 +360,7 @@ def test_same_hash_different_size_reindexes(monkeypatch):
     model.compute_preprocessed_image_features.assert_called_once()
 
     # New path has the recomputed vector, not the old one
-    new_record = database.get_image(filepath="/new/path/edited_cat.jpg")
+    new_record = _get_stored_image(database, "/new/path/edited_cat.jpg")
     assert new_record is not None
     assert new_record["vector"] == new_vector.tobytes()
     assert new_record["vector"] != old_vector
@@ -452,7 +457,7 @@ def test_index_restores_unchanged_deleted_image(tmp_path: Path):
     os.utime(photo, ns=(stat.st_atime_ns, stat.st_mtime_ns))
     app.ensure_index(str(tmp_path))
     assert app.list_images(str(tmp_path), 10).filepaths == [str(photo)]
-    restored = database.get_image(filepath=str(photo))
+    restored = _get_stored_image(database, str(photo))
     assert restored is not None
     assert restored["deleted"] is None
     assert restored["vector"] == vector
