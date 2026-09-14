@@ -438,6 +438,31 @@ def test_exclusions_preserve_cache_and_apply_to_search_and_browse(
     database.close()
 
 
+def test_index_skips_unchanged_and_reindexes_changed_images(tmp_path: Path):
+  photo = tmp_path / "photo.jpg"
+  Image.new("RGB", (2, 2)).save(photo)
+  database = DB(tmp_path / "db.sqlite3")
+  model = Mock()
+  model.compute_preprocessed_image_features.return_value = np.ones((1, 512), dtype=np.float32)
+  app = _make_rclip(model, database)
+  try:
+    app.ensure_index(str(tmp_path))
+    model.compute_preprocessed_image_features.assert_called_once()
+
+    # an unchanged file is skipped
+    model.compute_preprocessed_image_features.reset_mock()
+    app.ensure_index(str(tmp_path))
+    model.compute_preprocessed_image_features.assert_not_called()
+
+    # a changed file is yielded and reindexed
+    Image.new("RGB", (4, 4)).save(photo)
+    app.ensure_index(str(tmp_path))
+    model.compute_preprocessed_image_features.assert_called_once()
+  finally:
+    app.close()
+    database.close()
+
+
 def test_index_restores_unchanged_deleted_image(tmp_path: Path):
   photo = tmp_path / "photo.jpg"
   photo.touch()
