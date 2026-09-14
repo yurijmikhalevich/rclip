@@ -18,7 +18,7 @@ from textual_image.renderable import TGPImage as TGPRenderable
 from textual_image._terminal import CellSize
 import pytest
 from textual import events
-from textual.geometry import Size
+from textual.geometry import Region, Size
 from textual.widgets import Input, Static
 
 from rclip import main as main_module
@@ -1396,7 +1396,7 @@ def test_empty_browse_loads_more_as_keyboard_moves_down(tmp_path: Path) -> None:
   ]
 
 
-def test_search_loads_more_on_scroll(tmp_path: Path) -> None:
+def test_search_loads_more_on_scroll(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   paths = [tmp_path / f"image-{index}.jpg" for index in range(26)]
   rclip = FakeRclip([RClip.SearchResult(str(path), 1 - index / 10) for index, path in enumerate(paths)])
   app = RclipApp(rclip, str(tmp_path), top_k=25)
@@ -1409,6 +1409,15 @@ def test_search_loads_more_on_scroll(tmp_path: Path) -> None:
       search_input.value = "cat"
       await pilot.pause(0.3)
       await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths[:25]]
+
+      grid = app.query_one(ResultsGrid)
+      # A refresh during replacement can see new cards before their layout is ready.
+      with monkeypatch.context() as layout:
+        layout.setattr(ImageCard, "virtual_region", property(lambda self: Region()))
+        layout.setattr(ResultsGrid, "max_scroll_y", property(lambda self: 0))
+        grid.update_visible()
       await pilot.pause()
       assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths[:25]]
 
