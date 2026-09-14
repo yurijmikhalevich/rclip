@@ -46,10 +46,21 @@ def _run_kitten(command: list[str], timeout: float | None = None) -> str:
     return output
 
 
+def _supports_query_terminal(executable: str) -> bool:
+  """Check whether this `kitten` has `query_terminal`, which kitty gained in 0.38."""
+  try:
+    _run_kitten([executable, "query_terminal", "--help"])
+  except TransferError:
+    return False
+  return True
+
+
 @cache
 def _probe_kitty(executable: str) -> None:
+  if not _supports_query_terminal(executable):
+    return
   response = _run_kitten([executable, "query_terminal", "--wait-for", "1", "name"], timeout=2)
-  if response.strip() != "name: xterm-kitty":
+  if response.strip() != "name: kitty":
     raise TransferError("Image copy and download require Kitty")
 
 
