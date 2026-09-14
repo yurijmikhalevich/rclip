@@ -53,7 +53,7 @@ def test_get_image_vectors_by_dir_path_matches_windows_subdir_without_trailing_s
       database.close()
 
 
-def test_get_dirpath_like_pattern_escapes_like_wildcards():
+def test_get_image_vectors_by_dir_path_matches_wildcard_characters_literally():
   with tempfile.TemporaryDirectory() as tmpdirname:
     database = DB(f"{tmpdirname}/db.sqlite3")
     try:
@@ -66,6 +66,25 @@ def test_get_dirpath_like_pattern_escapes_like_wildcards():
       assert [row["filepath"] for row in rows] == [r"Y:\100% real\cat.jpg"]
     finally:
       database.close()
+
+
+def test_get_image_vectors_by_dir_path_filters_with_the_filepath_index(tmp_path):
+  database = DB(tmp_path / "db.sqlite3")
+  try:
+    database.upsert_image(_new_image(str(tmp_path / "photos" / "cat.jpg")))
+    statements: list[str] = []
+    database._con.set_trace_callback(statements.append)
+    list(database.get_image_vectors_by_dir_path(str(tmp_path / "photos")))
+    database._con.set_trace_callback(None)
+
+    query = next(statement for statement in statements if statement.startswith("SELECT filepath, vector"))
+    plan = " ".join(row["detail"] for row in database._con.execute(f"EXPLAIN QUERY PLAN {query}"))
+
+    assert "existing_images" in plan
+    assert "filepath>?" in plan
+    assert "filepath<?" in plan
+  finally:
+    database.close()
 
 
 def test_database_allows_configured_cross_thread_reads(tmp_path):

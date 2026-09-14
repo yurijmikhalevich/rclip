@@ -107,15 +107,18 @@ class DB:
     self._con.commit()
 
   @staticmethod
-  def _get_dirpath_like_pattern(path: str) -> str:
-    # Normalize the directory prefix first so drive roots like "Y:\\" don't become "Y:\\\\%".
-    if path.endswith(("/", "\\")):
-      normalized_path = path
-    else:
+  def _get_dirpath_range(path: str) -> tuple[str, str]:
+    """Returns the [start, end) filepath range covering every file under `path`.
+
+    A range lets SQLite use the filepath index, while a LIKE prefix has to be
+    evaluated against every row."""
+    # Normalize the directory prefix first so drive roots like "Y:\\" don't become "Y:\\\\".
+    if not path.endswith(("/", "\\")):
       separator = "\\" if "\\" in path and "/" not in path else os.path.sep
-      normalized_path = path + separator
-    escaped_path = normalized_path.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return escaped_path + "%"
+      path += separator
+    # The trailing separator is ASCII, so incrementing it yields the smallest
+    # string that is greater than every filepath under `path`.
+    return path, path[:-1] + chr(ord(path[-1]) + 1)
 
   def upsert_image(self, image: NewImage, commit: bool = True):
     self._con.execute(
@@ -136,17 +139,16 @@ class DB:
       self._con.commit()
 
   def flag_images_in_a_dir_as_indexing(self, path: str, commit: bool = True):
-    self._con.execute(
-      "UPDATE images SET indexing = 1 WHERE filepath LIKE ? ESCAPE '\\'",
-      (self._get_dirpath_like_pattern(path),),
-    )
+    start, end = self._get_dirpath_range(path)
+    self._con.execute("UPDATE images SET indexing = 1 WHERE filepath >= ? AND filepath < ?", (start, end))
     if commit:
       self._con.commit()
 
   def flag_indexing_images_in_a_dir_as_deleted(self, path: str):
+    start, end = self._get_dirpath_range(path)
     self._con.execute(
-      "UPDATE images SET deleted = 1, indexing = NULL WHERE filepath LIKE ? ESCAPE '\\' AND indexing = 1",
-      (self._get_dirpath_like_pattern(path),),
+      "UPDATE images SET deleted = 1, indexing = NULL WHERE filepath >= ? AND filepath < ? AND indexing = 1",
+      (start, end),
     )
     self._con.commit()
 
@@ -173,16 +175,18 @@ class DB:
     return cast(list[Image], [dict(row) for row in cur.fetchall()])
 
   def get_image_vectors_by_dir_path(self, path: str) -> sqlite3.Cursor:
+    start, end = self._get_dirpath_range(path)
     return self._con.execute(
-      "SELECT filepath, vector FROM images WHERE filepath LIKE ? ESCAPE '\\' AND deleted IS NULL",
-      (self._get_dirpath_like_pattern(path),),
+      "SELECT filepath, vector FROM images WHERE filepath >= ? AND filepath < ? AND deleted IS NULL",
+      (start, end),
     )
 
   def get_image_filepaths_by_dir_path(
     self, path: str, after: tuple[float, str] | None = None
   ) -> sqlite3.Cursor:
-    query = "SELECT filepath, modified_at FROM images WHERE filepath LIKE ? ESCAPE '\\' AND deleted IS NULL"
-    parameters: list[object] = [self._get_dirpath_like_pattern(path)]
+    start, end = self._get_dirpath_range(path)
+    query = "SELECT filepath, modified_at FROM images WHERE filepath >= ? AND filepath < ? AND deleted IS NULL"
+    parameters: list[object] = [start, end]
     if after is not None:
       query += " AND modified_at <= ? AND (modified_at < ? OR filepath > ?)"
       parameters.extend((after[0], after[0], after[1]))
