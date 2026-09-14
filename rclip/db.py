@@ -2,7 +2,7 @@ import os.path
 import pathlib
 import sqlite3
 import sys
-from typing import Any, Optional, TypedDict, Union, cast
+from typing import Optional, TypedDict, Union, cast
 
 
 class ImageOmittable(TypedDict, total=False):
@@ -19,6 +19,12 @@ class NewImage(ImageOmittable):
 
 class Image(NewImage):
   id: int
+
+
+class ImageState(TypedDict):
+  deleted: Optional[bool]
+  modified_at: float
+  size: int
 
 
 class DB:
@@ -157,9 +163,11 @@ class DB:
     if commit:
       self._con.commit()
 
-  def get_image(self, **kwargs: Any) -> Optional[Image]:
-    query = " AND ".join(f"{key}=:{key}" for key in kwargs)
-    cur = self._con.execute(f"SELECT * FROM images WHERE {query} LIMIT 1", kwargs)
+  def get_image_state(self, filepath: str) -> Optional[ImageState]:
+    """Fetches the fields used to detect changes, without reading the image vector."""
+    cur = self._con.execute(
+      "SELECT modified_at, size, deleted FROM images WHERE filepath = ? LIMIT 1", (filepath,)
+    )
     return cur.fetchone()
 
   def restore_image(self, filepath: str, commit: bool = True):

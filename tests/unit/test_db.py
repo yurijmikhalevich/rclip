@@ -68,6 +68,22 @@ def test_get_image_vectors_by_dir_path_matches_wildcard_characters_literally():
       database.close()
 
 
+def test_get_image_state_returns_the_stored_state(tmp_path):
+  database = DB(tmp_path / "db.sqlite3")
+  try:
+    database.upsert_image(_new_image("/photos/cat.jpg", modified_at=2.0))
+
+    state = database.get_image_state("/photos/cat.jpg")
+
+    assert state is not None
+    assert state["modified_at"] == 2.0
+    assert state["size"] == 1
+    assert state["deleted"] is None
+    assert database.get_image_state("/photos/missing.jpg") is None
+  finally:
+    database.close()
+
+
 def test_get_image_vectors_by_dir_path_filters_with_the_filepath_index(tmp_path):
   database = DB(tmp_path / "db.sqlite3")
   try:
