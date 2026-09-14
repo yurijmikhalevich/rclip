@@ -81,6 +81,8 @@ def test_get_image_vectors_by_dir_path_filters_with_the_filepath_index(tmp_path)
     plan = " ".join(row["detail"] for row in database._con.execute(f"EXPLAIN QUERY PLAN {query}"))
 
     assert "existing_images" in plan
+    assert "filepath>?" in plan
+    assert "filepath<?" in plan
   finally:
     database.close()
 
