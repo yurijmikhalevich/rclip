@@ -1146,6 +1146,11 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str, width:
           paths[neighbor] if 0 <= neighbor < len(paths) else None
           for neighbor in range(index - neighbors, index + neighbors + 1)
         ]
+        # Text-search pagination is scheduled with `call_after_refresh`, which neither
+        # `wait_for_complete` nor `pause` waits for, so poll until the filmstrip catches up.
+        async with asyncio.timeout(1):
+          while detail.filepath != path or [thumbnail.filepath for thumbnail in detail.thumbnails] != expected:
+            await pilot.pause(0.01)
         assert detail.filepath == path
         assert [thumbnail.filepath for thumbnail in detail.thumbnails] == expected
       await pilot.press("right")
