@@ -44,16 +44,18 @@ def _display_directory(directory: str) -> str:
 
 
 @contextmanager
-def _safe_suspend(app: App[None]) -> Iterator[None]:
+def _safe_suspend(app: App[None], message: str) -> Iterator[None]:
   """Suspend the TUI, guaranteeing that it is resumed even if the body raises.
 
   Textual's `App.suspend` skips `resume_application_mode` when the suspended body raises, which
   closes the driver and leaves the TUI blank until the process exits. Swallow the error inside the
-  `with` block and re-raise it afterwards so the driver sees a clean exit.
+  `with` block and re-raise it afterwards so the driver sees a clean exit. Print `message` while
+  suspended, when the TUI is off the alternate screen, so the visible screen switch is explained.
   """
   failure: BaseException | None = None
   with app.suspend():
     try:
+      print(f"rclip: {message}", flush=True)
       yield
     except BaseException as error:
       failure = error
@@ -453,7 +455,7 @@ class RclipApp(App[None], inherit_bindings=False):
       return
     try:
       _kitten_executable()
-      with _safe_suspend(self):
+      with _safe_suspend(self, "pausing the TUI to download the image"):
         download_image(filepath)
     except Exception as error:
       self.notify(str(error), title="Unable to download image", severity="error")
@@ -502,7 +504,7 @@ class RclipApp(App[None], inherit_bindings=False):
   def _copy_image(self, filepath: str) -> None:
     try:
       _kitten_executable()
-      with _safe_suspend(self):
+      with _safe_suspend(self, "pausing the TUI to copy the image"):
         copy_image_to_clipboard(filepath)
     except Exception as error:
       self.notify(str(error), title="Unable to copy image", severity="error")
