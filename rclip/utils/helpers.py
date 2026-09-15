@@ -392,7 +392,7 @@ def download_image(url: str, *, trusted: bool = False) -> Image.Image:
     if int(length) > MAX_DOWNLOAD_SIZE_BYTES:
       raise ValueError(f"Avoiding download of large ({length} byte) file.")
   # a query image URL is chosen by the user, so bypass the cap when trusted (see read_image)
-  limit_ctx = image_pixel_limit_disabled() if trusted else contextlib.nullcontext()
+  limit_ctx = image_pixel_limit_disabled() if trusted else _max_image_pixels_read_guard()
   response = requests.get(url, headers=headers, stream=True, timeout=DOWNLOAD_TIMEOUT_SECONDS)
   try:
     with limit_ctx:
@@ -464,17 +464,40 @@ def parse_bomb_pixels(error: Exception) -> int:
   return int(match.group(1)) if match else 0
 
 
+_max_image_pixels_write_lock = threading.Lock()
+_max_image_pixels_readers = 0
+_max_image_pixels_readers_lock = threading.Lock()
+
+
 @contextlib.contextmanager
-def image_pixel_limit_disabled():
-  """Temporarily lifts the decompression-bomb cap. Used for images the user explicitly chose as a
-  query: they are trusted and decoded one at a time, so the indexing memory cap doesn't apply.
-  Only safe on the single-threaded query path, since Image.MAX_IMAGE_PIXELS is process-global."""
-  previous = Image.MAX_IMAGE_PIXELS
-  Image.MAX_IMAGE_PIXELS = None
+def _max_image_pixels_read_guard():
+  global _max_image_pixels_readers
+  with _max_image_pixels_readers_lock:
+    _max_image_pixels_readers += 1
+    if _max_image_pixels_readers == 1:
+      _max_image_pixels_write_lock.acquire()
   try:
     yield
   finally:
-    Image.MAX_IMAGE_PIXELS = previous
+    with _max_image_pixels_readers_lock:
+      _max_image_pixels_readers -= 1
+      if _max_image_pixels_readers == 0:
+        _max_image_pixels_write_lock.release()
+
+
+@contextlib.contextmanager
+def image_pixel_limit_disabled():
+  """Temporarily lifts the decompression-bomb cap. Used for images the user explicitly chose as a
+  query, and for an indexed image being retried after it was found too large; both are decoded one
+  at a time, so the indexing memory cap doesn't apply. Takes _max_image_pixels_write_lock so this
+  can't overlap with a concurrent untrusted read (see _max_image_pixels_read_guard above)."""
+  with _max_image_pixels_write_lock:
+    previous = Image.MAX_IMAGE_PIXELS
+    Image.MAX_IMAGE_PIXELS = None
+    try:
+      yield
+    finally:
+      Image.MAX_IMAGE_PIXELS = previous
 
 
 def read_image(query: str, *, trusted: bool = False) -> Image.Image:
@@ -482,7 +505,7 @@ def read_image(query: str, *, trusted: bool = False) -> Image.Image:
   path = str.removeprefix(query, "file://")
   # an explicit query image is chosen by the user and decoded one at a time, so the indexing memory
   # cap doesn't apply; read it as trusted and bypass the cap so any size the user points at works.
-  limit_ctx = image_pixel_limit_disabled() if trusted else contextlib.nullcontext()
+  limit_ctx = image_pixel_limit_disabled() if trusted else _max_image_pixels_read_guard()
   try:
     with limit_ctx:
       file_ext = get_file_extension(path)
