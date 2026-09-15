@@ -42,18 +42,19 @@ def is_image_meta_equal(image: db.ImageState, meta: ImageMeta) -> bool:
 def _too_large_message(path: str, pixels: int, limit: int) -> str:
   size = f" ({pixels / 1_000_000:.0f} MP)" if pixels else ""
   return (
-    f"skipping {path}: it is too large to process{size};"
+    f"{path} is too large to process{size};"
     f" the limit is {limit / 1_000_000:.0f} MP."
-    ' Raise or disable it with "--max-image-megapixels" if you want to index this image'
+    " Processing it anyway. If rclip fails to process it, remove it from the file tree and try again."
   )
 
 
-def _read_and_preprocess(path: str) -> Tuple[str, str, npt.NDArray[np.float32]]:
+def _read_and_preprocess(path: str, *, trusted: bool = False) -> Tuple[str, str, npt.NDArray[np.float32]]:
   """Reads an image, computes its hash, and runs the CLIP preprocessing on it. Runs on the loader
   threads so that the decoding and resizing happen in parallel and only the
   model forward pass is left for the consumer."""
   file_hash = helpers.compute_file_hash(path)
-  preprocessed = preprocess(helpers.read_image(path))
+  image = helpers.read_image(path, trusted=True) if trusted else helpers.read_image(path)
+  preprocessed = preprocess(image)
   return path, file_hash, preprocessed
 
 
@@ -153,11 +154,19 @@ class RClip:
         yield path, meta, file_hash, preprocessed
       except helpers.ImageTooLargeError as ex:
         print(_too_large_message(path, ex.pixels, ex.limit), file=sys.stderr)
+        try:
+          _, file_hash, preprocessed = _read_and_preprocess(path, trusted=True)
+          yield path, meta, file_hash, preprocessed
+        except MemoryError:
+          print(f"skipping {path}: ran out of memory while processing it", file=sys.stderr)
+        except (PIL.Image.DecompressionBombError, PIL.Image.DecompressionBombWarning):
+          print(f"skipping {path}: it is too large to process", file=sys.stderr)
+        except Exception as ex2:
+          print(f"skipping {path}: {ex2}", file=sys.stderr)
       except (PIL.Image.DecompressionBombError, PIL.Image.DecompressionBombWarning) as ex:
-        # backstop for formats whose true size only surfaces while decoding in the worker
-        print(
-          _too_large_message(path, helpers.parse_bomb_pixels(ex), helpers.get_max_image_pixels() or 0), file=sys.stderr
-        )
+        pixels = helpers.parse_bomb_pixels(ex)
+        size = f" ({pixels / 1_000_000:.0f} MP)" if pixels else ""
+        print(f"skipping {path}: it is too large to process{size}", file=sys.stderr)
       except MemoryError:
         print(f"skipping {path}: ran out of memory while processing it", file=sys.stderr)
       except PIL.UnidentifiedImageError:

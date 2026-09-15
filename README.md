@@ -261,7 +261,7 @@ Run `rclip --help` (or `rclip -h`) to see this list in your terminal. The positi
 | `--exclude-dir` `DIR` | Directory to exclude from search. Can be used multiple times. Specifying this overrides the default of `@eaDir`, `node_modules`, `.git`, and `System Volume Information`. |
 | `--include-hidden` | Index dot-prefixed hidden files and directories (e.g. `.DS_Store`, `._IMG_1234.JPG`, `.Spotlight-V100`). Skipped by default since they are usually OS metadata rather than user files. |
 | `--experimental-raw-support` | Enable support for RAW images (`arw`, `cr2`, and `dng` are supported). |
-| `--max-image-megapixels` `MP` | Maximum size, in megapixels, an image may have to be indexed. Larger images are skipped to avoid running out of memory on huge or maliciously crafted images. Pass `none` to disable the limit. Default: chosen automatically based on the available memory. |
+| `--max-image-megapixels` `MP` | Maximum size, in megapixels, an image may have to be indexed. Larger images are processed anyway, and only skipped if that fails, e.g. by running out of memory on huge or maliciously crafted images. Pass `none` to disable the limit. Default: chosen automatically based on the available memory. |
 | `--version`, `-v` | Print the **rclip** version and exit. |
 | `--help`, `-h` | Show the help message and exit. |
 

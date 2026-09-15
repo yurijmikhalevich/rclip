@@ -30,9 +30,17 @@ def _fail_on_b(path: str) -> Image.Image:
   return Image.new("RGB", (1, 1))
 
 
-def _too_large_on_b(path: str) -> Image.Image:
-  if path == "b.jpg":
+def _too_large_on_b(path: str, *, trusted: bool = False) -> Image.Image:
+  # the retry (trusted=True, cap lifted) succeeds
+  if path == "b.jpg" and not trusted:
     raise helpers.ImageTooLargeError(path, 200_000_000, 100_000_000)
+  return Image.new("RGB", (1, 1))
+
+
+def _too_large_on_b_even_when_trusted(path: str, *, trusted: bool = False) -> Image.Image:
+  # the retry (trusted=True, cap lifted) fails for real, e.g. genuinely runs out of memory
+  if path == "b.jpg":
+    raise MemoryError() if trusted else helpers.ImageTooLargeError(path, 200_000_000, 100_000_000)
   return Image.new("RGB", (1, 1))
 
 
@@ -219,7 +227,7 @@ def test_list_images_applies_exclusions_before_the_limit(tmp_path: Path) -> None
     database.close()
 
 
-def test_load_images_skips_images_that_are_too_large(monkeypatch, capsys):
+def test_load_images_retries_and_recovers_images_that_are_too_large(monkeypatch, capsys):
   monkeypatch.setattr(helpers, "_ensure_image_loading_configured", lambda: None)
   monkeypatch.setattr(helpers, "read_image", _too_large_on_b)
   monkeypatch.setattr(helpers, "compute_file_hash", lambda path: "dummy_hash")
@@ -234,13 +242,34 @@ def test_load_images_skips_images_that_are_too_large(monkeypatch, capsys):
   finally:
     rclip.close()
 
-  # the too-large image is dropped, the rest survive in order
-  assert [path for path, _meta, _hash, _image in loaded] == ["a.jpg", "c.jpg"]
-  # the user gets a friendly, actionable message naming the file and the limit
+  # the too-large image is retried with the cap lifted and kept, not dropped
+  assert [path for path, _meta, _hash, _image in loaded] == ["a.jpg", "b.jpg", "c.jpg"]
+  # the user still gets a friendly, actionable notice naming the file and the limit
   err = capsys.readouterr().err
-  assert "skipping b.jpg" in err
-  assert "too large" in err
-  assert "--max-image-megapixels" in err
+  assert "b.jpg is too large to process" in err
+  assert "processing it anyway" in err.lower()
+
+
+def test_load_images_skips_images_still_too_large_after_retry(monkeypatch, capsys):
+  monkeypatch.setattr(helpers, "_ensure_image_loading_configured", lambda: None)
+  monkeypatch.setattr(helpers, "read_image", _too_large_on_b_even_when_trusted)
+  monkeypatch.setattr(helpers, "compute_file_hash", lambda path: "dummy_hash")
+
+  meta_a = ImageMeta(modified_at=1.0, size=100)
+  meta_b = ImageMeta(modified_at=2.0, size=200)
+  meta_c = ImageMeta(modified_at=3.0, size=300)
+
+  rclip = _make_rclip(Mock(), Mock())
+  try:
+    loaded = list(rclip._load_images([("a.jpg", meta_a), ("b.jpg", meta_b), ("c.jpg", meta_c)]))
+  finally:
+    rclip.close()
+
+  # the retry genuinely fails too, so the image is dropped after all
+  assert [path for path, _meta, _hash, _image in loaded] == ["a.jpg", "c.jpg"]
+  err = capsys.readouterr().err
+  assert "processing it anyway" in err.lower()
+  assert "skipping b.jpg: ran out of memory" in err
 
 
 def test_index_images_keeps_meta_aligned_when_an_image_fails_to_load(monkeypatch):
