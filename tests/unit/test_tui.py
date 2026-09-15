@@ -271,7 +271,9 @@ def test_copy_image_keeps_common_formats_and_converts_others(
 
 
 @pytest.mark.parametrize("failure", [False, True])
-def test_copy_image_suspends_until_finished(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failure: bool) -> None:
+def test_copy_image_suspends_until_finished(
+  monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failure: bool, capsys
+) -> None:
   app = RclipApp(FakeRclip([]), str(tmp_path))
   actions: list[str] = []
 
@@ -294,10 +296,13 @@ def test_copy_image_suspends_until_finished(monkeypatch: pytest.MonkeyPatch, tmp
   monkeypatch.setattr(app, "notify", lambda message, **options: actions.append(message))
   app._copy_image("image.jpg")
   assert actions == ["suspend", "copy", "resume", "permission denied" if failure else "Image copied"]
+  assert capsys.readouterr().out == "rclip: pausing the TUI to copy the image…\n"
 
 
 @pytest.mark.parametrize("failure", [False, True])
-def test_download_suspends_until_finished(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failure: bool) -> None:
+def test_download_suspends_until_finished(
+  monkeypatch: pytest.MonkeyPatch, tmp_path: Path, failure: bool, capsys
+) -> None:
   app = RclipApp(FakeRclip([]), str(tmp_path))
   actions: list[str] = []
 
@@ -322,6 +327,7 @@ def test_download_suspends_until_finished(monkeypatch: pytest.MonkeyPatch, tmp_p
   monkeypatch.setattr(app, "notify", lambda message, **options: actions.append(message))
   app.action_download()
   assert actions == ["suspend", "download", "resume", "permission denied" if failure else "Saved to ~/Downloads"]
+  assert capsys.readouterr().out == "rclip: pausing the TUI to download the image…\n"
 
 
 @pytest.mark.parametrize("action", ["copy", "download"])
