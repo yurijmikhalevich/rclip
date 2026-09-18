@@ -18,6 +18,8 @@ from textual_image.renderable import TGPImage as TGPRenderable
 from textual_image._terminal import CellSize
 import pytest
 from textual import events
+from textual.app import App
+from textual.drivers.headless_driver import HeadlessDriver
 from textual.geometry import Region, Size
 from textual.widgets import Input, Static
 
@@ -25,6 +27,7 @@ from rclip import main as main_module
 from rclip.main import RClip
 from rclip.tui.app import RclipApp
 from rclip.tui.app import _display_directory
+from rclip.tui.app import _safe_suspend
 from rclip.tui.app import run_tui
 from rclip.tui.media import CenteredTGPImage
 from rclip.tui.media import StableTGPImage
@@ -296,7 +299,49 @@ def test_copy_image_suspends_until_finished(
   monkeypatch.setattr(app, "notify", lambda message, **options: actions.append(message))
   app._copy_image("image.jpg")
   assert actions == ["suspend", "copy", "resume", "permission denied" if failure else "Image copied"]
-  assert capsys.readouterr().out == "rclip: pausing the TUI to copy the image…\n"
+  assert capsys.readouterr().out == "rclip: pausing the TUI to copy the image…\n\x1b\\"
+
+
+@pytest.mark.parametrize("failure", [None, TransferError, KeyboardInterrupt])
+def test_suspend_restores_screen_after_unterminated_query(
+  monkeypatch: pytest.MonkeyPatch, failure: type[BaseException] | None
+) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
+
+  class TerminalDriver(HeadlessDriver):
+    @property
+    def can_suspend(self) -> bool:
+      return True
+
+    def start_application_mode(self) -> None:
+      output.write("\x1b[?1049h")
+
+    def stop_application_mode(self) -> None:
+      output.write("\x1b[?1049l")
+
+  async def run() -> None:
+    app = App[None]()
+    driver = app._driver = TerminalDriver(app)
+    driver.start_application_mode()
+    for _ in range(2):
+      with pytest.raises(failure) if failure else nullcontext():
+        with _safe_suspend(app, "copying"):
+          # Actual query_terminal output: iTerm2 does not treat BEL as a DCS terminator.
+          print("\x1bP+q6b697474792d71756572792d6e616d65\x07", end="", flush=True)
+          if failure:
+            raise failure("unsupported")
+      # Image output eventually terminates the DCS, after the resume command was swallowed.
+      output.write("\x1b_Ga=d\x1b\\TUI")
+    driver.stop_application_mode()
+
+  asyncio.run(run())
+  # Model iTerm2's DCS consumption and check screen switches visible to the terminal.
+  visible = re.sub(r"\x1bP.*?\x1b\\", "", output.getvalue(), flags=re.S)
+  assert re.findall(r"\x1b\[\?1049[hl]|TUI", visible) == [
+    "\x1b[?1049h", "\x1b[?1049l", "\x1b[?1049h", "TUI",
+    "\x1b[?1049l", "\x1b[?1049h", "TUI", "\x1b[?1049l",
+  ]
 
 
 @pytest.mark.parametrize("failure", [False, True])
@@ -327,7 +372,7 @@ def test_download_suspends_until_finished(
   monkeypatch.setattr(app, "notify", lambda message, **options: actions.append(message))
   app.action_download()
   assert actions == ["suspend", "download", "resume", "permission denied" if failure else "Saved to ~/Downloads"]
-  assert capsys.readouterr().out == "rclip: pausing the TUI to download the image…\n"
+  assert capsys.readouterr().out == "rclip: pausing the TUI to download the image…\n\x1b\\"
 
 
 @pytest.mark.parametrize("action", ["copy", "download"])

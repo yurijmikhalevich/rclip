@@ -59,6 +59,9 @@ def _safe_suspend(app: App[None], message: str) -> Iterator[None]:
       yield
     except BaseException as error:
       failure = error
+    # kitten query_terminal ends DCS with BEL, which leaves iTerm2 parsing the query.
+    # Terminate it before Textual sends the escape sequence to re-enter the alternate screen.
+    print("\x1b\\", end="", flush=True)
   if failure is not None:
     raise failure
 
