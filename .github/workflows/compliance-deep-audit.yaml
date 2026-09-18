@@ -75,7 +75,7 @@ jobs:
         run: gh release download --pattern '*.AppImage' --pattern '*.msi' --pattern '*.snap' --dir release-artifacts
       - name: Extract release artifacts
         run: |
-          mkdir appimage-root msi-root snap-amd64-root snap-arm64-root
+          mkdir appimage-root msi-root
           chmod +x release-artifacts/*.AppImage
           cd appimage-root
           appimage_path=(../release-artifacts/*.AppImage)
