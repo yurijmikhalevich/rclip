@@ -24,6 +24,7 @@ NATIVE_MAGICS = (
   b"\xfe\xed\xfa\xcf",
 )
 FORBIDDEN_RAWPY_FEATURES = ("DEMOSAIC_PACK_GPL2", "DEMOSAIC_PACK_GPL3")
+PATH_SEPARATORS = (b"/", b"\\")
 
 
 def _native_component_versions(installed_packages: set[str]) -> list[dict[str, str]]:
@@ -110,12 +111,25 @@ def _binary_contains(path: Path, markers: Iterable[str], *, casefold: bool = Fal
       chunk = previous + current
       if casefold:
         chunk = chunk.lower()
+      # A match at the end of the chunk still needs the byte that follows it.
+      following = stream.read(1)
       for marker, value in marker_bytes:
-        if marker not in found and value in chunk:
-          found.add(marker)
+        if marker in found:
+          continue
+        start = 0
+        while (index := chunk.find(value, start)) != -1:
+          end = index + len(value)
+          after = chunk[end : end + 1] if end < len(chunk) else following
+          # Markers name symbols, sonames or codec strings. A match immediately followed by a
+          # path separator is a path component (for example the `dav1d` in a Homebrew RPATH's
+          # `opt/dav1d/lib`), not evidence that the component is shipped, so keep looking.
+          if after not in PATH_SEPARATORS:
+            found.add(marker)
+            break
+          start = index + 1
       if len(found) == len(marker_bytes):
         break
-      previous = chunk[-overlap:] if overlap else b""
+      previous = (chunk[-overlap:] if overlap else b"") + following
   return sorted(found)
 
 

@@ -104,6 +104,17 @@ def write_legal_pack(legal_dir: Path) -> None:
   (legal_dir / "policy.toml").write_bytes(POLICY.read_bytes())
 
 
+def drop_av1_versions(legal_dir: Path) -> None:
+  report_path = legal_dir / "compliance-report.json"
+  report = json.loads(report_path.read_text(encoding="utf-8"))
+  report["native_component_versions"] = [
+    component
+    for component in report["native_component_versions"]
+    if component["name"] not in {"libavif", "libaom", "dav1d"}
+  ]
+  report_path.write_text(json.dumps(report), encoding="utf-8")
+
+
 def test_collects_namespaced_licenses_and_common_notices(tmp_path: Path) -> None:
   root = tmp_path / "runtime"
   write_distribution(root, "rclip", "3.3.0")
@@ -504,6 +515,36 @@ def test_av1_requires_aom_patent_notice(tmp_path: Path) -> None:
   assert "libaom.so" in verify_bundle(root, legal, POLICY, None)["detections"]["av1"]
 
 
+def test_homebrew_rpath_does_not_require_av1_evidence(tmp_path: Path) -> None:
+  root = tmp_path / "runtime"
+  root.mkdir()
+  (root / "regex.so").write_bytes(
+    b"\x7fELF\x00/home/linuxbrew/.linuxbrew/Cellar/rclip/4.0.0/lib:"
+    b"/home/linuxbrew/.linuxbrew/opt/aom/lib:/home/linuxbrew/.linuxbrew/opt/dav1d/lib:"
+    b"/home/linuxbrew/.linuxbrew/opt/libavif/lib\x00"
+  )
+  legal = tmp_path / "legal"
+  write_legal_pack(legal)
+  drop_av1_versions(legal)
+
+  result = verify_bundle(root, legal, POLICY, None)
+
+  assert result["detections"]["av1"] == []
+  assert result["native_components"] == []
+
+
+def test_real_av1_markers_still_require_collected_versions(tmp_path: Path) -> None:
+  root = tmp_path / "runtime"
+  root.mkdir()
+  (root / "libavif.so").write_bytes(b"\x7fELF\x00dav1d\x00avifDecoder\x00aom_codec\x00")
+  legal = tmp_path / "legal"
+  write_legal_pack(legal)
+  drop_av1_versions(legal)
+
+  with pytest.raises(ComplianceError, match="missing collected native version for dav1d"):
+    verify_bundle(root, legal, POLICY, None)
+
+
 def test_dng_requires_attribution_and_replaceable_libraw(tmp_path: Path) -> None:
   root = tmp_path / "runtime"
   root.mkdir()
@@ -557,6 +598,53 @@ def test_binary_markers_can_be_matched_case_insensitively(tmp_path: Path) -> Non
   binary.write_bytes(b"native LIBRAW_R.SO dependency")
 
   assert _binary_contains(binary, ["libraw_r.so"], casefold=True) == ["libraw_r.so"]
+
+
+def test_binary_markers_ignore_path_components(tmp_path: Path) -> None:
+  binary = tmp_path / "codec.so"
+  binary.write_bytes(
+    b"\x7fELF\x00/home/linuxbrew/.linuxbrew/Cellar/rclip/4.0.0/lib:"
+    b"/home/linuxbrew/.linuxbrew/opt/aom/lib:/home/linuxbrew/.linuxbrew/opt/dav1d/lib:"
+    b"/home/linuxbrew/.linuxbrew/opt/libavif/lib\x00"
+    b"@@HOMEBREW_PREFIX@@/opt/dav1d/lib:@@HOMEBREW_PREFIX@@/opt/libavif/lib\x00"
+  )
+
+  assert _binary_contains(binary, ["dav1d", "aom_codec", "avifDecoder"]) == []
+
+
+def test_binary_markers_in_path_lists_are_still_found_elsewhere(tmp_path: Path) -> None:
+  binary = tmp_path / "codec.so"
+  binary.write_bytes(b"\x7fELF\x00/home/linuxbrew/.linuxbrew/opt/dav1d/lib\x00dav1d_open\x00aom_codec\x00")
+
+  assert _binary_contains(binary, ["dav1d", "aom_codec"]) == ["aom_codec", "dav1d"]
+
+
+def test_binary_markers_ignore_path_components_across_read_boundaries(tmp_path: Path) -> None:
+  boundary = 4 * 1024 * 1024
+  marker = b"dav1d"
+
+  path_component = tmp_path / "path.so"
+  path_component.write_bytes(b"x" * (boundary - len(marker)) + marker + b"/lib")
+  assert _binary_contains(path_component, [marker.decode()]) == []
+
+  symbol = tmp_path / "symbol.so"
+  symbol.write_bytes(b"x" * (boundary - len(marker)) + marker + b"_open")
+  assert _binary_contains(symbol, [marker.decode()]) == [marker.decode()]
+
+  spanning_path = tmp_path / "spanning-path.so"
+  spanning_path.write_bytes(b"x" * (boundary - len(marker) // 2) + marker + b"/lib")
+  assert _binary_contains(spanning_path, [marker.decode()]) == []
+
+  spanning_symbol = tmp_path / "spanning-symbol.so"
+  spanning_symbol.write_bytes(b"x" * (boundary - len(marker) // 2) + marker + b"_open")
+  assert _binary_contains(spanning_symbol, [marker.decode()]) == [marker.decode()]
+
+
+def test_binary_markers_in_loader_paths_are_still_detected(tmp_path: Path) -> None:
+  binary = tmp_path / "binding.so"
+  binary.write_bytes(b"\x7fELF\x00@loader_path/.dylibs/libraw_r.24.0.0.dylib\x00")
+
+  assert _binary_contains(binary, ["libraw_r.24.0.0.dylib"], casefold=True) == ["libraw_r.24.0.0.dylib"]
 
 
 def test_native_candidates_confine_symlink_targets_to_root(tmp_path: Path) -> None:
