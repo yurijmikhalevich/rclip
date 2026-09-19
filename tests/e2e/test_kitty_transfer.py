@@ -22,17 +22,15 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from rclip.tui.transfer import _supports_query_terminal
-from rclip.tui.transfer import copy_image_to_clipboard
-
-
 KITTEN = shutil.which("kitten")
-PROBES_TERMINAL = _supports_query_terminal(KITTEN) if KITTEN else False
+if not (os.getenv("KITTY_WINDOW_ID") and KITTEN):
+  pytest.skip("requires a Kitty terminal with a `kitten` executable", allow_module_level=True)
 
-pytestmark = pytest.mark.skipif(
-  not (os.getenv("KITTY_WINDOW_ID") and KITTEN),
-  reason="requires a Kitty terminal with a `kitten` executable",
-)
+# the TUI runtime is absent from the dev-only venvs that run the system-rclip e2e tests
+from rclip.tui.transfer import _supports_query_terminal  # noqa: E402
+from rclip.tui.transfer import copy_image_to_clipboard  # noqa: E402
+
+PROBES_TERMINAL = _supports_query_terminal(KITTEN)
 
 
 def _clipboard_png() -> bytes:
