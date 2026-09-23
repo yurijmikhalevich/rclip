@@ -44,7 +44,7 @@ jobs:
         # Authenticate Hugging Face Hub requests to avoid the anonymous per-IP rate limit, which is
         # shared with other GitHub-hosted runners and fails the tests with HTTP 429.
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_READONLY_TOKEN }}
         with:
           python: ${{ matrix.python }}
           force-bash: true
@@ -74,7 +74,7 @@ jobs:
         shell: bash -ieo pipefail {0}
       - uses: ./.github/actions/test-system-rclip
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_READONLY_TOKEN }}
 
   appimage:
     needs: get_last_release_tag
@@ -95,7 +95,7 @@ jobs:
           sudo mv rclip.AppImage /usr/local/bin/rclip
       - uses: ./.github/actions/test-system-rclip
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_READONLY_TOKEN }}
 
   snap:
     needs: get_last_release_tag
@@ -110,7 +110,7 @@ jobs:
       - run: sudo snap install rclip
       - uses: ./.github/actions/test-system-rclip
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_READONLY_TOKEN }}
 
   windows:
     needs: get_last_release_tag
@@ -130,4 +130,4 @@ jobs:
           Start-Process msiexec.exe -Wait -ArgumentList "/i rclip.msi /quiet"
       - uses: ./.github/actions/test-system-rclip
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_READONLY_TOKEN }}
