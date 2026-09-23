@@ -41,6 +41,10 @@ jobs:
       - run: pip install --upgrade rclip
         if: ${{ !startsWith(matrix.os, 'ubuntu-') }}
       - uses: ./.github/actions/test-system-rclip
+        # Authenticate Hugging Face Hub requests to avoid the anonymous per-IP rate limit, which is
+        # shared with other GitHub-hosted runners and fails the tests with HTTP 429.
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         with:
           python: ${{ matrix.python }}
           force-bash: true
@@ -69,6 +73,8 @@ jobs:
         # overriding shell to ensure it reads `.bashrc`
         shell: bash -ieo pipefail {0}
       - uses: ./.github/actions/test-system-rclip
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
   appimage:
     needs: get_last_release_tag
@@ -88,6 +94,8 @@ jobs:
           chmod +x rclip.AppImage
           sudo mv rclip.AppImage /usr/local/bin/rclip
       - uses: ./.github/actions/test-system-rclip
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
   snap:
     needs: get_last_release_tag
@@ -101,6 +109,8 @@ jobs:
           ref: ${{ needs.get_last_release_tag.outputs.tag }}
       - run: sudo snap install rclip
       - uses: ./.github/actions/test-system-rclip
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
 
   windows:
     needs: get_last_release_tag
@@ -119,3 +129,5 @@ jobs:
           Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "rclip.msi"
           Start-Process msiexec.exe -Wait -ArgumentList "/i rclip.msi /quiet"
       - uses: ./.github/actions/test-system-rclip
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
