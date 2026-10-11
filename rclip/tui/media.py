@@ -1,3 +1,4 @@
+from base64 import b64encode
 from io import BytesIO
 
 from PIL import Image as PILImage
@@ -10,6 +11,12 @@ from textual_image.renderable.tgp import _send_tgp_message
 from textual_image.widget import TGPImage
 
 from rclip.utils import helpers
+
+
+# textual-image hardcodes `compress_level=2` when encoding the PNG it sends to the terminal. Level 6
+# saves ~10% of the wire bytes for ~20ms more encode time per image; level 9 saves only ~1% more for
+# ~4x the encode time, which would stall the main thread while it renders.
+_PNG_COMPRESS_LEVEL = 6
 
 
 def prepare_image(filepath: str, size: tuple[int, int]) -> BytesIO:
@@ -28,7 +35,21 @@ def prepare_image(filepath: str, size: tuple[int, int]) -> BytesIO:
   return prepared
 
 
+def _transmit_image(kitty_id: int, image_data: PixelData, size: tuple[int, int]) -> None:
+  """Send image data to the terminal as a base64 PNG, framed the way textual-image frames it."""
+  buffer = BytesIO()
+  image_data.scaled(*size).pil_image.save(buffer, format="png", compress_level=_PNG_COMPRESS_LEVEL)
+  payload = b64encode(buffer.getvalue()).decode("ascii")
+  while payload:
+    chunk, payload = payload[:4096], payload[4096:]
+    _send_tgp_message(i=kitty_id, m=1 if payload else 0, f=100, payload=chunk, q=2)
+
+
 class _TGPRenderable(TGPRenderable):
+  def _send_image_to_terminal(self, width: int, height: int) -> None:
+    self.terminal_image_id = next(TGPRenderable._image_id_counter)
+    _transmit_image(self.terminal_image_id, self._image_data, (width, height))
+
   def cleanup(self) -> None:
     # textual-image omits the deletion selector and passes the image id as the image number.
     if self.terminal_image_id is not None:
