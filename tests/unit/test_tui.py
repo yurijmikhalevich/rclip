@@ -25,6 +25,7 @@ from textual.widgets import Input, Static
 
 from rclip import main as main_module
 from rclip.main import RClip
+from rclip.tui import media as media_module
 from rclip.tui.app import RclipApp
 from rclip.tui.app import _display_directory
 from rclip.tui.app import _safe_suspend
@@ -93,6 +94,16 @@ class FakeRclip(RClip):
 def make_image(path: Path, color: str = "red") -> Path:
   Image.new("RGB", (80, 60), color).save(path)
   return path
+
+
+def tgp_transmitted_ids(output: str) -> set[int]:
+  """Image ids for which image data was sent to the terminal."""
+  return {int(image_id) for image_id in re.findall(r"\x1b_Gi=(\d+),m=", output)}
+
+
+def tgp_payload_bytes(output: str) -> int:
+  """Bytes of image data sent to the terminal (placement and deletion messages carry no payload)."""
+  return sum(len(chunk) for chunk in re.findall(r"\x1b_G[^;]*;([A-Za-z0-9+/=]+)\x1b\\", output))
 
 
 def test_interactive_cli_accepts_no_query() -> None:
@@ -237,7 +248,7 @@ def test_strip_preview_pixels_are_centered_and_keep_aspect_ratio(
     assert left > 0 or top > 0
 
 
-def test_kitty_image_cleanup_deletes_only_its_own_image(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_kitty_image_cleanup_deletes_only_its_own_placement(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stdout__", output)
   image = StableTGPImage(make_image(tmp_path / "image.jpg"))
@@ -246,12 +257,90 @@ def test_kitty_image_cleanup_deletes_only_its_own_image(tmp_path: Path, monkeypa
   Console(file=StringIO(), width=20).print(renderable)
   image_id = renderable.terminal_image_id
   assert image_id is not None
+  placement = re.search(rf"\x1b_Ga=p,i={image_id},p=(\d+),", output.getvalue())
+  assert placement is not None
+  deletion = f"\x1b_Ga=d,d=i,i={image_id},p={placement.group(1)},q=2\x1b\\"
   output.seek(0)
   output.truncate()
   image.on_unmount()
-  assert output.getvalue() == f"\x1b_Ga=d,d=I,i={image_id},q=2\x1b\\"
+  assert output.getvalue() == deletion
   image.on_unmount()
-  assert output.getvalue() == f"\x1b_Ga=d,d=I,i={image_id},q=2\x1b\\"
+  assert output.getvalue() == deletion
+
+
+def test_kitty_image_reuses_transmitted_data_in_a_new_renderable(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
+  console = Console(file=StringIO(), width=20)
+  image = StableTGPImage(prepare_image(str(make_image(tmp_path / "image.jpg")), (80, 60)))
+
+  first = image.render()
+  assert isinstance(first, TGPRenderable)
+  # Widget.render() only returns the renderable; Rich performs the image transfer.
+  list(console.render(first))
+  image_id = first.terminal_image_id
+  assert image_id is not None
+  assert tgp_payload_bytes(output.getvalue()) > 0
+
+  output.seek(0)
+  output.truncate()
+  image.refresh_image()
+  second = image.render()
+  assert isinstance(second, TGPRenderable)
+  assert second is not first
+  list(console.render(second))
+
+  assert second.terminal_image_id == image_id
+  assert tgp_payload_bytes(output.getvalue()) == 0
+  assert f"\x1b_Ga=p,i={image_id}," in output.getvalue()
+
+
+def test_kitty_image_reuses_a_larger_image_for_a_smaller_placement(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
+  console = Console(file=StringIO(), width=20)
+  prepared = prepare_image(str(make_image(tmp_path / "image.jpg")), (80, 60))
+
+  large = StableTGPImage._Renderable(prepared, 8, 6)
+  list(console.render(large))
+  image_id = large.terminal_image_id
+  assert image_id is not None
+  assert tgp_payload_bytes(output.getvalue()) > 0
+  large.cleanup()
+
+  output.seek(0)
+  output.truncate()
+  small = StableTGPImage._Renderable(prepared, 4, 3)
+  list(console.render(small))
+
+  assert small.terminal_image_id == image_id
+  assert tgp_payload_bytes(output.getvalue()) == 0
+
+
+def test_kitty_image_cache_frees_evicted_data_in_the_terminal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr(media_module, "_IMAGE_CACHE", media_module._ImageCache(budget=0))
+  console = Console(file=StringIO(), width=20)
+
+  first = StableTGPImage._Renderable(prepare_image(str(make_image(tmp_path / "first.jpg")), (80, 60)), 4, 3)
+  list(console.render(first))
+  first_id = first.terminal_image_id
+  assert first_id is not None
+  first.cleanup()
+
+  output.seek(0)
+  output.truncate()
+  second = StableTGPImage._Renderable(prepare_image(str(make_image(tmp_path / "second.jpg")), (80, 60)), 4, 3)
+  list(console.render(second))
+
+  assert f"\x1b_Ga=d,d=I,i={first_id},q=2\x1b\\" in output.getvalue()
+  assert second.terminal_image_id is not None and second.terminal_image_id != first_id
 
 
 def test_copy_image_keeps_common_formats_and_converts_others(
@@ -885,8 +974,9 @@ def test_search_in_detail_preserves_view_and_updates_selection(tmp_path: Path) -
   asyncio.run(run())
 
 
-def test_gallery_resends_thumbnails_after_detail_browsing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setattr(sys, "__stdout__", StringIO())
+def test_gallery_reuses_thumbnails_after_detail_browsing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
   console = Console(file=StringIO(), width=100, height=40)
   paths = [make_image(tmp_path / f"image-{index}.jpg") for index in range(6)]
   app = RclipApp(FakeRclip([RClip.SearchResult(str(path), 1) for path in paths]), str(tmp_path))
@@ -901,14 +991,18 @@ def test_gallery_resends_thumbnails_after_detail_browsing(tmp_path: Path, monkey
       await app.workers.wait_for_complete()
       await pilot.pause()
       before = [card._image.render() for card in cards]
+      image_ids = []
       for renderable in before:
         assert isinstance(renderable, TGPRenderable)
         list(console.render(renderable))
         assert renderable.terminal_image_id is not None
+        image_ids.append(renderable.terminal_image_id)
       await pilot.press("down", "o", "right", "right", "left", "o")
       await app.workers.wait_for_complete()
       await pilot.pause()
-      for card, previous in zip(cards, before):
+      output.seek(0)
+      output.truncate()
+      for card, previous, image_id in zip(cards, before, image_ids):
         assert isinstance(previous, TGPRenderable)
         assert previous.terminal_image_id is None
         current = card._image.render()
@@ -916,9 +1010,36 @@ def test_gallery_resends_thumbnails_after_detail_browsing(tmp_path: Path, monkey
         assert current is not previous
         # Widget.render() only returns the renderable; Rich performs the image transfer.
         list(console.render(current))
-        assert current.terminal_image_id is not None
+        assert current.terminal_image_id == image_id
+      # Re-placing the retained thumbnails must not resend their pixels.
+      assert tgp_payload_bytes(output.getvalue()) == 0
       await pilot.press("right", "left")
       assert all(card._image.image is not None for card in cards)
+
+  asyncio.run(run())
+
+
+def test_detail_navigation_reuses_transmitted_images(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
+  paths = [make_image(tmp_path / f"image-{index}.jpg") for index in range(6)]
+  app = RclipApp(FakeRclip([RClip.SearchResult(str(path), 1) for path in paths]), str(tmp_path))
+
+  async def run() -> None:
+    async with app.run_test(size=(100, 40)) as pilot:
+      await app.workers.wait_for_complete()
+      await pilot.press("down", "o", "right")
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert tgp_payload_bytes(output.getvalue()) > 0
+      output.seek(0)
+      output.truncate()
+      await pilot.press("left")
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      # Every image is already in the terminal: only placements may be sent.
+      assert tgp_payload_bytes(output.getvalue()) == 0
+      assert "\x1b_Ga=p," in output.getvalue()
 
   asyncio.run(run())
 
@@ -1100,7 +1221,9 @@ def test_filmstrip_reuses_loaded_neighbors_while_new_thumbnail_loads(
   asyncio.run(run())
 
 
-def test_detail_filmstrip_centers_selection_and_navigates(tmp_path: Path) -> None:
+def test_detail_filmstrip_centers_selection_and_navigates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
   paths = [str(make_image(tmp_path / f"image-{index}.jpg")) for index in range(5)]
   app = RclipApp(FakeRclip([RClip.SearchResult(path, 1) for path in paths]), str(tmp_path))
 
@@ -1115,10 +1238,20 @@ def test_detail_filmstrip_centers_selection_and_navigates(tmp_path: Path) -> Non
       assert all(thumbnail._image.image is not None for thumbnail in screen.thumbnails[2:])
       assert all(not thumbnail.visible for thumbnail in screen.thumbnails[:2])
       assert all(thumbnail.visible for thumbnail in screen.thumbnails[2:])
+      shown = {}
+      for thumbnail in screen.thumbnails:
+        renderable = thumbnail._image._renderable
+        if thumbnail.filepath is not None and isinstance(renderable, TGPRenderable):
+          assert renderable.terminal_image_id is not None
+          shown[thumbnail.filepath] = renderable.terminal_image_id
+      output.seek(0)
+      output.truncate()
       await pilot.click(screen.thumbnails[4], times=2)
       await app.workers.wait_for_complete()
       assert screen.display and screen.filepath == paths[2]
       assert [thumbnail.filepath for thumbnail in screen.thumbnails] == paths
+      # Selection changes resize the retained thumbnails; their pixels are already in the terminal.
+      assert not set(shown.values()) & tgp_transmitted_ids(output.getvalue())
       await pilot.pause()
       selected_size = screen.thumbnails[2]._image.content_size
       selected_frame = screen.thumbnails[2].query_one(".detail-thumbnail-frame").region
