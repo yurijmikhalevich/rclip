@@ -823,7 +823,7 @@ requires-dist = [
     { name = "regex", specifier = "~=2026.4.4" },
     { name = "requests", specifier = "~=2.32" },
     { name = "textual", specifier = ">=8.2.8,<9" },
-    { name = "textual-image", specifier = "==0.12.0" },
+    { name = "textual-image", specifier = "==0.14.1" },
     { name = "tqdm", specifier = ">=4.65.0,<5" },
 ]
 
@@ -1012,15 +1012,15 @@ wheels = [
 
 [[package]]
 name = "textual-image"
-version = "0.12.0"
+version = "0.14.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pillow" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c2/e7/c82ea0604874b6d51d5717a0911061ae5810e36dad2e4d2b11fa7d54cdaa/textual_image-0.12.0.tar.gz", hash = "sha256:fdd0b5ff9c8a99740bc360a99ce014d563fa97d07a5b49b472470809f57c0a74", size = 116403, upload-time = "2026-04-12T17:37:44.696Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/09/19/fb4bca0ed5ff657f15b4d31cd3f415c62bc7c69cbd1ccb87457e025348bc/textual_image-0.14.1.tar.gz", hash = "sha256:502542955452ca6d67e4e0701021eed6bebbe2e1ccee8dfcb42e5083c9573eda", size = 175108, upload-time = "2026-09-25T20:41:48.657Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/67/2c/38ac586a3834a3bd8cbcf0c8ea1ae23bf68b9cc13b96a67f47a825479dd3/textual_image-0.12.0-py3-none-any.whl", hash = "sha256:0b13f62fe6a29f4ed6dfd641f2779ffe92dde41f16163fa1de69158477aa50aa", size = 115626, upload-time = "2026-04-12T17:37:41.238Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/43/e94a80f76b6e613a44f77ec06abcac078c5c918e8824402fb353f490488a/textual_image-0.14.1-py3-none-any.whl", hash = "sha256:fbc72aa8009c138edfdd7f57f4cd264d7da102bcc9ddbc2527ebc3491f489941", size = 183536, upload-time = "2026-09-25T20:41:46.862Z" },
 ]
 
 [[package]]

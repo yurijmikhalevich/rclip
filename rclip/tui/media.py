@@ -30,7 +30,7 @@ def prepare_image(filepath: str, size: tuple[int, int]) -> BytesIO:
 
 class _TGPRenderable(TGPRenderable):
   def cleanup(self) -> None:
-    # textual-image 0.12.0 omits the deletion selector and confuses image IDs with numbers.
+    # textual-image omits the deletion selector and passes the image id as the image number.
     if self.terminal_image_id is not None:
       _send_tgp_message(a="d", d="I", i=self.terminal_image_id, q=2)
       self.terminal_image_id = None
