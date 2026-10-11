@@ -67,9 +67,20 @@ jobs:
           echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"' >> /home/runner/.bashrc
       - run: |
           brew update
+          brew tap yurijmikhalevich/tap
+          # Upgrade rclip's installed dependencies before installing rclip: `brew install`
+          # upgrades outdated dependencies itself, but relinks them without `--overwrite`,
+          # which fails on links owned by the runner image's formulae (e.g. openssl@1.1 owns
+          # /opt/homebrew/bin/openssl, blocking openssl@3). Intersecting with `brew list`
+          # rather than using `brew deps --installed`, which omits outdated dependencies.
+          installed_deps=$(comm -12 \
+            <(brew deps yurijmikhalevich/tap/rclip | sort) \
+            <(brew list --formula | sort))
+          [ -z "$installed_deps" ] || brew upgrade --overwrite $installed_deps
           brew install yurijmikhalevich/tap/rclip
-          # upgrade only rclip and its dependencies to test with latest packages
-          brew upgrade $(brew deps yurijmikhalevich/tap/rclip) yurijmikhalevich/tap/rclip
+        # don't upgrade rclip's outdated dependents, i.e. unrelated runner image formulae
+        env:
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: 1
         # overriding shell to ensure it reads `.bashrc`
         shell: bash -ieo pipefail {0}
       - uses: ./.github/actions/test-system-rclip
