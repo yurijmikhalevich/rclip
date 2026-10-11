@@ -11,4 +11,8 @@ update_information='gh-releases-zsync|AppImageCrafters|python-appimage-example|l
 rm -rf "$appdir" appimage-build .bundle.yml "$artifact" "${artifact}.zsync"
 
 appimage-builder --skip-tests --skip-appimage --recipe "$recipe"
+# appimage-builder hardcodes Terminal=false in the desktop entry it generates, but
+# rclip is a CLI application, so the entry must launch it in a terminal.
+sed -i 's/^Terminal=false$/Terminal=true/' "$appdir"/*.desktop
+grep -qx 'Terminal=true' "$appdir"/*.desktop
 ARCH=x86_64 appimagetool --comp zstd --mksquashfs-opt -Xcompression-level --mksquashfs-opt 3 --mksquashfs-opt -b --mksquashfs-opt 128K --no-appstream --updateinformation "$update_information" "$appdir" "$artifact"
