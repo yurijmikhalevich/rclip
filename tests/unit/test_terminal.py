@@ -30,6 +30,7 @@ def test_preview_terminal_requires_tty():
     {"TERM": "xterm-ghostty"},
     {"TERM_PROGRAM": "iTerm.app", "TERM_PROGRAM_VERSION": "3.5.0"},
     {"TERM_PROGRAM": "iTerm.app", "TERM_PROGRAM_VERSION": "3.5.2"},
+    {"TERM_PROGRAM": "iTerm.app", "TERM_PROGRAM_VERSION": "3.5"},
     {"TERM_PROGRAM": "iTerm.app"},
   ],
 )
@@ -37,6 +38,15 @@ def test_interactive_terminal_supports_full_kitty_terms(env: dict[str, str]):
   supported, reason = terminal.is_interactive_terminal_supported(env=env, platform="darwin", is_atty=True)
   assert supported
   assert reason is None
+
+
+def test_parse_version_pads_trailing_zeros():
+  assert terminal._parse_version("3.5") == (3, 5, 0)
+  assert terminal._parse_version("3.5.2") == (3, 5, 2)
+  assert terminal._parse_version("4") == (4, 0, 0)
+  assert terminal._parse_version("3.4.19") == (3, 4, 19)
+  assert terminal._parse_version("") == (0, 0, 0)
+  assert terminal._parse_version("invalid") == (0, 0, 0)
 
 
 @pytest.mark.parametrize(

@@ -5,10 +5,8 @@ from typing import Mapping
 
 
 def _parse_version(version_str: str) -> tuple[int, ...]:
-  try:
-    return tuple(int(part) for part in re.findall(r"\d+", version_str)[:3])
-  except ValueError:
-    return ()
+  parts = [int(part) for part in re.findall(r"\d+", version_str)[:3]]
+  return tuple(parts + [0] * (3 - len(parts)))
 
 
 def is_interactive_terminal_supported(
