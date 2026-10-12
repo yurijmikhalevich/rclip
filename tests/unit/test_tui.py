@@ -322,6 +322,30 @@ def test_kitty_image_reuses_a_larger_image_for_a_smaller_placement(
   assert tgp_payload_bytes(output.getvalue()) == 0
 
 
+def test_kitty_image_does_not_reuse_data_prepared_at_another_size(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
+  console = Console(file=StringIO(), width=20)
+  source = make_image(tmp_path / "image.jpg")
+
+  preview = StableTGPImage._Renderable(prepare_image(str(source), (80, 60)), 4, 3)
+  list(console.render(preview))
+  preview_id = preview.terminal_image_id
+  assert preview_id is not None
+  preview.cleanup()
+
+  output.seek(0)
+  output.truncate()
+  detail = StableTGPImage._Renderable(prepare_image(str(source), (40, 30)), 4, 3)
+  list(console.render(detail))
+
+  assert detail.terminal_image_id is not None and detail.terminal_image_id != preview_id
+  assert tgp_payload_bytes(output.getvalue()) > 0
+
+
 def test_kitty_image_cache_frees_evicted_data_in_the_terminal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stdout__", output)

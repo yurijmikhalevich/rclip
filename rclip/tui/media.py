@@ -80,8 +80,10 @@ class _ImageCache:
 
   Kitty keeps an image's data until it is deleted or the per-buffer quota silently evicts the oldest
   image. Deleting only the placement (`d=i`) leaves the data in place, so showing the same image
-  again needs a placement but no transmission. Kitty renders Unicode placeholder cells from the first
-  placement of an image id, so renderables sharing an image must agree on their placement size.
+  again needs a placement but no transmission. Images are keyed by their source and prepared size, so
+  a preview and a detail view of one file never share data prepared for the other. Kitty renders
+  Unicode placeholder cells from the first placement of an image id, so renderables sharing an image
+  must agree on their placement size.
   """
 
   def __init__(self, budget: int = _TGP_DECODED_BUDGET) -> None:
@@ -167,7 +169,10 @@ class _TGPRenderable(TGPRenderable):
   ) -> None:
     super().__init__(image, width, height)
     self._source = image
-    self._key = getattr(image, "source_path", None) or id(image)
+    # The prepared size is part of the identity: the same file prepared for a preview and for the
+    # detail view is different data, so their transmissions are kept apart.
+    source = getattr(image, "source_path", None) or id(image)
+    self._key = (source, self._image_data.width, self._image_data.height)
     self._box = (0, 0)
     self._size = (0, 0)
     self._transmitted: _TransmittedImage | None = None
