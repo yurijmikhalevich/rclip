@@ -10,18 +10,12 @@ import subprocess
 import sys
 from threading import Event, Lock, Thread
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock
 
 from PIL import Image
-from rich.console import Console
-from textual_image.renderable import TGPImage as TGPRenderable
-from textual_image._terminal import CellSize
 import pytest
-from textual import events
-from textual.app import App
-from textual.drivers.headless_driver import HeadlessDriver
-from textual.geometry import Region, Size
-from textual.widgets import Input, Static
+from rich.console import Console
 
 from rclip import main as main_module
 from rclip.main import RClip
@@ -32,18 +26,59 @@ from rclip.tui.app import _safe_suspend
 from rclip.tui.app import run_tui
 from rclip.tui.media import CenteredTGPImage
 from rclip.tui.media import StableTGPImage
+from rclip.tui.media import _TGPRenderable as TGPRenderable
 from rclip.tui.media import prepare_image
 from rclip.tui.media import prewarm_image
+from rclip.tui.terminal import CellSize
 from rclip.tui.transfer import TransferError
-from rclip.tui.transfer import _run_kitten
 from rclip.tui.transfer import _probe_kitty
+from rclip.tui.transfer import _run_kitten
 from rclip.tui.transfer import _supports_query_terminal
 from rclip.tui.transfer import copy_image_to_clipboard
 from rclip.tui.transfer import download_image
 from rclip.tui.views import DetailView
 from rclip.tui.views import ImageCard
-from rclip.tui.views import ResultsGrid
+from rclip.tui.views import Input, Region, ResultsGrid, Size, Static
 from rclip.utils.helpers import init_arg_parser
+
+
+class _Events:
+  class Key:
+    def __init__(self, key: str, character: str | None = None) -> None:
+      self.key = key
+      self.character = character
+
+
+events = _Events()
+
+
+class HeadlessDriver:
+  def __init__(self, app: object) -> None:
+    self.app = app
+
+  def start_application_mode(self) -> None:
+    pass
+
+  def stop_application_mode(self) -> None:
+    pass
+
+
+class App:
+  def __init__(self) -> None:
+    self._driver: Any = None
+
+  def __class_getitem__(cls, item: object) -> type:
+    return cls
+
+  @contextmanager
+  def suspend(self) -> Iterator[None]:
+    if self._driver and hasattr(self._driver, "stop_application_mode"):
+      self._driver.stop_application_mode()
+    try:
+      yield
+    finally:
+      if self._driver and hasattr(self._driver, "start_application_mode"):
+        self._driver.start_application_mode()
 
 
 @pytest.fixture(autouse=True)
@@ -235,7 +270,7 @@ def test_strip_preview_pixels_are_centered_and_keep_aspect_ratio(
 ) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stdout__", output)
-  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(17, 33))
+  monkeypatch.setattr(media_module, "get_cell_pixel_size", lambda: CellSize(17, 33))
   renderable = CenteredTGPImage._Renderable(Image.new("RGB", size, "red"), 13, 5)
   Console(file=StringIO(), width=13).print(renderable)
   chunks = re.findall(r"\x1b_G[^;]*;([A-Za-z0-9+/=]+)\x1b\\", output.getvalue())
@@ -304,7 +339,7 @@ def test_kitty_image_does_not_reuse_data_for_a_different_box_size(
 ) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stdout__", output)
-  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
+  monkeypatch.setattr(media_module, "get_cell_pixel_size", lambda: CellSize(10, 20))
   console = Console(file=StringIO(), width=20)
   prepared = prepare_image(str(make_image(tmp_path / "image.jpg")), (80, 60))
 
@@ -329,7 +364,7 @@ def test_kitty_image_does_not_reuse_between_centered_and_uncentered(
 ) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stdout__", output)
-  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
+  monkeypatch.setattr(media_module, "get_cell_pixel_size", lambda: CellSize(10, 20))
   console = Console(file=StringIO(), width=20)
   prepared = prepare_image(str(make_image(tmp_path / "image.jpg")), (80, 60))
 
@@ -353,7 +388,7 @@ def test_kitty_image_caches_by_filepath_string_and_path(
 ) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stdout__", output)
-  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
+  monkeypatch.setattr(media_module, "get_cell_pixel_size", lambda: CellSize(10, 20))
   console = Console(file=StringIO(), width=20)
   image_path = make_image(tmp_path / "image.jpg")
 
@@ -378,7 +413,7 @@ def test_kitty_image_does_not_reuse_data_prepared_at_another_size(
 ) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stdout__", output)
-  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
+  monkeypatch.setattr(media_module, "get_cell_pixel_size", lambda: CellSize(10, 20))
   console = Console(file=StringIO(), width=20)
   source = make_image(tmp_path / "image.jpg")
 
@@ -400,7 +435,7 @@ def test_kitty_image_does_not_reuse_data_prepared_at_another_size(
 def test_kitty_image_cache_frees_evicted_data_in_the_terminal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stdout__", output)
-  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
+  monkeypatch.setattr(media_module, "get_cell_pixel_size", lambda: CellSize(10, 20))
   # One 40x60 image decodes to 9,600 bytes: the budget holds one image but not two.
   monkeypatch.setattr(media_module, "_IMAGE_CACHE", media_module._ImageCache(budget=10_000))
   console = Console(file=StringIO(), width=20)
@@ -423,7 +458,7 @@ def test_kitty_image_cache_frees_evicted_data_in_the_terminal(tmp_path: Path, mo
 def test_kitty_image_cache_evicts_when_a_reference_is_released(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stdout__", output)
-  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
+  monkeypatch.setattr(media_module, "get_cell_pixel_size", lambda: CellSize(10, 20))
   monkeypatch.setattr(media_module, "_IMAGE_CACHE", media_module._ImageCache(budget=1))
   console = Console(file=StringIO(), width=20)
 
@@ -448,7 +483,7 @@ def test_kitty_image_renderable_second_placement_does_not_leak_cache_reference(
 ) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stdout__", output)
-  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
+  monkeypatch.setattr(media_module, "get_cell_pixel_size", lambda: CellSize(10, 20))
   cache = media_module._ImageCache(budget=10_000)
   monkeypatch.setattr(media_module, "_IMAGE_CACHE", cache)
   console = Console(file=StringIO(), width=20)
@@ -473,7 +508,7 @@ def test_kitty_image_renderable_placement_resize_releases_previous_cache_referen
 ) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stdout__", output)
-  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
+  monkeypatch.setattr(media_module, "get_cell_pixel_size", lambda: CellSize(10, 20))
   cache = media_module._ImageCache(budget=10_000)
   monkeypatch.setattr(media_module, "_IMAGE_CACHE", cache)
   console = Console(file=StringIO(), width=20)
@@ -500,7 +535,7 @@ def test_prewarm_image_populates_cache_and_render_avoids_retransmission(
 ) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stdout__", output)
-  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
+  monkeypatch.setattr(media_module, "get_cell_pixel_size", lambda: CellSize(10, 20))
   cache = media_module._ImageCache(budget=50_000)
   monkeypatch.setattr(media_module, "_IMAGE_CACHE", cache)
   console = Console(file=StringIO(), width=20)

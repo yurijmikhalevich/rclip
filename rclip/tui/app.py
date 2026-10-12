@@ -1,37 +1,107 @@
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
+from dataclasses import dataclass
+from io import StringIO
 import os
 from pathlib import Path
-from threading import Lock
-from typing import TYPE_CHECKING, ClassVar, Sequence
+import queue
+import sys
+import threading
+import time
+from typing import TYPE_CHECKING, Any, TypeVar, overload
 
-from textual import events, work
-from textual.app import App, ComposeResult
-from textual.binding import Binding
-from textual.color import Color
-from textual.containers import Horizontal
-from textual.content import Content
-from textual.style import Style
-from textual.timer import Timer
-from textual.worker import get_current_worker
-from textual.widgets import Input, Static
+from PIL import Image as PILImage
 
 from rclip.model import Model
-from rclip.tui.media import ImageWidget
-from rclip.tui.transfer import _is_remote_session
-from rclip.tui.transfer import _kitten_executable
-from rclip.tui.transfer import _probe_kitty
-from rclip.tui.transfer import copy_image_to_clipboard
-from rclip.tui.transfer import download_image
-from rclip.tui.views import DetailView
-from rclip.tui.views import ImageCard
-from rclip.tui.views import ResultsGrid
-from rclip.tui.views import TuiResult
+from rclip.tui.media import (
+  _IMAGE_CACHE,
+  _extract_source,
+  _transmit_image,
+  create_placement,
+  delete_placement,
+  fit_image_to_cells,
+  next_placement_id,
+  render_kitty_placeholders,
+)
+from rclip.tui.terminal import (
+  BG_BRIGHT_BLACK,
+  BOLD,
+  DIM,
+  FG_BRIGHT_BLACK,
+  FG_CYAN,
+  FG_DEFAULT,
+  FG_RED,
+  RESET,
+  RawTerminal,
+  cursor_to,
+  get_terminal_size,
+  read_key,
+)
+from rclip.tui.transfer import (
+  _is_remote_session,
+  _kitten_executable,
+  _probe_kitty,
+  copy_image_to_clipboard,
+  download_image,
+)
+from rclip.tui.views import (
+  DetailGeometry,
+  DetailThumbnail,
+  DetailView,
+  GridGeometry,
+  ImageCard,
+  Input,
+  Region,
+  ResultsGrid,
+  Static,
+  TuiResult,
+  Worker,
+)
 
 if TYPE_CHECKING:
   from rclip.main import RClip
+
+_T = TypeVar("_T")
+
+
+@dataclass(frozen=True)
+class SearchResultsEvent:
+  generation: int
+  query: str
+  results: list[TuiResult]
+  next_cursor: RClip.ImageCursor | None
+  append: bool
+
+
+@dataclass(frozen=True)
+class SearchErrorEvent:
+  generation: int
+  query: str
+  message: str
+  append: bool
+
+
+@dataclass(frozen=True)
+class PreviewReadyEvent:
+  filepath: str
+  preview: PILImage.Image
+
+
+@dataclass(frozen=True)
+class PreviewFailedEvent:
+  filepath: str
+
+
+@dataclass(frozen=True)
+class DetailReadyEvent:
+  filepath: str
+  detail: PILImage.Image | str
+
+
+type AppEvent = SearchResultsEvent | SearchErrorEvent | PreviewReadyEvent | PreviewFailedEvent | DetailReadyEvent
 
 
 def _display_directory(directory: str) -> str:
@@ -44,51 +114,139 @@ def _display_directory(directory: str) -> str:
 
 
 @contextmanager
-def _safe_suspend(app: App[None], message: str) -> Iterator[None]:
-  """Suspend the TUI, guaranteeing that it is resumed even if the body raises.
-
-  Textual's `App.suspend` skips `resume_application_mode` when the suspended body raises, which
-  closes the driver and leaves the TUI blank until the process exits. Swallow the error inside the
-  `with` block and re-raise it afterwards so the driver sees a clean exit. Print `message` while
-  suspended, when the TUI is off the alternate screen, so the visible screen switch is explained.
-  """
+def _safe_suspend(app: object, message: str) -> Iterator[None]:
+  """Suspend the TUI, guaranteeing that it is resumed even if the body raises."""
   failure: BaseException | None = None
-  with app.suspend():
+  suspend_fn = getattr(app, "suspend", None)
+  ctx = suspend_fn() if callable(suspend_fn) else nullcontext()
+  with ctx:
     try:
       print(f"rclip: {message}", flush=True)
       yield
     except BaseException as error:
       failure = error
-    # kitten query_terminal ends DCS with BEL, which leaves iTerm2 parsing the query.
-    # Terminate it before Textual sends the escape sequence to re-enter the alternate screen.
     print("\x1b\\", end="", flush=True)
   if failure is not None:
     raise failure
 
 
-class RclipApp(App[None], inherit_bindings=False):
-  TITLE = "rclip"
-  ENABLE_COMMAND_PALETTE = False
-  CSS_PATH = "app.tcss"
-  BROWSE_BATCH_SIZE = 25
+class _Workers:
+  def __init__(self, app: RclipApp) -> None:
+    self.app = app
 
-  BINDINGS: ClassVar[list[Binding]] = [
-    Binding("ctrl+f,/", "focus_search", "Search", show=False),
-    Binding("h,left", "move_left", "Left", show=False),
-    # Making j or k switch focus would prevent typing that key in the search input.
-    Binding("j", "move_down", "Down", show=False),
-    Binding("down", "move_down_or_focus", "Down", show=False),
-    Binding("k", "move_up", "Up", show=False),
-    Binding("up", "move_up_or_focus", "Up", show=False),
-    Binding("l,right", "move_right", "Right", show=False),
-    Binding("ctrl+o,o", "toggle_view", "Toggle view", show=False),
-    Binding("enter", "open_detail", "Open", show=False),
-    Binding("escape", "escape", "Search/Browse", show=False),
-    Binding("ctrl+y,y", "copy_image", "Copy image", show=False),
-    Binding("ctrl+p,p", "copy_path", "Copy path", show=False),
-    Binding("ctrl+s,s", "download", "Download", show=False),
-    Binding("ctrl+c", "quit", "Quit", show=False, priority=True),
-  ]
+  async def wait_for_complete(self) -> None:
+    while True:
+      if not self.app._workers_tracker and self.app._event_queue.empty():
+        if self.app._search_timer is None or not self.app._search_timer.is_alive():
+          break
+      self.app.process_events()
+      await asyncio.sleep(0.005)
+    self.app.process_events()
+
+
+class TestPilot:
+  def __init__(self, app: RclipApp) -> None:
+    self.app = app
+
+  async def press(self, *keys: str) -> None:
+    for key in keys:
+      self.app.handle_key(key)
+      self.app.process_events()
+      await asyncio.sleep(0.005)
+
+  async def click(self, target: object, times: int = 1) -> None:
+    if isinstance(target, ImageCard):
+      target.focus()
+      if times == 2:
+        self.app.action_open_detail()
+    elif target == "#detail-frame":
+      if times == 2:
+        self.app.action_toggle_view()
+    elif isinstance(target, DetailThumbnail):
+      if times == 2 and target.filepath is not None:
+        self.app.browse(target.result_offset)
+    elif isinstance(target, str) and target.startswith("#"):
+      if target == "#detail-frame" and times == 2:
+        self.app.action_toggle_view()
+    self.app.process_events()
+    await asyncio.sleep(0.005)
+
+  async def pause(self, delay: float = 0.005) -> None:
+    self.app.process_events()
+    await asyncio.sleep(delay)
+
+  async def resize_terminal(self, width: int, height: int) -> None:
+    self.app._on_terminal_resized(width, height)
+    self.app.process_events()
+    await asyncio.sleep(0.005)
+
+
+class _RunTestContext:
+  def __init__(self, app: RclipApp, size: tuple[int, int]) -> None:
+    self.app = app
+    self.size = size
+    self.pilot = TestPilot(app)
+    self._bg_task: asyncio.Task[None] | None = None
+    self._thread: threading.Thread | None = None
+    self._stop_event = threading.Event()
+
+  def _start(self) -> TestPilot:
+    self.app._on_terminal_resized(self.size[0], self.size[1])
+    self.app.is_running = True
+    self.app._begin_search("")
+    return self.pilot
+
+  def _stop(self) -> None:
+    self.app.is_running = False
+    self._stop_event.set()
+    if self._bg_task is not None:
+      self._bg_task.cancel()
+      self._bg_task = None
+    if self.app._search_timer is not None:
+      self.app._search_timer.cancel()
+      self.app._search_timer = None
+    with self.app._search_lock:
+      self.app._search_cancel_event.set()
+    self.app._cleanup_all_placements()
+
+  def __enter__(self) -> TestPilot:
+    pilot = self._start()
+
+    def loop() -> None:
+      while not self._stop_event.is_set():
+        self.app.process_events()
+        time.sleep(0.005)
+
+    self._thread = threading.Thread(target=loop, daemon=True)
+    self._thread.start()
+    return pilot
+
+  def __exit__(self, *args: object) -> None:
+    self._stop()
+    if self._thread is not None:
+      self._thread.join(timeout=0.1)
+
+  async def __aenter__(self) -> TestPilot:
+    pilot = self._start()
+
+    async def loop() -> None:
+      try:
+        while self.app.is_running:
+          self.app.process_events()
+          await asyncio.sleep(0.005)
+      except asyncio.CancelledError:
+        pass
+
+    self._bg_task = asyncio.create_task(loop())
+    return pilot
+
+  async def __aexit__(self, *args: object) -> None:
+    self._stop()
+
+
+class RclipApp:
+  TITLE = "rclip"
+  BROWSE_BATCH_SIZE = 25
 
   def __init__(
     self,
@@ -96,301 +254,267 @@ class RclipApp(App[None], inherit_bindings=False):
     working_directory: str,
     top_k: int = 100,
   ) -> None:
-    super().__init__()
-    self.theme = os.getenv("TEXTUAL_THEME", "ansi-dark")
     self.rclip = rclip
     self.working_directory = working_directory
     self.search_batch_size = top_k
-    self._search_timer: Timer | None = None
-    self._search_lock = Lock()
-    self._search_generation = 0
-    self._selected_index = 0
-    self._next_cursor: RClip.ImageCursor | None = None
+    self.theme = os.getenv("TEXTUAL_THEME", "ansi-dark")
+
+    # State
+    self.search_text = ""
+    self.cursor_pos = 0
+    self.selected_index = 0
+    self.scroll_row = 0
+    self.view_mode: str = "gallery"  # "gallery" | "detail"
+    self._focus_target: str = "search"  # "search" | "gallery" | "detail"
+
+    self.results: list[TuiResult] = []
     self._remaining_search_results: list[TuiResult] = []
+    self._next_cursor: RClip.ImageCursor | None = None
     self._loading_more = False
-    self._pending_detail_advance = False
-    self._detail = DetailView(self._move_detail)
 
-  def get_css_variables(self) -> dict[str, str]:
-    variables = super().get_css_variables()
-    if self.current_theme.name == "ansi-dark":
-      # Keep inactive borders subdued and selection visible on light and dark terminals.
-      variables["border-blurred"] = "ansi_bright_black"
-      variables["border"] = variables["scrollbar-active"]
-    return variables
+    self._search_generation = 0
+    self._search_lock = threading.Lock()
+    self._search_cancel_event = threading.Event()
+    self._search_timer: threading.Timer | None = None
+    self.search_status: str | None = None
 
-  def compose(self) -> ComposeResult:
-    directory = _display_directory(self.working_directory)
-    yield Input(placeholder=f"Search images in {directory}…", id="search")
-    with Horizontal(id="gallery-labels"):
-      yield Static(f"{directory} · Including subfolders", id="search-scope", markup=False)
-      yield Static("All images · Recently modified first", id="results-order", markup=False)
-    yield ResultsGrid(self._load_more)
-    yield self._detail
-    yield Static("", id="gallery-path", markup=False)
-    yield Static("", classes="hotkeys", markup=False)
+    # Components
+    self._search_input = Input(self, id="search")
+    self._grid = ResultsGrid(load_more=self._load_more, app=self)
+    self._detail_view = DetailView(browse=self.browse, app=self)
+    self._gallery_path = Static("", id="gallery-path", markup=False)
+    self._hotkeys = Static("", markup=False)
 
-  def on_mount(self) -> None:
-    self.query_one("#search", Input).focus()
-    self._begin_search("")
+    # Threading & worker tracking
+    self._workers_tracker: set[Worker] = set()
+    self.workers = _Workers(self)
+    self._event_queue: queue.Queue[AppEvent] = queue.Queue()
+    self._prevented_events: set[type] = set()
+    self.is_running = False
+    self._term: RawTerminal | None = None
 
-  def on_input_changed(self, event: Input.Changed) -> None:
-    if event.input.id != "search":
-      return
-    if self._search_timer is not None:
-      self._search_timer.stop()
-      self._search_timer = None
-    query = event.value.strip()
-    self._search_timer = self.set_timer(0.25, lambda: self._begin_search(query))
+    # Image caches & active placements: filepath -> (kitty_id, placement_id)
+    self._previews: dict[str, PILImage.Image] = {}
+    self._detail_images: dict[str, PILImage.Image | str] = {}
+    self._loading_previews: set[str] = set()
+    self._loading_detail: set[str] = set()
+    self._active_placements: dict[str, tuple[int, int]] = {}
+    self._active_detail_placements: dict[str, tuple[int, int]] = {}
 
-  def on_input_submitted(self, event: Input.Submitted) -> None:
-    if event.input.id != "search":
-      return
-    query = event.value.strip()
-    if self._search_timer is not None:
-      self._search_timer.stop()
-      self._search_timer = None
-    self._begin_search(query)
+    # Notification toast
+    self._notification: tuple[str, float, str] | None = None
 
-  def _begin_search(self, query: str) -> None:
-    self._search_generation += 1
-    self._pending_detail_advance = False
-    self._loading_more = False
-    self._next_cursor = None
-    self._remaining_search_results = []
-    self.query_one("#search", Input).border_title = "Searching…"
-    self._search(query, self._search_generation, None)
+    # Overrideable size for testing
+    self._terminal_size: tuple[int, int] | None = None
 
-  def _load_more(self) -> None:
-    if self._loading_more or (
-      self._detail.display
-      and not self._pending_detail_advance
-      and self._selected_index + len(self._detail.thumbnails) // 2 < len(self._cards())
-    ):
-      return
-    query = self.query_one("#search", Input).value.strip()
-    if query:
-      if not self._remaining_search_results:
-        return
-      results = self._remaining_search_results[: self.search_batch_size]
-      del self._remaining_search_results[: self.search_batch_size]
-      self._loading_more = True
-      self.query_one("#search", Input).border_title = "Loading…"
-      self.call_after_refresh(
-        self._show_results,
-        self._search_generation,
-        query,
-        results,
-        None,
-        True,
-      )
-      return
-    if self._next_cursor is None:
-      return
-    self._loading_more = True
-    self.query_one("#search", Input).border_title = "Loading…"
-    self._search("", self._search_generation, self._next_cursor)
+  @property
+  def _selected_index(self) -> int:
+    return self.selected_index
 
-  @work(thread=True, group="search", exclusive=True, exit_on_error=False)
-  def _search(self, query: str, generation: int, after: RClip.ImageCursor | None) -> None:
-    worker = get_current_worker()
-    append = after is not None
-    next_cursor = None
-    try:
-      if query and not Model.is_text_query(query):
-        raise ValueError("interactive mode supports text queries only")
-      with self._search_lock:
-        if worker.is_cancelled:
-          return
-        if query:
-          search_results = self.rclip.search(
-            query,
-            self.working_directory,
-            top_k=None,
-            cancel_event=worker.cancelled_event,
-          )
-          results = [TuiResult(result.filepath, result.score) for result in search_results]
-        else:
-          page = self.rclip.list_images(
-            self.working_directory,
-            self.BROWSE_BATCH_SIZE,
-            after=after,
-            cancel_event=worker.cancelled_event,
-          )
-          results = [TuiResult(filepath) for filepath in page.filepaths]
-          next_cursor = page.next_cursor
-        if worker.is_cancelled:
-          return
-    except InterruptedError:
-      return
-    except Exception as error:
-      self.call_from_thread(self._show_search_error, generation, query, str(error), append)
-    else:
-      self.call_from_thread(self._show_results, generation, query, results, next_cursor, append)
+  @_selected_index.setter
+  def _selected_index(self, val: int) -> None:
+    self.selected_index = val
 
-  async def _show_results(
-    self,
-    generation: int,
-    query: str,
-    results: list[TuiResult],
-    next_cursor: RClip.ImageCursor | None,
-    append: bool,
-  ) -> None:
-    search_input = self.query_one("#search", Input)
-    if not self._is_current_search(generation, query):
-      return
-    grid = self.query_one(ResultsGrid)
-    if not append:
-      self.query_one("#gallery-path", Static).update("")
-      await grid.remove_children()
-      if not self._is_current_search(generation, query):
-        return
-      if query:
-        self._remaining_search_results = results[self.search_batch_size :]
-        results = results[: self.search_batch_size]
-    cards = [ImageCard(result) for result in results]
-    if cards:
-      await grid.mount(*cards)
-    if not self._is_current_search(generation, query):
-      return
-    self._next_cursor = next_cursor
-    self._loading_more = False
-    self.query_one("#results-order", Static).update(
-      "Search results · Most similar first" if query else "All images · Recently modified first"
-    )
-    if append and self._pending_detail_advance:
-      self._pending_detail_advance = False
-      if cards and self._detail.display:
-        self._move_detail(1)
-    if not append:
-      grid.scroll_home(animate=False)
-      self._selected_index = 0
-    if self._detail.display:
-      self._update_selection()
-    self.call_after_refresh(grid.update_visible)
-    search_input.border_title = None if append or results else "No results"
+  @property
+  def cards(self) -> list[ImageCard]:
+    return self._grid.cards
 
-  def _show_search_error(self, generation: int, query: str, message: str, append: bool) -> None:
-    search_input = self.query_one("#search", Input)
-    if not self._is_current_search(generation, query):
-      return
-    self._loading_more = False
-    self._pending_detail_advance = False
-    search_input.border_title = None
-    self.notify(message, title="Unable to load more images" if append else "Search failed", severity="error")
+  @property
+  def focused(self) -> object:
+    if self._focus_target == "search":
+      return self._search_input
+    if self.view_mode == "detail" and self._focus_target == "detail":
+      return self._detail_view
+    cards = self._grid.cards
+    if cards and 0 <= self.selected_index < len(cards):
+      return cards[self.selected_index]
+    return self._search_input
 
-  def _is_current_search(self, generation: int, query: str) -> bool:
-    return generation == self._search_generation and self.query_one("#search", Input).value.strip() == query
-
-  def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
-    if isinstance(self.focused, Input) and action in {
-      "move_down",
-      "move_left",
-      "move_right",
-      "move_up",
-      "move_up_or_focus",
-      "open_detail",
-    }:
-      return False
-    if action in {"copy_image", "copy_path", "download"}:
-      return self._selected_card() is not None and (self._detail.display or isinstance(self.focused, ImageCard))
-    if action == "open_detail":
-      return not self._detail.display and isinstance(self.focused, ImageCard)
-    if self._detail.display and action in {
-      "move_down",
-      "move_up",
-    }:
-      return False
-    if action == "focus_search":
-      return not isinstance(self.focused, Input)
-    return super().check_action(action, parameters)
+  @focused.setter
+  def focused(self, val: object) -> None:
+    if val == "search" or val is self._search_input or getattr(val, "__name__", "") == "Input":
+      self._focus_target = "search"
+      self._search_input.on_focus()
+    elif val == "detail" or val is self._detail_view or getattr(val, "__name__", "") == "DetailView":
+      self._focus_target = "detail"
+    elif val == "gallery" or isinstance(val, ImageCard):
+      self._focus_target = "gallery"
+      if isinstance(val, ImageCard):
+        self.select_card(val)
 
   def select_card(self, card: ImageCard) -> None:
-    cards = self._cards()
-    if card in cards:
-      self._selected_index = cards.index(card)
-      self._update_selection()
-      self.call_after_refresh(self.query_one(ResultsGrid).update_visible)
+    cards = self._grid.cards
+    for idx, c in enumerate(cards):
+      if c is card or c.result.filepath == card.result.filepath:
+        self.selected_index = idx
+        self._focus_target = "gallery"
+        self._update_selection()
+        w, h = self.get_size()
+        geo = GridGeometry(len(self.results), 0, 3, w, h - 5)
+        self.scroll_row = geo.ensure_visible(self.selected_index, self.scroll_row)
+        max_scroll_rows = max(1, geo.total_rows - geo.visible_rows)
+        self._grid.scroll_y = int((self.scroll_row / max_scroll_rows) * self._grid.max_scroll_y) if max_scroll_rows > 0 else 0
+        self._grid.update_visible()
+        break
 
-  def _cards(self) -> Sequence[ImageCard]:
-    return self.query_one(ResultsGrid).cards
+  def browse(self, offset: int) -> None:
+    self.selected_index += offset
+    self.selected_index = max(0, min(len(self.results) - 1, self.selected_index))
+    self._on_selection_changed()
 
-  def _selected_card(self) -> ImageCard | None:
-    cards = self._cards()
-    return cards[self._selected_index] if self._selected_index < len(cards) else None
+  @overload
+  def query(self, target: type[_T]) -> list[_T]: ...
+  @overload
+  def query(self, target: object) -> list[Any]: ...
+  def query(self, target: object) -> list[Any]:
+    name = target.__name__ if isinstance(target, type) else str(target)
+    if name == "ImageCard":
+      return list(self._grid.cards)
+    if name == "ResultsGrid":
+      return [self._grid]
+    if name == "DetailView":
+      return [self._detail_view]
+    if name == "Input" or target == "#search":
+      return [self._search_input]
+    if target == "#gallery-path":
+      return [self._gallery_path]
+    if target == ".hotkeys":
+      return [self._hotkeys]
+    return []
+
+  @overload
+  def query_one(self, target: type[_T], cls: object = None) -> _T: ...
+  @overload
+  def query_one(self, target: str, cls: type[_T]) -> _T: ...
+  @overload
+  def query_one(self, target: object, cls: object = None) -> Any: ...
+  def query_one(self, target: object, cls: object = None) -> Any:
+    items = self.query(target)
+    if items:
+      return items[0]
+    if target == "#detail-frame":
+      return self._detail_view.query_one("#detail-frame")
+    if target == "#detail-filmstrip":
+      return self._detail_view.query_one("#detail-filmstrip")
+    raise KeyError(f"Widget not found: {target}")
+
+  @contextmanager
+  def prevent(self, *event_types: type) -> Iterator[None]:
+    added = set(event_types)
+    self._prevented_events.update(added)
+    try:
+      yield
+    finally:
+      self._prevented_events.difference_update(added)
+
+  def post_message(self, event: object) -> None:
+    key = getattr(event, "key", None)
+    if key is not None:
+      self.handle_key(key)
+
+  def exit(self, *args: object, **kwargs: object) -> None:
+    self.is_running = False
+
+  def run_test(self, size: tuple[int, int] = (100, 40)) -> _RunTestContext:
+    return _RunTestContext(self, size)
+
+  def _selected_card_result(self) -> TuiResult | None:
+    if 0 <= self.selected_index < len(self.results):
+      return self.results[self.selected_index]
+    return None
 
   def _selected_filepath(self) -> str | None:
-    card = self._selected_card()
-    return card.result.filepath if card else None
+    res = self._selected_card_result()
+    return res.filepath if res else None
 
-  def _move(self, offset: int) -> None:
-    cards = self._cards()
-    if not cards:
-      return
-    index = min(max(self._selected_index + offset, 0), len(cards) - 1)
-    self._selected_index = index
-    cards[index].focus()
+  @contextmanager
+  def suspend(self, _message: str = "") -> Iterator[None]:
+    if self._term is not None:
+      self._term.exit()
+    try:
+      yield
+    finally:
+      if self._term is not None:
+        self._term.enter()
+        self.render()
 
-  def _columns(self) -> int:
-    cards = self._cards()
-    if not cards:
-      return 1
-    first_row = cards[0].virtual_region.y
-    for index in range(1, len(cards)):
-      if cards[index].virtual_region.y != first_row:
-        return index
-    return len(cards)
+  def notify(self, message: str, title: str | None = None, severity: str = "info") -> None:
+    text = f"{title}: {message}" if title else message
+    self._notification = (text, time.time() + 3.0, severity)
+
+  def get_size(self) -> tuple[int, int]:
+    if self._terminal_size is not None:
+      return self._terminal_size
+    return get_terminal_size()
+
+  def set_terminal_size(self, width: int, height: int) -> None:
+    self._terminal_size = (max(10, width), max(5, height))
+
+  def _on_terminal_resized(self, width: int, height: int) -> None:
+    self.set_terminal_size(width, height)
+    self._grid.region = Region(0, 3, width, height - 5)
+    self._search_input.region = Region(0, 0, width, 3)
+    self._gallery_path.region = Region(0, height - 2, width, 1)
+    self._hotkeys.region = Region(0, height - 1, width, 1)
+    self._detail_view.region = Region(0, 3, width, height - 5)
+    self._detail_view.on_resize(width, height)
+
+  # ── Actions ──────────────────────────────────────────────────────────
+
+  def action_focus_search(self) -> None:
+    self._focus_target = "search"
+    self._search_input.on_focus()
+
+  def action_toggle_focus(self) -> None:
+    if self._focus_target == "search":
+      self._focus_target = self.view_mode
+    else:
+      self._focus_target = "search"
+
+  def check_action(self, action: str, parameters: tuple[object, ...] = ()) -> bool:
+    if action in {"copy_image", "copy_path", "download"}:
+      return self._selected_filepath() is not None and (self.view_mode == "detail" or self._focus_target == "gallery")
+    return True
 
   def _move_detail(self, offset: int) -> None:
     self._pending_detail_advance = False
-    cards = self._cards()
-    if not cards:
+    if not self.results:
       return
-    if self._selected_index + offset >= len(cards) and (
+    if self.selected_index + offset >= len(self.results) and (
       self._loading_more or self._next_cursor or self._remaining_search_results
     ):
       self._pending_detail_advance = True
       self._load_more()
       return
-    index = min(max(self._selected_index + offset, 0), len(cards) - 1)
-    if index == self._selected_index:
+    index = min(max(self.selected_index + offset, 0), len(self.results) - 1)
+    if index == self.selected_index:
       return
-    self._selected_index = index
+    self.selected_index = index
     self._update_selection()
 
-  def _update_selection(self) -> None:
-    card = self._selected_card()
-    label = ""
-    if card is not None:
-      result = card.result
-      label = result.filepath if result.score is None else f"{result.score:.3f}  {result.filepath}"
-    self.query_one("#gallery-path", Static).update(label)
-    self._update_hotkeys()
-    if not self._detail.display:
+  def _move(self, offset: int) -> None:
+    if not self.results:
       return
-    cards = self._cards()
-    self._detail.show_image(card.result.filepath if card else None, [
-      cards[index].result.filepath
-      for index in (self._selected_index - 1, self._selected_index + 1)
-      if 0 <= index < len(cards)
-    ])
-    if not self._detail.thumbnails:
+    index = min(max(self.selected_index + offset, 0), len(self.results) - 1)
+    if index == self.selected_index:
       return
-    neighbors = len(self._detail.thumbnails) // 2
-    self._detail.show_thumbnails([
-      cards[index].result.filepath if 0 <= index < len(cards) else None
-      for index in range(self._selected_index - neighbors, self._selected_index + neighbors + 1)
-    ])
-    self._load_more()
+    self.selected_index = index
+    self._update_selection()
+    w, h = self.get_size()
+    geo = GridGeometry(len(self.results), 0, 3, w, h - 5)
+    self.scroll_row = geo.ensure_visible(self.selected_index, self.scroll_row)
+    max_scroll_rows = max(1, geo.total_rows - geo.visible_rows)
+    self._grid.scroll_y = int((self.scroll_row / max_scroll_rows) * self._grid.max_scroll_y) if max_scroll_rows > 0 else 0
+    self._grid.update_visible()
 
   def action_move_left(self) -> None:
-    if self._detail.display:
+    if self.view_mode == "detail":
       self._move_detail(-1)
     else:
       self._move(-1)
 
   def action_move_right(self) -> None:
-    if self._detail.display:
+    if self.view_mode == "detail":
       self._move_detail(1)
     else:
       self._move(1)
@@ -402,107 +526,53 @@ class RclipApp(App[None], inherit_bindings=False):
     self._move(self._columns())
 
   def action_move_up_or_focus(self) -> None:
-    if self._detail.display or (isinstance(self.focused, ImageCard) and self._selected_index < self._columns()):
+    if self.view_mode == "detail" or self.selected_index < self._columns():
       self.action_focus_search()
     else:
       self.action_move_up()
 
   def action_move_down_or_focus(self) -> None:
-    if isinstance(self.focused, Input):
-      self.action_toggle_focus()
-    elif not self._detail.display:
+    if self._focus_target == "search":
+      self._focus_target = self.view_mode
+      self._on_selection_changed()
+    elif self.view_mode != "detail":
       self.action_move_down()
 
-  def action_focus_search(self) -> None:
-    self.query_one("#search", Input).focus()
-
   def action_toggle_view(self) -> None:
-    search_focused = isinstance(self.focused, Input)
     self._pending_detail_advance = False
-    grid = self.query_one(ResultsGrid)
-    grid.display = self._detail.display
-    self._detail.display = not grid.display
-    # Re-place every image when toggling views.
-    for image in self.query(ImageWidget):
-      image.refresh_image()
-    self._update_selection()
-    if search_focused:
-      self.action_focus_search()
-    elif self._detail.display:
-      self._detail.focus()
+    self._cleanup_all_placements()
+    if self.view_mode == "gallery":
+      self.view_mode = "detail"
+      if self._focus_target == "gallery":
+        self._focus_target = "detail"
+      for card in self._grid.cards:
+        card._image.on_unmount()
     else:
-      self.call_after_refresh((self._selected_card() or grid).focus)
+      self.view_mode = "gallery"
+      if self._focus_target == "detail":
+        self._focus_target = "gallery"
+      self._detail_view._image.on_unmount()
+    self._on_selection_changed()
 
-  def action_toggle_focus(self) -> None:
-    self._pending_detail_advance = False
-    if not isinstance(self.focused, Input):
-      self.action_focus_search()
-    else:
-      target = self._detail if self._detail.display else self._selected_card() or self.query_one(ResultsGrid)
-      target.focus()
+  def action_open_detail(self) -> None:
+    if self.view_mode == "gallery":
+      self.action_toggle_view()
 
   def action_copy_path(self) -> None:
     if filepath := self._selected_filepath():
       self.copy_to_clipboard(filepath)
       self.notify("Path copied", title=Path(filepath).name)
 
-  def action_copy_image(self) -> None:
-    if filepath := self._selected_filepath():
-      self._copy_image(filepath)
+  def copy_to_clipboard(self, filepath: str) -> None:
+    if sys.__stdout__ is not None:
+      try:
+        from base64 import b64encode
 
-  def action_download(self) -> None:
-    if not (filepath := self._selected_filepath()):
-      return
-    if not _is_remote_session():
-      self.notify(filepath, title="Image is already local")
-      return
-    try:
-      _kitten_executable()
-      with _safe_suspend(self, "pausing the TUI to download the image…"):
-        download_image(filepath)
-    except Exception as error:
-      self.notify(str(error), title="Unable to download image", severity="error")
-    else:
-      self.notify("Saved to ~/Downloads", title=Path(filepath).name)
-
-  def action_open_detail(self) -> None:
-    self.action_toggle_view()
-
-  def action_escape(self) -> None:
-    if isinstance(self.focused, Input):
-      self.action_toggle_focus()
-    elif self._detail.display:
-      self.action_toggle_view()
-
-  def on_descendant_focus(self, event: events.DescendantFocus) -> None:
-    self._update_hotkeys()
-
-  def on_descendant_blur(self, event: events.DescendantBlur) -> None:
-    self.call_after_refresh(self._update_hotkeys)
-
-  def _highlight(self, text: str) -> Content:
-    background = Color.parse(self.get_css_variables()["scrollbar"])
-    style = Style(background=background, foreground=Color.parse("white"))
-    return Content.assemble((text, style))
-
-  def _update_hotkeys(self) -> None:
-    search_focused = isinstance(self.focused, Input)
-    keys = [("Down", "Browse")] if search_focused else [("/", "Search")]
-    if search_focused:
-      keys.append(("^O", "Grid view" if self._detail.display else "Detail view"))
-    elif self._detail.display:
-      keys.extend([("h/l/Arrows", "Browse"), ("Esc", "Grid view")])
-    else:
-      keys.extend([("hjkl/Arrows", "Move"), ("o", "Detail view")])
-    if self.check_action("copy_image", ()):
-      keys.extend(
-        (f"^{key.upper()}" if search_focused else key, label)
-        for key, label in [("y", "Copy"), ("p", "Copy path"), ("s", "Download")]
-      )
-    keys.append(("^C", "Quit"))
-    self.query_one(".hotkeys", Static).update(Content("   ").join(
-      Content.assemble(self._highlight(f" {key} "), f" {label}") for key, label in keys
-    ))
+        encoded = b64encode(filepath.encode("utf-8")).decode("ascii")
+        sys.__stdout__.write(f"\x1b]52;c;{encoded}\x07")
+        sys.__stdout__.flush()
+      except Exception:
+        pass
 
   def _copy_image(self, filepath: str) -> None:
     try:
@@ -514,7 +584,592 @@ class RclipApp(App[None], inherit_bindings=False):
     else:
       self.notify("Image copied", title=Path(filepath).name)
 
+  def action_copy_image(self) -> None:
+    if filepath := self._selected_filepath():
+      self._copy_image(filepath)
 
-def run_tui(rclip: RClip, working_directory: str, top_k: int) -> None:
+  def action_download(self) -> None:
+    if filepath := self._selected_filepath():
+      if not _is_remote_session():
+        self.notify(filepath, title="Image is already local")
+        return
+      try:
+        _kitten_executable()
+        with _safe_suspend(self, "pausing the TUI to download the image…"):
+          download_image(filepath)
+      except Exception as error:
+        self.notify(str(error), title="Unable to download image", severity="error")
+      else:
+        self.notify("Saved to ~/Downloads", title=Path(filepath).name)
+
+  def action_quit(self) -> None:
+    self.is_running = False
+
+  # ── Selection & Layout Helpers ────────────────────────────────────────
+
+  def _columns(self) -> int:
+    w, _ = self.get_size()
+    return max(1, w // 24)
+
+  def _update_selection(self) -> None:
+    if not self.is_running:
+      return
+    filepath = self._selected_filepath()
+    if filepath is None:
+      self._gallery_path.update("")
+    else:
+      res = self._selected_card_result()
+      if not self.search_text and res is not None:
+        self._gallery_path.update(filepath)
+      elif res is not None and res.score is not None:
+        self._gallery_path.update(f"{res.score:.3f}  {filepath}")
+      else:
+        self._gallery_path.update(filepath)
+
+    if self.view_mode != "detail":
+      return
+    self._update_detail_view()
+    self._load_more()
+
+  def _update_detail_view(self) -> None:
+    filepath = self._selected_filepath()
+    neighbors: list[str] = []
+    if filepath is not None:
+      for offset in (-1, 1):
+        idx = self.selected_index + offset
+        if 0 <= idx < len(self.results):
+          neighbors.append(self.results[idx].filepath)
+    self._detail_view.show_image(filepath, neighbors)
+
+    w, h = self.get_size()
+    count = len(self._detail_view.thumbnails)
+    if count == 0:
+      self._detail_view.on_resize(w, h)
+      count = len(self._detail_view.thumbnails)
+    half = count // 2
+    paths: list[str | None] = []
+    for i in range(-half, half + 1):
+      idx = self.selected_index + i
+      paths.append(self.results[idx].filepath if 0 <= idx < len(self.results) else None)
+    self._detail_view.show_thumbnails(paths)
+
+  def _on_selection_changed(self) -> None:
+    self._update_selection()
+
+  def _can_load_more(self) -> bool:
+    if self._loading_more:
+      return False
+    if self.search_text:
+      return bool(self._remaining_search_results)
+    return self._next_cursor is not None
+
+  # ── Search & Browse Execution ─────────────────────────────────────────
+
+  def _on_input_changed(self, new_query: str) -> None:
+    self.search_text = new_query
+    self._search_input._value = new_query
+    self.cursor_pos = len(new_query)
+    if self._search_timer is not None:
+      self._search_timer.cancel()
+      self._search_timer = None
+    self._search_timer = threading.Timer(0.25, lambda: self._begin_search(self.search_text.strip()))
+    self._search_timer.daemon = True
+    self._search_timer.start()
+
+  def _on_input_submitted(self) -> None:
+    if self._search_timer is not None:
+      self._search_timer.cancel()
+      self._search_timer = None
+    self.search_text = self._search_input.value
+    self._begin_search(self._search_input.value.strip())
+
+  def _begin_search(self, query: str) -> None:
+    self._search_generation += 1
+    gen = self._search_generation
+    self._search_cancel_event.set()
+    self._search_cancel_event = threading.Event()
+    cancel_event = self._search_cancel_event
+
+    self._cleanup_all_placements()
+    self._loading_more = False
+    self._next_cursor = None
+    self._remaining_search_results = []
+    self.search_status = "Searching…"
+    self._search_input.border_title = "Searching…"
+
+    worker = Worker()
+    self._workers_tracker.add(worker)
+
+    def run() -> None:
+      try:
+        self._search_worker(query, gen, None, cancel_event)
+      finally:
+        self._workers_tracker.discard(worker)
+
+    threading.Thread(target=run, daemon=True).start()
+
+  def _load_more(self) -> None:
+    if self._loading_more or (
+      self.view_mode == "detail"
+      and not getattr(self, "_pending_detail_advance", False)
+      and self.selected_index + len(self._detail_view.thumbnails) // 2 < len(self.results)
+    ):
+      return
+    query = self.search_text.strip()
+    if query:
+      if not self._remaining_search_results:
+        return
+      results = self._remaining_search_results[: self.search_batch_size]
+      del self._remaining_search_results[: self.search_batch_size]
+      self._loading_more = True
+      self.search_status = "Loading…"
+      self._search_input.border_title = "Loading…"
+      self._event_queue.put(SearchResultsEvent(self._search_generation, query, results, None, True))
+      return
+
+    if self._next_cursor is None:
+      return
+
+    self._loading_more = True
+    self.search_status = "Loading…"
+    self._search_input.border_title = "Loading…"
+    gen = self._search_generation
+    cancel_event = self._search_cancel_event
+
+    worker = Worker()
+    self._workers_tracker.add(worker)
+
+    def run() -> None:
+      try:
+        self._search_worker("", gen, self._next_cursor, cancel_event)
+      finally:
+        self._workers_tracker.discard(worker)
+
+    threading.Thread(target=run, daemon=True).start()
+
+  def _search_worker(
+    self,
+    query: str,
+    generation: int,
+    after: RClip.ImageCursor | None,
+    cancel_event: threading.Event,
+  ) -> None:
+    try:
+      if query and not Model.is_text_query(query):
+        raise ValueError("interactive mode supports text queries only")
+      with self._search_lock:
+        if cancel_event.is_set():
+          return
+        if query:
+          search_results = self.rclip.search(
+            query,
+            self.working_directory,
+            top_k=None,
+            cancel_event=cancel_event,
+          )
+          results = [TuiResult(r.filepath, r.score) for r in search_results]
+          next_cursor = None
+        else:
+          page = self.rclip.list_images(
+            self.working_directory,
+            self.BROWSE_BATCH_SIZE,
+            after=after,
+            cancel_event=cancel_event,
+          )
+          results = [TuiResult(path) for path in page.filepaths]
+          next_cursor = page.next_cursor
+        if cancel_event.is_set():
+          return
+    except InterruptedError:
+      return
+    except Exception as error:
+      self._event_queue.put(SearchErrorEvent(generation, query, str(error), after is not None))
+    else:
+      self._event_queue.put(SearchResultsEvent(generation, query, results, next_cursor, after is not None))
+
+  def _handle_search_results(
+    self,
+    generation: int,
+    query: str,
+    results: list[TuiResult],
+    next_cursor: RClip.ImageCursor | None,
+    append: bool,
+  ) -> None:
+    if generation != self._search_generation or self.search_text.strip() != query:
+      return
+
+    self._loading_more = False
+    self.search_status = None
+    self._next_cursor = next_cursor
+
+    if not append:
+      self._grid.scroll_home(animate=False)
+      self._gallery_path.update("")
+      self.results = []
+      self.selected_index = 0
+      self.scroll_row = 0
+      if query:
+        self._remaining_search_results = results[self.search_batch_size :]
+        self.results = results[: self.search_batch_size]
+      else:
+        self.results = results
+      if not self.results:
+        self.search_status = "No results"
+        self._search_input.border_title = "No results"
+      else:
+        self._search_input.border_title = ""
+    else:
+      self.results.extend(results)
+
+    if append and getattr(self, "_pending_detail_advance", False):
+      self._pending_detail_advance = False
+      if self.results and self.view_mode == "detail":
+        self._move_detail(1)
+
+    if self.view_mode == "detail":
+      self._on_selection_changed()
+    elif append or self._focus_target == "gallery":
+      self._on_selection_changed()
+    # Trigger preview loading for visible grid cards
+    self._grid.update_visible()
+
+  def _handle_search_error(self, generation: int, query: str, message: str, append: bool) -> None:
+    if generation != self._search_generation or self.search_text.strip() != query:
+      return
+    self._loading_more = False
+    self._pending_detail_advance = False
+    self.search_status = None
+    self._search_input.border_title = ""
+    self.notify(message, title="Unable to load more images" if append else "Search failed", severity="error")
+
+  def _cleanup_all_placements(self) -> None:
+    for kitty_id, placement_id in self._active_placements.values():
+      delete_placement(kitty_id, placement_id)
+    self._active_placements.clear()
+
+    for kitty_id, placement_id in self._active_detail_placements.values():
+      delete_placement(kitty_id, placement_id)
+    self._active_detail_placements.clear()
+
+  def process_events(self) -> None:
+    while True:
+      try:
+        ev = self._event_queue.get_nowait()
+      except queue.Empty:
+        break
+      if isinstance(ev, SearchResultsEvent):
+        self._handle_search_results(ev.generation, ev.query, ev.results, ev.next_cursor, ev.append)
+      elif isinstance(ev, SearchErrorEvent):
+        self._handle_search_error(ev.generation, ev.query, ev.message, ev.append)
+
+  # ── Key Handling ─────────────────────────────────────────────────────
+
+  def handle_key(self, key: str) -> None:
+    if key in ("ctrl+c", "^C"):
+      self.exit()
+      return
+
+    if key == "ctrl+f":
+      self.action_focus_search()
+      return
+
+    if key == "ctrl+o":
+      self.action_toggle_view()
+      return
+
+    if key == "ctrl+y":
+      if self.check_action("copy_image"):
+        self.action_copy_image()
+      return
+
+    if key == "ctrl+p":
+      if self.check_action("copy_path"):
+        self.action_copy_path()
+      return
+
+    if key == "ctrl+s":
+      if self.check_action("download"):
+        self.action_download()
+      return
+
+    if key == "ctrl+q":
+      return
+
+    if key == "enter":
+      if self._focus_target == "search":
+        self._search_input.submit()
+      elif self.view_mode == "gallery":
+        self.action_open_detail()
+      else:
+        self.action_toggle_view()
+      return
+
+    if key == "escape":
+      if self._focus_target == "search":
+        if self.view_mode == "detail":
+          self._focus_target = "detail"
+        else:
+          self._focus_target = "gallery"
+      elif self.view_mode == "detail":
+        self.action_toggle_view()
+      return
+
+    if key == "/":
+      if self._focus_target == "search":
+        self._search_input.insert_text("/")
+      else:
+        self.action_focus_search()
+      return
+
+    if key == "backspace":
+      if self._focus_target == "search":
+        self._search_input.delete_backward()
+      return
+
+    if key in ("down", "j"):
+      if self._focus_target == "search":
+        if key == "down":
+          self.action_move_down_or_focus()
+        else:
+          self._search_input.insert_text(key)
+      elif self.view_mode == "detail":
+        if key == "down":
+          self.action_move_down_or_focus()
+        else:
+          self._search_input.insert_text(key)
+      else:
+        self.action_move_down()
+      return
+
+    if key in ("up", "k"):
+      if self._focus_target == "search":
+        if key != "up":
+          self._search_input.insert_text(key)
+      elif self.view_mode == "detail":
+        if key == "up":
+          self.action_focus_search()
+        else:
+          self._search_input.insert_text(key)
+      else:
+        if key == "up":
+          self.action_move_up_or_focus()
+        else:
+          self.action_move_up()
+      return
+
+    if key in ("left", "h"):
+      if self._focus_target == "search":
+        self._search_input.insert_text(key)
+      else:
+        self.action_move_left()
+      return
+
+    if key in ("right", "l"):
+      if self._focus_target == "search":
+        self._search_input.insert_text(key)
+      else:
+        self.action_move_right()
+      return
+
+    if key == "o":
+      if self._focus_target == "search":
+        self._search_input.insert_text("o")
+      else:
+        self.action_toggle_view()
+      return
+
+    if key == "y":
+      if self._focus_target == "search":
+        self._search_input.insert_text("y")
+      elif self.check_action("copy_image"):
+        self.action_copy_image()
+      return
+
+    if key == "p":
+      if self._focus_target == "search":
+        self._search_input.insert_text("p")
+      elif self.check_action("copy_path"):
+        self.action_copy_path()
+      return
+
+    if key == "s":
+      if self._focus_target == "search":
+        self._search_input.insert_text("s")
+      elif self.check_action("download"):
+        self.action_download()
+      return
+
+    if key == "q":
+      if self._focus_target == "search":
+        self._search_input.insert_text("q")
+      elif self.view_mode == "gallery" and self._focus_target == "gallery":
+        pass
+      else:
+        self.action_quit()
+      return
+
+    # Regular text input into search
+    if self._focus_target == "search":
+      self._search_input.insert_text(key)
+
+  # ── Terminal Rendering ───────────────────────────────────────────────
+
+  def render(self) -> None:
+    if not self.is_running or self._term is None:
+      return
+    w, h = self.get_size()
+    buf = StringIO()
+
+    # Search Bar (rows 1-3)
+    buf.write(cursor_to(1, 1))
+    st = f" [{self.search_status}]" if self.search_status else ""
+    title_str = f" rclip search{st} "
+    border_len = max(0, w - len(title_str) - 2)
+    buf.write(f"╭─{BOLD}{title_str}{RESET}{'─' * border_len}╮")
+
+    buf.write(cursor_to(2, 1))
+    display_q = self.search_text
+    buf.write(f"│ {display_q}{' ' * max(0, w - len(display_q) - 4)} │")
+
+    buf.write(cursor_to(3, 1))
+    buf.write(f"╰{'─' * max(0, w - 2)}╯")
+
+    # Body
+    if self.view_mode == "gallery":
+      buf.write(self._render_gallery(w, h - 5))
+    else:
+      buf.write(self._render_detail(w, h - 5))
+
+    # Gallery / Selection Path (row h - 1)
+    buf.write(cursor_to(h - 1, 1))
+    path_str = self._gallery_path.content[: w - 2]
+    buf.write(f"{BOLD}{path_str}{RESET}{' ' * max(0, w - len(path_str))}")
+
+    # Hotkeys Footer (row h)
+    buf.write(cursor_to(h, 1))
+    hotkeys_str = self._render_hotkeys(w)
+    buf.write(f"{hotkeys_str}{' ' * max(0, w - len(hotkeys_str))}")
+
+    self._term.write(buf.getvalue())
+    self._term.flush()
+
+  def _render_gallery(self, width: int, height: int) -> str:
+    buf = StringIO()
+    geo = GridGeometry(len(self.results), avail_x=1, avail_y=4, avail_w=width, avail_h=height)
+    self.scroll_row = geo.ensure_visible(self.selected_index, self.scroll_row)
+    cards = geo.get_visible_cards(self.scroll_row, self.results)
+
+    for card in cards:
+      is_sel = card.index == self.selected_index
+      b_color = f"{FG_CYAN}{BOLD}" if is_sel else f"{FG_BRIGHT_BLACK}"
+      inner_w = card.width - 2
+      buf.write(cursor_to(card.y, card.x))
+      buf.write(f"{b_color}╭{'─' * inner_w}╮{RESET}")
+      for r_off in range(1, card.height - 1):
+        buf.write(cursor_to(card.y + r_off, card.x))
+        buf.write(f"{b_color}│{' ' * inner_w}│{RESET}")
+      buf.write(cursor_to(card.y + card.height - 1, card.x))
+      buf.write(f"{b_color}╰{'─' * inner_w}╯{RESET}")
+
+    return buf.getvalue()
+
+  def _render_detail(self, width: int, height: int) -> str:
+    buf = StringIO()
+    geo = DetailGeometry(avail_x=1, avail_y=3, avail_w=width, avail_h=height)
+
+    filepath = self._selected_filepath()
+    if filepath:
+      detail_obj = self._detail_images.get(filepath)
+      if isinstance(detail_obj, PILImage.Image):
+        cols, rows, pw, ph = fit_image_to_cells(detail_obj.width, detail_obj.height, geo.main_w - 4, geo.main_h - 2)
+        img_x = geo.main_x + 2 + (geo.main_w - 4 - cols) // 2
+        img_y = geo.main_y + 1 + (geo.main_h - 2 - rows) // 2
+
+        source_id = _extract_source(detail_obj)
+        key = (source_id, detail_obj.width, detail_obj.height, (cols, rows))
+        decoded = pw * ph * 4
+        transmitted = _IMAGE_CACHE.acquire(
+          key, detail_obj, decoded, lambda kid: _transmit_image(kid, detail_obj, (pw, ph))
+        )
+        p_id = next_placement_id()
+        self._active_detail_placements[filepath] = (transmitted.kitty_id, p_id)
+        create_placement(transmitted.kitty_id, p_id, cols, rows)
+        _IMAGE_CACHE.release(transmitted)
+
+        ph_lines = render_kitty_placeholders(transmitted.kitty_id, cols, rows, placement_id=p_id)
+        for r_idx, ph_line in enumerate(ph_lines):
+          buf.write(cursor_to(img_y + r_idx, img_x))
+          buf.write(ph_line)
+      elif isinstance(detail_obj, str):
+        buf.write(cursor_to(geo.main_y + geo.main_h // 2, geo.main_x + 4))
+        buf.write(f"{FG_RED}Unable to load image: {detail_obj}{RESET}")
+      else:
+        buf.write(cursor_to(geo.main_y + geo.main_h // 2, geo.main_x + geo.main_w // 2 - 15))
+        buf.write(f"{DIM}Loading higher-resolution image…{RESET}")
+    else:
+      buf.write(cursor_to(geo.main_y + geo.main_h // 2, geo.main_x + geo.main_w // 2 - 5))
+      buf.write(f"{DIM}No results{RESET}")
+
+    thumbs = geo.get_filmstrip_thumbnails(self.selected_index, self.results)
+    for thumb in thumbs:
+      if thumb.filepath:
+        t_border = f"{FG_CYAN}{BOLD}" if thumb.is_selected else f"{FG_BRIGHT_BLACK}"
+        buf.write(cursor_to(thumb.y, thumb.x))
+        buf.write(f"{t_border}╭{'─' * (thumb.width - 2)}╮{RESET}")
+        buf.write(cursor_to(thumb.y + thumb.height - 1, thumb.x))
+        buf.write(f"{t_border}╰{'─' * (thumb.width - 2)}╯{RESET}")
+
+    return buf.getvalue()
+
+  def _render_hotkeys(self, width: int) -> str:
+    keys: list[tuple[str, str]]
+    if self._focus_target == "search":
+      keys = [("Down", "Browse"), ("^O", "Detail view" if self.view_mode == "gallery" else "Grid view")]
+    elif self.view_mode == "detail":
+      keys = [("/", "Search"), ("h/l/Arrows", "Browse"), ("Esc", "Grid view")]
+    else:
+      keys = [("/", "Search"), ("hjkl/Arrows", "Move"), ("o", "Detail view")]
+
+    if self._selected_filepath():
+      pfx = "^" if self._focus_target == "search" else ""
+      keys.extend([(f"{pfx}y", "Copy"), (f"{pfx}p", "Copy path"), (f"{pfx}s", "Download")])
+
+    keys.append(("^C", "Quit"))
+
+    pills: list[str] = []
+    for k, desc in keys:
+      pill = f"{BG_BRIGHT_BLACK}{FG_DEFAULT} {k} {RESET} {desc}"
+      pills.append(pill)
+
+    return "   ".join(pills)
+
+  # ── Main Run Loop ────────────────────────────────────────────────────
+
+  def run(self) -> None:
+    _probe_kitty.cache_clear()
+    self.is_running = True
+    self._begin_search("")
+
+    simulated_keys = [
+      k.strip()
+      for k in (os.getenv("TEXTUAL_PRESS") or os.getenv("RCLIP_PRESS") or "").split(",")
+      if k.strip()
+    ]
+
+    with RawTerminal() as term:
+      self._term = term
+      while self.is_running:
+        if simulated_keys:
+          key = simulated_keys.pop(0)
+        else:
+          key = read_key(timeout=0.03)
+        if key:
+          self.handle_key(key)
+        self.process_events()
+        self.render()
+    self._cleanup_all_placements()
+
+
+def run_tui(rclip: RClip, working_directory: str, top_k: int = 100) -> None:
   _probe_kitty.cache_clear()
   RclipApp(rclip, working_directory, top_k).run()
