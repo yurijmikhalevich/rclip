@@ -1,19 +1,22 @@
 from bisect import bisect_right
 from dataclasses import dataclass
-from io import BytesIO
 from pathlib import Path
 from threading import Semaphore
 from typing import Callable, Sequence, cast
 
+from PIL import Image as PILImage
 from textual import events, work
 from textual.app import ComposeResult
 from textual.containers import CenterMiddle, Horizontal, ItemGrid, Vertical
+from textual.geometry import Size
+from textual.widget import Widget
 from textual.worker import Worker, get_current_worker
 from textual.widgets import Label, Static
 
 from rclip.tui.media import CenteredTGPImage
 from rclip.tui.media import ImageWidget
 from rclip.tui.media import prepare_image
+from rclip.tui.media import prewarm_image
 
 
 PREVIEW_SIZE = (640, 480)
@@ -46,21 +49,27 @@ class ImageCard(Static, can_focus=True):
     if self._loading or self._loaded:
       return
     self._loading = True
-    self._load_preview()
+    parent = self._image.parent
+    frame_size = (
+      parent.size if isinstance(parent, Widget) and parent.size.width > 0 and parent.size.height > 0 else None
+    )
+    self._load_preview(frame_size)
 
   @work(thread=True, exit_on_error=False)
-  def _load_preview(self) -> None:
+  def _load_preview(self, frame_size: Size | None = None) -> None:
     with _IMAGE_DECODES:
       if get_current_worker().is_cancelled:
         return
       try:
         preview = prepare_image(self.result.filepath, PREVIEW_SIZE)
+        if frame_size is not None:
+          prewarm_image(ImageWidget, preview, frame_size.width, frame_size.height)
       except Exception:
         self.app.call_from_thread(self._preview_failed)
       else:
         self.app.call_from_thread(self._preview_ready, preview)
 
-  def _preview_ready(self, preview: BytesIO) -> None:
+  def _preview_ready(self, preview: PILImage.Image) -> None:
     if self.is_attached:
       self._image.image = preview
     self._loading = False
@@ -160,11 +169,14 @@ class DetailThumbnail(Static):
         return
       try:
         preview = prepare_image(filepath, PREVIEW_SIZE)
+        parent = self._image.parent
+        if isinstance(parent, Widget) and parent.size.width > 0 and parent.size.height > 0:
+          prewarm_image(CenteredTGPImage, preview, parent.size.width, parent.size.height)
       except Exception:
         return
       self.app.call_from_thread(self._show_preview, filepath, preview)
 
-  def _show_preview(self, filepath: str, preview: BytesIO) -> None:
+  def _show_preview(self, filepath: str, preview: PILImage.Image) -> None:
     if self.is_attached and filepath == self.filepath:
       self._image.image = preview
 
@@ -183,7 +195,7 @@ class DetailView(Vertical, can_focus=True):
     self._image.display = False
     self._browse = browse
     self.thumbnails: list[DetailThumbnail] = []
-    self._details: dict[str, BytesIO | str] = {}
+    self._details: dict[str, PILImage.Image | str] = {}
     self._detail_workers: dict[str, Worker[None]] = {}
 
   def compose(self) -> ComposeResult:
@@ -261,22 +273,25 @@ class DetailView(Vertical, can_focus=True):
     with _IMAGE_DECODES:
       if worker.is_cancelled:
         return
-      detail: BytesIO | str
+      detail: PILImage.Image | str
       try:
         detail = prepare_image(filepath, DETAIL_SIZE)
+        parent = self._image.parent
+        if isinstance(parent, Widget) and parent.size.width > 0 and parent.size.height > 0:
+          prewarm_image(ImageWidget, detail, parent.size.width, parent.size.height)
       except Exception as error:
         detail = str(error)
       if not worker.is_cancelled:
         self.app.call_from_thread(self._detail_ready, filepath, worker, detail)
 
-  def _detail_ready(self, filepath: str, worker: Worker[None], detail: BytesIO | str) -> None:
+  def _detail_ready(self, filepath: str, worker: Worker[None], detail: PILImage.Image | str) -> None:
     if not self.is_attached or self._detail_workers.get(filepath) is not worker:
       return
     del self._detail_workers[filepath]
     self._details[filepath] = detail
     self._show_detail(filepath, detail)
 
-  def _show_detail(self, filepath: str, detail: BytesIO | str) -> None:
+  def _show_detail(self, filepath: str, detail: PILImage.Image | str) -> None:
     if not self.is_attached or filepath != self.filepath:
       return
     status = self.query_one("#detail-status", Static)

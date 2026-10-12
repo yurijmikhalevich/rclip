@@ -1,18 +1,21 @@
+import sys
 from base64 import b64encode
 from collections import OrderedDict
 from io import BytesIO
 from itertools import count
 from pathlib import Path
+from threading import Event, Lock
 from typing import IO, Callable
 
 from PIL import Image as PILImage
 from PIL import ImageOps
 from textual.app import RenderResult
 from textual.geometry import Size
+from textual_image._geometry import ImageSize
 from textual_image._pixeldata import PixelData
 from textual_image._utils import StrOrBytesPath
 from textual_image.renderable import TGPImage as TGPRenderable
-from textual_image.renderable.tgp import _send_tgp_message
+from textual_image.renderable.tgp import TerminalError, _send_tgp_message, get_cell_size, prepare_terminal_sequence
 from textual_image.widget import TGPImage
 
 from rclip.utils import helpers
@@ -28,17 +31,16 @@ _TGP_DECODED_BUDGET = 64 * 1024 * 1024
 # ~4x the encode time, which would stall the main thread while it renders.
 _PNG_COMPRESS_LEVEL = 6
 
-
-class _PreparedImage(BytesIO):
-  """Prepared image data that remembers the file it was prepared from."""
-
-  def __init__(self, source_path: str) -> None:
-    super().__init__()
-    self.source_path = source_path
+_TERMINAL_WRITE_LOCK = Lock()
 
 
-def prepare_image(filepath: str, size: tuple[int, int]) -> BytesIO:
-  """Return an orientation-corrected JPEG no larger than ``size``."""
+def _safe_send_tgp_message(*, payload: str | None = None, **kwargs: int | str | None) -> None:
+  with _TERMINAL_WRITE_LOCK:
+    _send_tgp_message(payload=payload, **kwargs)
+
+
+def prepare_image(filepath: str, size: tuple[int, int]) -> PILImage.Image:
+  """Return an orientation-corrected RGB image no larger than ``size``."""
   with helpers.read_image(filepath) as opened:
     image = ImageOps.exif_transpose(opened)
     image.thumbnail(size, PILImage.Resampling.LANCZOS)
@@ -47,10 +49,9 @@ def prepare_image(filepath: str, size: tuple[int, int]) -> BytesIO:
       background = PILImage.new("RGBA", rgba.size, "#121212")
       background.alpha_composite(rgba)
       image = background
-    prepared = _PreparedImage(filepath)
-    image.convert("RGB").save(prepared, "JPEG", quality=80)
-  prepared.seek(0)
-  return prepared
+    rgb = image.convert("RGB")
+    setattr(rgb, "source_path", filepath)
+    return rgb
 
 
 def _extract_source(image: object) -> str | int:
@@ -72,6 +73,8 @@ class _TransmittedImage:
     self.kitty_id = kitty_id
     self.decoded = decoded
     self.refs = 0
+    self.ready = Event()
+    self.error: BaseException | None = None
 
 
 class _ImageCache:
@@ -85,6 +88,7 @@ class _ImageCache:
   """
 
   def __init__(self, budget: int = _TGP_DECODED_BUDGET) -> None:
+    self._lock = Lock()
     self._by_key: dict[object, _TransmittedImage] = {}
     self._lru: OrderedDict[_TransmittedImage, None] = OrderedDict()
     self._decoded = 0
@@ -97,20 +101,43 @@ class _ImageCache:
     decoded: int,
     transmit: Callable[[int], None],
   ) -> _TransmittedImage:
-    image = self._by_key.get(key)
-    if image is not None:
-      return self._use(image)
-    image = _TransmittedImage(key, source, next(TGPRenderable._image_id_counter), decoded)
-    transmit(image.kitty_id)
-    self._by_key[key] = image
-    self._decoded += image.decoded
-    self._use(image)
-    self._evict()
+    with self._lock:
+      image = self._by_key.get(key)
+      if image is not None:
+        self._use(image)
+        should_transmit = False
+      else:
+        image = _TransmittedImage(key, source, next(TGPRenderable._image_id_counter), decoded)
+        self._by_key[key] = image
+        self._decoded += image.decoded
+        self._use(image)
+        self._evict()
+        should_transmit = True
+
+    if should_transmit:
+      try:
+        transmit(image.kitty_id)
+      except BaseException as error:
+        with self._lock:
+          self._by_key.pop(key, None)
+          self._lru.pop(image, None)
+          self._decoded -= image.decoded
+        image.error = error
+        image.ready.set()
+        raise
+      else:
+        image.ready.set()
+    else:
+      image.ready.wait()
+      if image.error is not None:
+        raise image.error
+
     return image
 
   def release(self, image: _TransmittedImage) -> None:
-    image.refs -= 1
-    self._evict()
+    with self._lock:
+      image.refs -= 1
+      self._evict()
 
   def _use(self, image: _TransmittedImage) -> _TransmittedImage:
     image.refs += 1
@@ -127,7 +154,7 @@ class _ImageCache:
       del self._lru[image]
       self._decoded -= image.decoded
       del self._by_key[image.key]
-      _send_tgp_message(a="d", d="I", i=image.kitty_id, q=2)
+      _safe_send_tgp_message(a="d", d="I", i=image.kitty_id, q=2)
 
 
 _IMAGE_CACHE = _ImageCache()
@@ -136,11 +163,22 @@ _IMAGE_CACHE = _ImageCache()
 def _transmit_image(kitty_id: int, image_data: PixelData, size: tuple[int, int]) -> None:
   """Send image data to the terminal as a base64 PNG, framed the way textual-image frames it."""
   buffer = BytesIO()
-  image_data.scaled(*size).pil_image.save(buffer, format="png", compress_level=_PNG_COMPRESS_LEVEL)
+  image = image_data.scaled(*size).pil_image
+  if image.mode in ("RGBA", "LA") and image.getextrema()[-1] == (255, 255):
+    image = image.convert("RGB")
+  image.save(buffer, format="png", compress_level=_PNG_COMPRESS_LEVEL)
   payload = b64encode(buffer.getvalue()).decode("ascii")
+  chunks: list[str] = []
   while payload:
     chunk, payload = payload[:4096], payload[4096:]
-    _send_tgp_message(i=kitty_id, m=1 if payload else 0, f=100, payload=chunk, q=2)
+    m = 1 if payload else 0
+    chunks.append(prepare_terminal_sequence(f"\x1b_Gi={kitty_id},m={m},f=100,q=2;{chunk}\x1b\\"))
+  sequence = "".join(chunks)
+  with _TERMINAL_WRITE_LOCK:
+    if not sys.__stdout__:
+      raise TerminalError("sys.__stdout__ is None")
+    sys.__stdout__.write(sequence)
+    sys.__stdout__.flush()
 
 
 class _TGPRenderable(TGPRenderable):
@@ -175,14 +213,14 @@ class _TGPRenderable(TGPRenderable):
       decoded = self._size[0] * self._size[1] * 4
       self._transmitted = _IMAGE_CACHE.acquire(key, self._source_obj, decoded, self._transmit)
       self.terminal_image_id = self._transmitted.kitty_id
-    _send_tgp_message(a="p", i=self.terminal_image_id, p=self._placement_id, c=width, r=height, U=1, q=2)
+    _safe_send_tgp_message(a="p", i=self.terminal_image_id, p=self._placement_id, c=width, r=height, U=1, q=2)
 
   def _transmit(self, kitty_id: int) -> None:
     _transmit_image(kitty_id, self._image_data, self._size)
 
   def cleanup(self) -> None:
     if self.terminal_image_id is not None:
-      _send_tgp_message(a="d", d="i", i=self.terminal_image_id, p=self._placement_id, q=2)
+      _safe_send_tgp_message(a="d", d="i", i=self.terminal_image_id, p=self._placement_id, q=2)
       self.terminal_image_id = None
     if self._transmitted is not None:
       _IMAGE_CACHE.release(self._transmitted)
@@ -231,3 +269,38 @@ class _CenteredTGPRenderable(_TGPRenderable):
 
 class CenteredTGPImage(StableTGPImage, Renderable=_CenteredTGPRenderable):
   """Center an aspect-preserving image in its full widget area, at pixel precision."""
+
+
+def prewarm_image(
+  widget_type: type[StableTGPImage],
+  image: PILImage.Image,
+  max_width: int,
+  max_height: int,
+  styled_size: tuple[int | str | None, int | str | None] = (None, None),
+) -> None:
+  """Pre-scale, encode, and transmit Kitty image data in the background before rendering."""
+  if max_width <= 0 or max_height <= 0:
+    return
+  renderable_class = getattr(widget_type, "_Renderable", _TGPRenderable)
+  terminal_sizes = get_cell_size()
+  render_size = ImageSize(image.width, image.height, *styled_size)
+  cell_width, cell_height = render_size.get_cell_size(max_width, max_height, terminal_sizes)
+  pixel_width, pixel_height = render_size.get_pixel_size(max_width, max_height, terminal_sizes)
+
+  box = (cell_width, cell_height)
+  source_id = _extract_source(image)
+  key = (renderable_class, source_id, image.width, image.height, box)
+
+  with _IMAGE_CACHE._lock:
+    if key in _IMAGE_CACHE._by_key:
+      return
+
+  renderable = renderable_class(image, *styled_size)
+  renderable._size = (pixel_width, pixel_height)
+  decoded = pixel_width * pixel_height * 4
+
+  try:
+    transmitted = _IMAGE_CACHE.acquire(key, image, decoded, renderable._transmit)
+  except Exception:
+    return
+  _IMAGE_CACHE.release(transmitted)
