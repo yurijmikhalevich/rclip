@@ -10,7 +10,7 @@ import subprocess
 import sys
 from threading import Event, Lock, Thread
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 from PIL import Image
@@ -2116,6 +2116,10 @@ def test_kitty_keyboard_protocol_parser() -> None:
 
   # With modifiers (Ctrl: 1 + 4 = 5)
   assert _parse_kitty_u("[99;5u") == "ctrl+c"
+  assert _parse_kitty_u("[67;5u") == "ctrl+c"
+  assert _parse_kitty_u("[3;5u") == "ctrl+c"
+  assert _parse_kitty_u("[3u") == "ctrl+c"
+  assert _parse_kitty_u("[1089:1057:99;5u") == "ctrl+c"
   assert _parse_kitty_u("[111;5u") == "ctrl+o"
   assert _parse_kitty_u("[121;5u") == "ctrl+y"
   assert _parse_kitty_u("[112;5u") == "ctrl+p"
@@ -2344,6 +2348,11 @@ def test_read_key_pty() -> None:
         (b"\x1bOD", "left"),
         (b"\x1b[1;5A", "ctrl+up"),
         (b"\x1b[3~", "delete"),
+        (b"\x03", "ctrl+c"),
+        (b"\x1b[99;5u", "ctrl+c"),
+        (b"\x1b[3;5u", "ctrl+c"),
+        (b"\x1b[3u", "ctrl+c"),
+        (b"\x1b[1089:1057:99;5u", "ctrl+c"),
         (b"\x1b", "escape"),
         (b"\r", "enter"),
         (b"\t", "tab"),
@@ -2361,4 +2370,15 @@ def test_read_key_pty() -> None:
           os.read(slave, 1024)
   finally:
     os.close(master)
+
+
+def test_ctrl_c_quits_app() -> None:
+  app = RclipApp(cast(RClip, None), "/tmp", top_k=10)
+  app.is_running = True
+
+  for key in ("ctrl+c", "ctrl+C", "^C", "\x03"):
+    app.is_running = True
+    app.handle_key(key)
+    assert not app.is_running
+
 

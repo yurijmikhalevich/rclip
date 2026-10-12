@@ -884,7 +884,7 @@ class RclipApp:
   # ── Key Handling ─────────────────────────────────────────────────────
 
   def handle_key(self, key: str) -> None:
-    if key in ("ctrl+c", "^C"):
+    if key in ("ctrl+c", "ctrl+C", "^C", "\x03"):
       self.action_quit()
       return
 
@@ -1398,7 +1398,11 @@ class RclipApp:
           self.handle_key(key)
           self._dirty = True
         else:
-          key = read_key(timeout=0.03)
+          try:
+            key = read_key(timeout=0.03)
+          except KeyboardInterrupt:
+            self.action_quit()
+            break
           if key:
             self.handle_key(key)
             self._dirty = True

@@ -494,6 +494,8 @@ def main():
     else:
       result = rclip.search(args.query, current_directory, top_k, args.add, args.subtract)
       print_results(result, args)
+  except KeyboardInterrupt:
+    pass
   finally:
     rclip.close()
     model_instance.close()

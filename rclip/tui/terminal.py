@@ -136,7 +136,7 @@ class RawTerminal:
     self.out_stream.flush()
     if self._old_attr is not None and self.in_stream.isatty():
       try:
-        termios.tcsetattr(self.in_stream.fileno(), termios.TCSADRAIN, self._old_attr)
+        termios.tcsetattr(self.in_stream.fileno(), termios.TCSANOW, self._old_attr)
       except termios.error:
         pass
       self._old_attr = None
@@ -204,10 +204,11 @@ def _parse_kitty_u(seq: str) -> str | None:
   if not parts:
     return None
 
-  key_part = parts[0].split(":")[0]
-  if not key_part.isdigit():
+  key_sub = parts[0].split(":")
+  if not key_sub[0].isdigit():
     return None
-  key_code = int(key_part)
+  key_code = int(key_sub[0])
+  base_key = int(key_sub[2]) if len(key_sub) >= 3 and key_sub[2].isdigit() else key_code
 
   mods = 0
   event_type = 1
@@ -234,9 +235,18 @@ def _parse_kitty_u(seq: str) -> str | None:
   if is_ctrl:
     if key_code in _KITTY_KEY_MAP:
       return f"ctrl+{_KITTY_KEY_MAP[key_code]}"
+    if key_code in _CTRL_MAP:
+      return _CTRL_MAP[key_code]
     if 32 <= key_code <= 126:
       return f"ctrl+{chr(key_code).lower()}"
+    if base_key in _CTRL_MAP:
+      return _CTRL_MAP[base_key]
+    if 32 <= base_key <= 126:
+      return f"ctrl+{chr(base_key).lower()}"
     return None
+
+  if key_code in _CTRL_MAP:
+    return _CTRL_MAP[key_code]
 
   if key_code in _KITTY_KEY_MAP:
     base = _KITTY_KEY_MAP[key_code]
