@@ -168,9 +168,13 @@ class _TGPRenderable(TGPRenderable):
   def _create_virtual_placement(self, width: int, height: int) -> None:
     box = (width, height)
     key = (type(self), self._source_id, self._image_data.width, self._image_data.height, box)
-    decoded = self._size[0] * self._size[1] * 4
-    self._transmitted = _IMAGE_CACHE.acquire(key, self._source_obj, decoded, self._transmit)
-    self.terminal_image_id = self._transmitted.kitty_id
+    if self._transmitted is not None and self._transmitted.key != key:
+      _IMAGE_CACHE.release(self._transmitted)
+      self._transmitted = None
+    if self._transmitted is None:
+      decoded = self._size[0] * self._size[1] * 4
+      self._transmitted = _IMAGE_CACHE.acquire(key, self._source_obj, decoded, self._transmit)
+      self.terminal_image_id = self._transmitted.kitty_id
     _send_tgp_message(a="p", i=self.terminal_image_id, p=self._placement_id, c=width, r=height, U=1, q=2)
 
   def _transmit(self, kitty_id: int) -> None:

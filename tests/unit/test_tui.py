@@ -441,6 +441,58 @@ def test_kitty_image_cache_evicts_when_a_reference_is_released(tmp_path: Path, m
   assert f"\x1b_Ga=d,d=I,i={first_id},q=2\x1b\\" in output.getvalue()
 
 
+def test_kitty_image_renderable_second_placement_does_not_leak_cache_reference(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
+  cache = media_module._ImageCache(budget=10_000)
+  monkeypatch.setattr(media_module, "_IMAGE_CACHE", cache)
+  console = Console(file=StringIO(), width=20)
+
+  renderable = StableTGPImage._Renderable(prepare_image(str(make_image(tmp_path / "image.jpg")), (80, 60)), 4, 3)
+  list(console.render(renderable))
+  assert renderable._transmitted is not None
+  assert renderable._transmitted.refs == 1
+
+  # A second placement call on the same renderable must not leak extra cache references.
+  renderable._create_virtual_placement(4, 3)
+  assert renderable._transmitted.refs == 1
+
+  renderable.cleanup()
+  assert renderable._transmitted is None
+  key = next(iter(cache._by_key))
+  assert cache._by_key[key].refs == 0
+
+
+def test_kitty_image_renderable_placement_resize_releases_previous_cache_reference(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
+  cache = media_module._ImageCache(budget=10_000)
+  monkeypatch.setattr(media_module, "_IMAGE_CACHE", cache)
+  console = Console(file=StringIO(), width=20)
+
+  renderable = StableTGPImage._Renderable(prepare_image(str(make_image(tmp_path / "image.jpg")), (80, 60)), 4, 3)
+  list(console.render(renderable))
+  first_transmitted = renderable._transmitted
+  assert first_transmitted is not None
+  assert first_transmitted.refs == 1
+
+  # Resizing the placement box replaces the cached image and releases the previous one.
+  renderable._create_virtual_placement(8, 6)
+  assert first_transmitted.refs == 0
+  assert renderable._transmitted is not None
+  assert renderable._transmitted.refs == 1
+
+  renderable.cleanup()
+  assert renderable._transmitted is None
+  assert all(image.refs == 0 for image in cache._by_key.values())
+
+
 def test_copy_image_keeps_common_formats_and_converts_others(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
