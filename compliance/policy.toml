@@ -6,7 +6,7 @@ prohibited_python_packages = ["pi-heif", "pillow-heif"]
 # Python environment rather than by rclip's locked runtime dependency closure.
 # Keeping the exceptions explicit prevents a dependency from silently accepting
 # arbitrary versions.
-unversioned_python_packages = ["pip", "rclip", "setuptools", "wheel"]
+unversioned_python_packages = ["pip", "rclip", "setuptools", "textual-image", "wheel"]
 
 # Build tools must not be present in self-contained runtime artifacts. pip,
 # setuptools and wheel remain allowed because some virtualenv distributors
@@ -35,29 +35,21 @@ httpcore = "BSD-3-Clause"
 httpx = "BSD-3-Clause"
 huggingface-hub = "Apache-2.0"
 idna = "BSD-3-Clause"
-linkify-it-py = "MIT"
-markdown-it-py = "MIT"
-mdit-py-plugins = "MIT"
-mdurl = "MIT"
 mpmath = "BSD-3-Clause"
 numpy = "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0"
 onnxruntime = "MIT"
 packaging = "Apache-2.0 OR BSD-2-Clause"
 pillow = "MIT-CMU"
 pip = "MIT"
-platformdirs = "MIT"
 protobuf = "BSD-3-Clause"
-pygments = "BSD-2-Clause"
 pyaml = "WTFPL"
 pyyaml = "MIT"
 rawpy = "MIT"
 rclip = "MIT"
 regex = "Apache-2.0 AND CNRI-Python"
 requests = "Apache-2.0"
-rich = "MIT"
 setuptools = "MIT"
 sympy = "BSD-3-Clause"
-textual = "MIT"
 textual-image = "LGPL-3.0-or-later"
 tqdm = "MPL-2.0 AND MIT"
 typing-extensions = "PSF-2.0"

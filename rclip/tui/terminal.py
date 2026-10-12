@@ -63,6 +63,8 @@ CURSOR_SHOW = f"{ESC}[?25h"
 CLEAR_SCREEN = f"{ESC}[2J"
 CURSOR_HOME = f"{ESC}[H"
 CLEAR_LINE = f"{ESC}[2K"
+AUTOWRAP_OFF = f"{ESC}[?7l"
+AUTOWRAP_ON = f"{ESC}[?7h"
 
 # Kitty Keyboard Protocol progressive enhancement (if supported)
 KITTY_KEYBOARD_ON = f"{ESC}[>1u"
@@ -124,13 +126,13 @@ class RawTerminal:
       except termios.error:
         self._old_attr = None
     self._is_raw = True
-    self.out_stream.write(f"{ALT_SCREEN_ON}{CURSOR_HIDE}{CLEAR_SCREEN}{CURSOR_HOME}")
+    self.out_stream.write(f"{ALT_SCREEN_ON}{CURSOR_HIDE}{AUTOWRAP_OFF}{CLEAR_SCREEN}{CURSOR_HOME}")
     self.out_stream.flush()
 
   def exit(self) -> None:
     if not self._is_raw:
       return
-    self.out_stream.write(f"{CURSOR_SHOW}{ALT_SCREEN_OFF}")
+    self.out_stream.write(f"{CURSOR_SHOW}{AUTOWRAP_ON}{ALT_SCREEN_OFF}")
     self.out_stream.flush()
     if self._old_attr is not None and self.in_stream.isatty():
       try:

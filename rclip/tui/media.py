@@ -255,13 +255,21 @@ def fit_image_to_cells(
 
 def render_kitty_placeholders(image_id: int, cols: int, rows: int, placement_id: int | None = None) -> list[str]:
   """Generate Unicode placeholder character strings for each row of the placed Kitty image."""
-  target_id = placement_id if placement_id is not None else image_id
-  r_color = (target_id >> 16) & 255
-  g_color = (target_id >> 8) & 255
-  b_color = target_id & 255
+  r_color = (image_id >> 16) & 255
+  g_color = (image_id >> 8) & 255
+  b_color = image_id & 255
   color_seq = f"\x1b[38;2;{r_color};{g_color};{b_color}m"
-  id_char = chr(_NUMBER_TO_DIACRITIC[(target_id >> 24) & 255])
+  id_char = chr(_NUMBER_TO_DIACRITIC[(image_id >> 24) & 255])
   ph = chr(_PLACEHOLDER)
+
+  underline_seq = ""
+  reset_seq = "\x1b[39m"
+  if placement_id is not None:
+    pr = (placement_id >> 16) & 255
+    pg = (placement_id >> 8) & 255
+    pb = placement_id & 255
+    underline_seq = f"\x1b[58;2;{pr};{pg};{pb}m"
+    reset_seq = "\x1b[39m\x1b[59m"
 
   lines: list[str] = []
   for r in range(rows):
@@ -270,7 +278,7 @@ def render_kitty_placeholders(image_id: int, cols: int, rows: int, placement_id:
     for c in range(cols):
       c_char = chr(_NUMBER_TO_DIACRITIC[c % len(_NUMBER_TO_DIACRITIC)])
       chars.append(f"{ph}{r_char}{c_char}{id_char}")
-    lines.append(f"{color_seq}{''.join(chars)}\x1b[39m")
+    lines.append(f"{color_seq}{underline_seq}{''.join(chars)}{reset_seq}")
   return lines
 
 

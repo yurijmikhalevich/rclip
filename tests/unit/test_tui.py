@@ -15,7 +15,6 @@ from unittest.mock import MagicMock
 
 from PIL import Image
 import pytest
-from rich.console import Console
 
 from rclip import main as main_module
 from rclip.main import RClip
@@ -40,6 +39,21 @@ from rclip.tui.views import DetailView
 from rclip.tui.views import ImageCard
 from rclip.tui.views import Input, Region, ResultsGrid, Size, Static
 from rclip.utils.helpers import init_arg_parser
+
+
+class Console:
+  def __init__(self, file: object = None, width: int = 80, height: int = 24) -> None:
+    self.file = file
+    self.width = width
+    self.height = height
+
+  def print(self, renderable: Any) -> None:
+    list(self.render(renderable))
+
+  def render(self, renderable: Any) -> Iterator[Any]:
+    if hasattr(renderable, "__rich_console__"):
+      return renderable.__rich_console__(self, self)
+    return iter([])
 
 
 class _Events:

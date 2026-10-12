@@ -365,6 +365,8 @@ class ImageCard:
         if not worker.is_cancelled and self.is_attached:
           self._image.image = preview
           self._loaded = True
+          if self.app is not None and hasattr(self.app, "request_render"):
+            self.app.request_render()
         self._loading = False
       finally:
         if tracker is not None:
@@ -503,6 +505,8 @@ class DetailThumbnail:
       else:
         if not worker.is_cancelled and self.is_attached and filepath == self.filepath:
           self._image.image = preview
+          if self.app is not None and hasattr(self.app, "request_render"):
+            self.app.request_render()
       finally:
         if tracker is not None:
           tracker.discard(worker)
@@ -643,6 +647,8 @@ class DetailView:
     del self._detail_workers[filepath]
     self._details[filepath] = detail
     self._show_detail(filepath, detail)
+    if self.app is not None and hasattr(self.app, "request_render"):
+      self.app.request_render()
 
   def _show_detail(self, filepath: str, detail: PILImage.Image | str) -> None:
     if not self.is_attached or filepath != self.filepath:

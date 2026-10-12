@@ -29,6 +29,7 @@ from rclip.tui.media import (
 from rclip.tui.terminal import (
   BG_BRIGHT_BLACK,
   BOLD,
+  CLEAR_SCREEN,
   DIM,
   FG_BRIGHT_BLACK,
   FG_CYAN,
@@ -304,8 +305,15 @@ class RclipApp:
     # Notification toast
     self._notification: tuple[str, float, str] | None = None
 
+    self._dirty = True
+    self._last_rendered_mode = "gallery"
+    self._last_rendered_generation = 0
+
     # Overrideable size for testing
     self._terminal_size: tuple[int, int] | None = None
+
+  def request_render(self) -> None:
+    self._dirty = True
 
   @property
   def _selected_index(self) -> int:
@@ -852,15 +860,19 @@ class RclipApp:
     self._active_detail_placements.clear()
 
   def process_events(self) -> None:
+    processed_any = False
     while True:
       try:
         ev = self._event_queue.get_nowait()
       except queue.Empty:
         break
+      processed_any = True
       if isinstance(ev, SearchResultsEvent):
         self._handle_search_results(ev.generation, ev.query, ev.results, ev.next_cursor, ev.append)
       elif isinstance(ev, SearchErrorEvent):
         self._handle_search_error(ev.generation, ev.query, ev.message, ev.append)
+    if processed_any:
+      self._dirty = True
 
   # ── Key Handling ─────────────────────────────────────────────────────
 
@@ -1020,6 +1032,16 @@ class RclipApp:
     w, h = self.get_size()
     buf = StringIO()
 
+    # Clear screen on mode switch or new search query generation
+    if (
+      self.view_mode != self._last_rendered_mode
+      or self._search_generation != self._last_rendered_generation
+    ):
+      self._cleanup_all_placements()
+      buf.write(CLEAR_SCREEN)
+      self._last_rendered_mode = self.view_mode
+      self._last_rendered_generation = self._search_generation
+
     # Search Bar (rows 1-3)
     buf.write(cursor_to(1, 1))
     st = f" [{self.search_status}]" if self.search_status else ""
@@ -1034,7 +1056,7 @@ class RclipApp:
     buf.write(cursor_to(3, 1))
     buf.write(f"╰{'─' * max(0, w - 2)}╯")
 
-    # Body
+    # Body (rows 4 to h - 2)
     if self.view_mode == "gallery":
       buf.write(self._render_gallery(w, h - 5))
     else:
@@ -1045,16 +1067,21 @@ class RclipApp:
     path_str = self._gallery_path.content[: w - 2]
     buf.write(f"{BOLD}{path_str}{RESET}{' ' * max(0, w - len(path_str))}")
 
-    # Hotkeys Footer (row h)
+    # Hotkeys Footer (row h) - capped at w - 1 to never trigger terminal edge wrap
     buf.write(cursor_to(h, 1))
     hotkeys_str = self._render_hotkeys(w)
-    buf.write(f"{hotkeys_str}{' ' * max(0, w - len(hotkeys_str))}")
+    buf.write(f"{hotkeys_str}{' ' * max(0, w - 1 - len(hotkeys_str))}")
 
     self._term.write(buf.getvalue())
     self._term.flush()
 
   def _render_gallery(self, width: int, height: int) -> str:
     buf = StringIO()
+    if not self.results:
+      buf.write(cursor_to(4 + height // 2, max(1, width // 2 - 5)))
+      buf.write(f"{DIM}No results{RESET}")
+      return buf.getvalue()
+
     geo = GridGeometry(len(self.results), avail_x=1, avail_y=4, avail_w=width, avail_h=height)
     self.scroll_row = geo.ensure_visible(self.selected_index, self.scroll_row)
     cards = geo.get_visible_cards(self.scroll_row, self.results)
@@ -1063,11 +1090,64 @@ class RclipApp:
       is_sel = card.index == self.selected_index
       b_color = f"{FG_CYAN}{BOLD}" if is_sel else f"{FG_BRIGHT_BLACK}"
       inner_w = card.width - 2
+      inner_h = card.height - 2
+
+      # Top border
       buf.write(cursor_to(card.y, card.x))
       buf.write(f"{b_color}╭{'─' * inner_w}╮{RESET}")
-      for r_off in range(1, card.height - 1):
-        buf.write(cursor_to(card.y + r_off, card.x))
-        buf.write(f"{b_color}│{' ' * inner_w}│{RESET}")
+
+      cached = self._grid._cached_cards.get(card.result.filepath)
+      if cached is None:
+        cached = ImageCard(card.result, self)
+        self._grid._cached_cards[card.result.filepath] = cached
+        cached.load_preview()
+      elif not cached._loading and not cached._loaded:
+        cached.load_preview()
+
+      img_obj = cached._image.image
+      if isinstance(img_obj, PILImage.Image):
+        cols, rows, pw, ph = fit_image_to_cells(img_obj.width, img_obj.height, inner_w, inner_h)
+        if cols > 0 and rows > 0:
+          source_id = _extract_source(img_obj)
+          key = (source_id, img_obj.width, img_obj.height, (cols, rows))
+          decoded = pw * ph * 4
+          transmitted = _IMAGE_CACHE.acquire(
+            key, img_obj, decoded, lambda kid: _transmit_image(kid, img_obj, (pw, ph))
+          )
+          p_id = next_placement_id()
+          self._active_placements[card.result.filepath] = (transmitted.kitty_id, p_id)
+          create_placement(transmitted.kitty_id, p_id, cols, rows)
+          _IMAGE_CACHE.release(transmitted)
+
+          ph_lines = render_kitty_placeholders(transmitted.kitty_id, cols, rows, placement_id=p_id)
+          pad_x = (inner_w - cols) // 2
+          pad_y = (inner_h - rows) // 2
+          for r_off in range(inner_h):
+            buf.write(cursor_to(card.y + 1 + r_off, card.x))
+            if pad_y <= r_off < pad_y + rows:
+              line_str = ph_lines[r_off - pad_y]
+              left_pad = " " * pad_x
+              right_pad = " " * (inner_w - pad_x - cols)
+              buf.write(f"{b_color}│{RESET}{left_pad}{line_str}{right_pad}{b_color}│{RESET}")
+            else:
+              buf.write(f"{b_color}│{' ' * inner_w}│{RESET}")
+        else:
+          for r_off in range(inner_h):
+            buf.write(cursor_to(card.y + 1 + r_off, card.x))
+            buf.write(f"{b_color}│{' ' * inner_w}│{RESET}")
+      else:
+        loading_text = "Loading…"
+        pad_top = inner_h // 2
+        for r_off in range(inner_h):
+          buf.write(cursor_to(card.y + 1 + r_off, card.x))
+          if r_off == pad_top:
+            pad_left = (inner_w - len(loading_text)) // 2
+            pad_right = inner_w - pad_left - len(loading_text)
+            buf.write(f"{b_color}│{RESET}{' ' * pad_left}{DIM}{loading_text}{RESET}{' ' * pad_right}{b_color}│{RESET}")
+          else:
+            buf.write(f"{b_color}│{' ' * inner_w}│{RESET}")
+
+      # Bottom border
       buf.write(cursor_to(card.y + card.height - 1, card.x))
       buf.write(f"{b_color}╰{'─' * inner_w}╯{RESET}")
 
@@ -1075,15 +1155,27 @@ class RclipApp:
 
   def _render_detail(self, width: int, height: int) -> str:
     buf = StringIO()
-    geo = DetailGeometry(avail_x=1, avail_y=3, avail_w=width, avail_h=height)
+    geo = DetailGeometry(avail_x=1, avail_y=4, avail_w=width, avail_h=height)
+
+    # Main Detail Frame Border
+    f_color = f"{FG_BRIGHT_BLACK}"
+    buf.write(cursor_to(geo.main_y, geo.main_x))
+    buf.write(f"{f_color}╭{'─' * (geo.main_w - 2)}╮{RESET}")
+    for r in range(1, geo.main_h - 1):
+      buf.write(cursor_to(geo.main_y + r, geo.main_x))
+      buf.write(f"{f_color}│{' ' * (geo.main_w - 2)}│{RESET}")
+    buf.write(cursor_to(geo.main_y + geo.main_h - 1, geo.main_x))
+    buf.write(f"{f_color}╰{'─' * (geo.main_w - 2)}╯{RESET}")
 
     filepath = self._selected_filepath()
     if filepath:
-      detail_obj = self._detail_images.get(filepath)
+      detail_obj = self._detail_view._details.get(filepath)
       if isinstance(detail_obj, PILImage.Image):
-        cols, rows, pw, ph = fit_image_to_cells(detail_obj.width, detail_obj.height, geo.main_w - 4, geo.main_h - 2)
-        img_x = geo.main_x + 2 + (geo.main_w - 4 - cols) // 2
-        img_y = geo.main_y + 1 + (geo.main_h - 2 - rows) // 2
+        inner_mw = geo.main_w - 2
+        inner_mh = geo.main_h - 2
+        cols, rows, pw, ph = fit_image_to_cells(detail_obj.width, detail_obj.height, inner_mw, inner_mh)
+        img_x = geo.main_x + 1 + (inner_mw - cols) // 2
+        img_y = geo.main_y + 1 + (inner_mh - rows) // 2
 
         source_id = _extract_source(detail_obj)
         key = (source_id, detail_obj.width, detail_obj.height, (cols, rows))
@@ -1110,14 +1202,62 @@ class RclipApp:
       buf.write(cursor_to(geo.main_y + geo.main_h // 2, geo.main_x + geo.main_w // 2 - 5))
       buf.write(f"{DIM}No results{RESET}")
 
+    # Filmstrip Thumbnails
     thumbs = geo.get_filmstrip_thumbnails(self.selected_index, self.results)
     for thumb in thumbs:
+      t_border = f"{FG_CYAN}{BOLD}" if thumb.is_selected else f"{FG_BRIGHT_BLACK}"
+      inner_tw = thumb.width - 2
+      inner_th = thumb.height - 2
+      buf.write(cursor_to(thumb.y, thumb.x))
+      buf.write(f"{t_border}╭{'─' * inner_tw}╮{RESET}")
+
+      t_img = None
       if thumb.filepath:
-        t_border = f"{FG_CYAN}{BOLD}" if thumb.is_selected else f"{FG_BRIGHT_BLACK}"
-        buf.write(cursor_to(thumb.y, thumb.x))
-        buf.write(f"{t_border}╭{'─' * (thumb.width - 2)}╮{RESET}")
-        buf.write(cursor_to(thumb.y + thumb.height - 1, thumb.x))
-        buf.write(f"{t_border}╰{'─' * (thumb.width - 2)}╯{RESET}")
+        for dt in self._detail_view.thumbnails:
+          if dt.filepath == thumb.filepath and isinstance(dt._image.image, PILImage.Image):
+            t_img = dt._image.image
+            break
+        if t_img is None:
+          card = self._grid._cached_cards.get(thumb.filepath)
+          if card and isinstance(card._image.image, PILImage.Image):
+            t_img = card._image.image
+
+      if isinstance(t_img, PILImage.Image):
+        cols, rows, pw, ph = fit_image_to_cells(t_img.width, t_img.height, inner_tw, inner_th)
+        if cols > 0 and rows > 0:
+          source_id = _extract_source(t_img)
+          key = (source_id, t_img.width, t_img.height, (cols, rows), "thumb")
+          decoded = pw * ph * 4
+          transmitted = _IMAGE_CACHE.acquire(
+            key, t_img, decoded, lambda kid: _transmit_image(kid, t_img, (pw, ph))
+          )
+          p_id = next_placement_id()
+          create_placement(transmitted.kitty_id, p_id, cols, rows)
+          _IMAGE_CACHE.release(transmitted)
+
+          ph_lines = render_kitty_placeholders(transmitted.kitty_id, cols, rows, placement_id=p_id)
+          pad_x = (inner_tw - cols) // 2
+          pad_y = (inner_th - rows) // 2
+          for r_off in range(inner_th):
+            buf.write(cursor_to(thumb.y + 1 + r_off, thumb.x))
+            if pad_y <= r_off < pad_y + rows:
+              line_str = ph_lines[r_off - pad_y]
+              left_pad = " " * pad_x
+              right_pad = " " * (inner_tw - pad_x - cols)
+              buf.write(f"{t_border}│{RESET}{left_pad}{line_str}{right_pad}{t_border}│{RESET}")
+            else:
+              buf.write(f"{t_border}│{' ' * inner_tw}│{RESET}")
+        else:
+          for r_off in range(inner_th):
+            buf.write(cursor_to(thumb.y + 1 + r_off, thumb.x))
+            buf.write(f"{t_border}│{' ' * inner_tw}│{RESET}")
+      else:
+        for r_off in range(inner_th):
+          buf.write(cursor_to(thumb.y + 1 + r_off, thumb.x))
+          buf.write(f"{t_border}│{' ' * inner_tw}│{RESET}")
+
+      buf.write(cursor_to(thumb.y + thumb.height - 1, thumb.x))
+      buf.write(f"{t_border}╰{'─' * inner_tw}╯{RESET}")
 
     return buf.getvalue()
 
@@ -1148,6 +1288,7 @@ class RclipApp:
   def run(self) -> None:
     _probe_kitty.cache_clear()
     self.is_running = True
+    self._dirty = True
     self._begin_search("")
 
     simulated_keys = [
@@ -1158,15 +1299,29 @@ class RclipApp:
 
     with RawTerminal() as term:
       self._term = term
+      last_size = self.get_size()
       while self.is_running:
+        cur_size = self.get_size()
+        if cur_size != last_size:
+          last_size = cur_size
+          self._dirty = True
+          self._term.write(CLEAR_SCREEN)
+
         if simulated_keys:
           key = simulated_keys.pop(0)
+          self.handle_key(key)
+          self._dirty = True
         else:
           key = read_key(timeout=0.03)
-        if key:
-          self.handle_key(key)
+          if key:
+            self.handle_key(key)
+            self._dirty = True
+
         self.process_events()
-        self.render()
+        if self._dirty:
+          self.render()
+          self._dirty = False
+
     self._cleanup_all_placements()
 
 
