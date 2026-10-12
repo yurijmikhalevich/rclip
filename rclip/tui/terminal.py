@@ -126,13 +126,13 @@ class RawTerminal:
       except termios.error:
         self._old_attr = None
     self._is_raw = True
-    self.out_stream.write(f"{ALT_SCREEN_ON}{CURSOR_HIDE}{AUTOWRAP_OFF}{CLEAR_SCREEN}{CURSOR_HOME}")
+    self.out_stream.write(f"{ALT_SCREEN_ON}{CURSOR_HIDE}{AUTOWRAP_OFF}{KITTY_KEYBOARD_ON}{CLEAR_SCREEN}{CURSOR_HOME}")
     self.out_stream.flush()
 
   def exit(self) -> None:
     if not self._is_raw:
       return
-    self.out_stream.write(f"{CURSOR_SHOW}{AUTOWRAP_ON}{ALT_SCREEN_OFF}")
+    self.out_stream.write(f"{KITTY_KEYBOARD_OFF}{CURSOR_SHOW}{AUTOWRAP_ON}{ALT_SCREEN_OFF}")
     self.out_stream.flush()
     if self._old_attr is not None and self.in_stream.isatty():
       try:
@@ -156,91 +156,209 @@ class RawTerminal:
     self.exit()
 
 
+_KITTY_KEY_MAP: dict[int, str] = {
+  13: "enter",
+  27: "escape",
+  9: "tab",
+  127: "backspace",
+  8: "backspace",
+  57352: "up",
+  57353: "down",
+  57354: "left",
+  57355: "right",
+  57356: "page_up",
+  57357: "page_down",
+  57358: "home",
+  57359: "end",
+  57360: "insert",
+  57361: "delete",
+  57399: "enter",
+  57400: "escape",
+}
+
+_CTRL_MAP: dict[int, str] = {
+  1: "ctrl+a",
+  2: "ctrl+b",
+  3: "ctrl+c",
+  4: "ctrl+d",
+  5: "ctrl+e",
+  6: "ctrl+f",
+  11: "ctrl+k",
+  12: "ctrl+l",
+  14: "ctrl+n",
+  15: "ctrl+o",
+  16: "ctrl+p",
+  18: "ctrl+r",
+  19: "ctrl+s",
+  21: "ctrl+u",
+  23: "ctrl+w",
+  25: "ctrl+y",
+  26: "ctrl+z",
+}
+
+
+def _parse_kitty_u(seq: str) -> str | None:
+  """Parse Kitty keyboard protocol sequence: \\x1b[<key>;<mods>[:<event>]u."""
+  body = seq[1:-1]
+  parts = body.split(";")
+  if not parts:
+    return None
+
+  key_part = parts[0].split(":")[0]
+  if not key_part.isdigit():
+    return None
+  key_code = int(key_part)
+
+  mods = 0
+  event_type = 1
+  if len(parts) > 1 and parts[1]:
+    mod_sub = parts[1].split(":")
+    if mod_sub[0].isdigit():
+      mods = max(0, int(mod_sub[0]) - 1)
+    if len(mod_sub) > 1 and mod_sub[1].isdigit():
+      event_type = int(mod_sub[1])
+
+  # event_type: 1 = press, 2 = repeat, 3 = release
+  if event_type == 3:
+    return None
+
+  is_shift = bool(mods & 1)
+  is_ctrl = bool(mods & 4)
+
+  # Check text codepoint if provided (3rd parameter in Kitty keyboard protocol)
+  if len(parts) > 2 and parts[2] and parts[2].isdigit():
+    text_code = int(parts[2])
+    if not is_ctrl and text_code >= 32:
+      return chr(text_code)
+
+  if is_ctrl:
+    if key_code in _KITTY_KEY_MAP:
+      return f"ctrl+{_KITTY_KEY_MAP[key_code]}"
+    if 32 <= key_code <= 126:
+      return f"ctrl+{chr(key_code).lower()}"
+    return None
+
+  if key_code in _KITTY_KEY_MAP:
+    base = _KITTY_KEY_MAP[key_code]
+    if is_shift and key_code == 9:
+      return "shift+tab"
+    if is_shift and base in ("up", "down", "left", "right", "home", "end"):
+      return f"shift+{base}"
+    return base
+
+  if is_shift and ord("a") <= key_code <= ord("z"):
+    return chr(key_code).upper()
+
+  try:
+    return chr(key_code)
+  except ValueError:
+    return None
+
+
 def read_key(in_stream: TextIO = sys.stdin, timeout: float = 0.05) -> str | None:
   """Read a single key or ANSI key sequence from raw stdin with timeout."""
   if not in_stream.isatty():
     return None
 
   try:
-    rlist, _, _ = select.select([in_stream], [], [], timeout)
-    if not rlist:
-      return None
-
-    first = in_stream.read(1)
-    if not first:
-      return None
-
-    # Handle Ctrl keys
-    code = ord(first)
-    if code == 3:
-      return "ctrl+c"
-    if code == 6:
-      return "ctrl+f"
-    if code == 15:
-      return "ctrl+o"
-    if code == 16:
-      return "ctrl+p"
-    if code == 19:
-      return "ctrl+s"
-    if code == 25:
-      return "ctrl+y"
-    if code in (10, 13):
-      return "enter"
-    if code in (8, 127):
-      return "backspace"
-    if code == 9:
-      return "tab"
-
-    # Non-escape regular characters
-    if first != ESC:
-      return first
-
-    # Read remaining escape sequence with a short timeout
-    seq = ""
     while True:
-      rlist, _, _ = select.select([in_stream], [], [], 0.02)
+      rlist, _, _ = select.select([in_stream], [], [], timeout)
       if not rlist:
-        break
-      char = in_stream.read(1)
-      if not char:
-        break
-      seq += char
-      if char.isalpha() or char == "~":
-        break
+        return None
 
-    if not seq:
+      first = in_stream.read(1)
+      if not first:
+        return None
+
+      code = ord(first)
+      if code in _CTRL_MAP:
+        return _CTRL_MAP[code]
+      if code in (10, 13):
+        return "enter"
+      if code in (8, 127):
+        return "backspace"
+      if code == 9:
+        return "tab"
+
+      if first != ESC:
+        return first
+
+      # Read remaining escape sequence with a short timeout
+      seq = ""
+      while True:
+        rlist, _, _ = select.select([in_stream], [], [], 0.02)
+        if not rlist:
+          break
+        char = in_stream.read(1)
+        if not char:
+          break
+        seq += char
+        if char.isalpha() or char == "~":
+          break
+
+      if not seq:
+        return "escape"
+
+      # Kitty keyboard protocol sequences: \x1b[...u
+      if seq.startswith("[") and seq.endswith("u"):
+        parsed = _parse_kitty_u(seq)
+        if parsed is not None:
+          return parsed
+        # If release event was filtered out, immediately check if next event is queued
+        timeout = 0.005
+        continue
+
+      # Standard ANSI sequences
+      if seq in ("[A", "OA"):
+        return "up"
+      if seq in ("[B", "OB"):
+        return "down"
+      if seq in ("[C", "OC"):
+        return "right"
+      if seq in ("[D", "OD"):
+        return "left"
+      if seq in ("[H", "[1~", "[7~"):
+        return "home"
+      if seq in ("[F", "[4~", "[8~"):
+        return "end"
+      if seq == "[5~":
+        return "page_up"
+      if seq == "[6~":
+        return "page_down"
+      if seq == "[3~":
+        return "delete"
+      if seq == "[2~":
+        return "insert"
+      if seq == "[Z":
+        return "shift+tab"
+
+      # Modified arrows (xterm style)
+      if seq.startswith("[1;"):
+        mod_char = seq[-1]
+        mod_num = seq[3:-1]
+        if mod_num == "5":  # Ctrl
+          if mod_char == "A":
+            return "ctrl+up"
+          if mod_char == "B":
+            return "ctrl+down"
+          if mod_char == "C":
+            return "ctrl+right"
+          if mod_char == "D":
+            return "ctrl+left"
+          if mod_char == "H":
+            return "ctrl+home"
+          if mod_char == "F":
+            return "ctrl+end"
+        elif mod_num == "2":  # Shift
+          if mod_char == "A":
+            return "shift+up"
+          if mod_char == "B":
+            return "shift+down"
+          if mod_char == "C":
+            return "shift+right"
+          if mod_char == "D":
+            return "shift+left"
+
       return "escape"
-
-    # Arrow keys and standard sequences: \x1b[A, \x1b[B, \x1b[C, \x1b[D
-    if seq == "[A" or seq == "OA":
-      return "up"
-    if seq == "[B" or seq == "OB":
-      return "down"
-    if seq == "[C" or seq == "OC":
-      return "right"
-    if seq == "[D" or seq == "OD":
-      return "left"
-    if seq in ("[H", "[1~"):
-      return "home"
-    if seq in ("[F", "[4~"):
-      return "end"
-    if seq == "[5~":
-      return "page_up"
-    if seq == "[6~":
-      return "page_down"
-    if seq == "[3~":
-      return "delete"
-
-    # Kitty keyboard protocol sequences: \x1b[<unicode_key>;<modifiers>u
-    if seq.startswith("[") and seq.endswith("u"):
-      parts = seq[1:-1].split(";")
-      if parts:
-        try:
-          key_code = int(parts[0])
-          return chr(key_code)
-        except ValueError:
-          pass
-
-    return "escape"
   except (OSError, select.error):
     return None

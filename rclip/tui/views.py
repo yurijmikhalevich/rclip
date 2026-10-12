@@ -308,6 +308,61 @@ class Input:
       if self._app is not None and Input.Changed not in getattr(self._app, "_prevented_events", set()):
         self._app._on_input_changed(self._value)
 
+  def delete_forward(self) -> None:
+    if self._has_selection:
+      self._value = ""
+      self.cursor_position = 0
+      self._has_selection = False
+      if self._app is not None and Input.Changed not in getattr(self._app, "_prevented_events", set()):
+        self._app._on_input_changed(self._value)
+      return
+    if self.cursor_position < len(self._value):
+      left = self._value[: self.cursor_position]
+      right = self._value[self.cursor_position + 1 :]
+      self._value = left + right
+      if self._app is not None and Input.Changed not in getattr(self._app, "_prevented_events", set()):
+        self._app._on_input_changed(self._value)
+
+  def delete_to_end(self) -> None:
+    if self._has_selection:
+      self.delete_forward()
+      return
+    if self.cursor_position < len(self._value):
+      self._value = self._value[: self.cursor_position]
+      if self._app is not None and Input.Changed not in getattr(self._app, "_prevented_events", set()):
+        self._app._on_input_changed(self._value)
+
+  def clear(self) -> None:
+    self._value = ""
+    self.cursor_position = 0
+    self._has_selection = False
+    if self._app is not None and Input.Changed not in getattr(self._app, "_prevented_events", set()):
+      self._app._on_input_changed(self._value)
+
+  def cursor_left(self) -> None:
+    if self._has_selection:
+      self._has_selection = False
+      self.cursor_position = 0
+      return
+    if self.cursor_position > 0:
+      self.cursor_position -= 1
+
+  def cursor_right(self) -> None:
+    if self._has_selection:
+      self._has_selection = False
+      self.cursor_position = len(self._value)
+      return
+    if self.cursor_position < len(self._value):
+      self.cursor_position += 1
+
+  def cursor_home(self) -> None:
+    self._has_selection = False
+    self.cursor_position = 0
+
+  def cursor_end(self) -> None:
+    self._has_selection = False
+    self.cursor_position = len(self._value)
+
   def submit(self) -> None:
     self._has_selection = False
     if self._app is not None:

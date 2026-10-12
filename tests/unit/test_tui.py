@@ -28,7 +28,7 @@ from rclip.tui.media import StableTGPImage
 from rclip.tui.media import _TGPRenderable as TGPRenderable
 from rclip.tui.media import prepare_image
 from rclip.tui.media import prewarm_image
-from rclip.tui.terminal import CellSize
+from rclip.tui.terminal import CellSize, _parse_kitty_u
 from rclip.tui.transfer import TransferError
 from rclip.tui.transfer import _probe_kitty
 from rclip.tui.transfer import _run_kitten
@@ -2098,3 +2098,154 @@ def test_detail_resize_does_not_update_the_app_after_it_stops(tmp_path: Path, mo
   asyncio.run(run())
 
   assert updates_after_stop == []
+
+
+def test_kitty_keyboard_protocol_parser() -> None:
+  # Functional keys without modifiers
+  assert _parse_kitty_u("[57352u") == "up"
+  assert _parse_kitty_u("[57353u") == "down"
+  assert _parse_kitty_u("[57354u") == "left"
+  assert _parse_kitty_u("[57355u") == "right"
+  assert _parse_kitty_u("[13u") == "enter"
+  assert _parse_kitty_u("[27u") == "escape"
+  assert _parse_kitty_u("[127u") == "backspace"
+  assert _parse_kitty_u("[9u") == "tab"
+  assert _parse_kitty_u("[57358u") == "home"
+  assert _parse_kitty_u("[57359u") == "end"
+  assert _parse_kitty_u("[57361u") == "delete"
+
+  # With modifiers (Ctrl: 1 + 4 = 5)
+  assert _parse_kitty_u("[99;5u") == "ctrl+c"
+  assert _parse_kitty_u("[111;5u") == "ctrl+o"
+  assert _parse_kitty_u("[121;5u") == "ctrl+y"
+  assert _parse_kitty_u("[112;5u") == "ctrl+p"
+  assert _parse_kitty_u("[115;5u") == "ctrl+s"
+  assert _parse_kitty_u("[102;5u") == "ctrl+f"
+  assert _parse_kitty_u("[97;5u") == "ctrl+a"
+  assert _parse_kitty_u("[101;5u") == "ctrl+e"
+  assert _parse_kitty_u("[117;5u") == "ctrl+u"
+  assert _parse_kitty_u("[100;5u") == "ctrl+d"
+
+  # Shift modifiers (Shift: 1 + 1 = 2)
+  assert _parse_kitty_u("[9;2u") == "shift+tab"
+  assert _parse_kitty_u("[97;2u") == "A"
+  assert _parse_kitty_u("[97;2;65u") == "A"
+
+  # Key release events (event_type: 3) must be filtered out / return None
+  assert _parse_kitty_u("[57352;1:3u") is None
+  assert _parse_kitty_u("[99;5:3u") is None
+  assert _parse_kitty_u("[13;1:3u") is None
+
+  # Plain text and symbols
+  assert _parse_kitty_u("[97u") == "a"
+  assert _parse_kitty_u("[47u") == "/"
+  assert _parse_kitty_u("[32u") == " "
+
+
+def test_search_input_editing_and_cursor_keys() -> None:
+  inp = Input()
+  inp.value = "hello"
+  assert inp.cursor_position == 5
+
+  # Left / Right
+  inp.cursor_left()
+  assert inp.cursor_position == 4
+  inp.cursor_left()
+  assert inp.cursor_position == 3
+  inp.cursor_right()
+  assert inp.cursor_position == 4
+
+  # Home / End
+  inp.cursor_home()
+  assert inp.cursor_position == 0
+  inp.cursor_end()
+  assert inp.cursor_position == 5
+
+  # Insert in middle
+  inp.cursor_left()
+  inp.cursor_left()  # pos = 3 (between 'l' and 'l')
+  inp.insert_text("X")
+  assert inp.value == "helXlo"
+  assert inp.cursor_position == 4
+
+  # Delete forward
+  inp.delete_forward()
+  assert inp.value == "helXo"
+  assert inp.cursor_position == 4
+
+  # Delete backward
+  inp.delete_backward()
+  assert inp.value == "helo"
+  assert inp.cursor_position == 3
+
+  # Delete to end
+  inp.cursor_left()  # pos = 2
+  inp.delete_to_end()
+  assert inp.value == "he"
+
+  # Clear
+  inp.clear()
+  assert inp.value == ""
+  assert inp.cursor_position == 0
+
+
+def test_tui_focus_transitions_match_textual(tmp_path: Path) -> None:
+  paths = [str(make_image(tmp_path / f"img-{i}.jpg")) for i in range(4)]
+  app = RclipApp(FakeRclip([RClip.SearchResult(p, 0.9) for p in paths]), str(tmp_path))
+
+  async def run() -> None:
+    async with app.run_test(size=(100, 40)) as pilot:
+      await app.workers.wait_for_complete()
+      search = app.query_one(Input)
+      detail = app.query_one(DetailView)
+
+      # 1. Starts with Search focused
+      assert app.focused is search
+
+      # 2. Down from search focuses Gallery
+      await pilot.press("down")
+      assert isinstance(app.focused, ImageCard)
+      assert app.selected_index == 0
+
+      # 3. Up from top row of gallery focuses Search
+      await pilot.press("up")
+      assert app.focused is search
+
+      # 4. Down from search focuses Gallery again
+      await pilot.press("down")
+      assert isinstance(app.focused, ImageCard)
+
+      # 5. Enter opens Detail view
+      await pilot.press("enter")
+      assert detail.display and app.focused is detail
+
+      # 6. Up from detail view focuses Search
+      await pilot.press("up")
+      assert detail.display and app.focused is search
+
+      # 7. Escape from search in detail view returns focus to detail view
+      await pilot.press("escape")
+      assert detail.display and app.focused is detail
+
+      # 8. Escape from detail view toggles back to Gallery
+      await pilot.press("escape")
+      assert not detail.display and isinstance(app.focused, ImageCard)
+
+      # 9. Slash '/' focuses Search
+      await pilot.press("/")
+      assert app.focused is search
+
+      # 10. Left/Right/Home/End do not insert strings into search
+      await pilot.press("t", "e", "s", "t")
+      assert search.value == "test"
+      await pilot.press("left")
+      assert search.value == "test"
+      assert search.cursor_position == 3
+      await pilot.press("home")
+      assert search.cursor_position == 0
+      await pilot.press("end")
+      assert search.cursor_position == 4
+      await pilot.press("ctrl+u")
+      assert search.value == ""
+
+  asyncio.run(run())

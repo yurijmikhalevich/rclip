@@ -476,8 +476,16 @@ class RclipApp:
   def action_toggle_focus(self) -> None:
     if self._focus_target == "search":
       self._focus_target = self.view_mode
+      self._on_selection_changed()
     else:
       self._focus_target = "search"
+      self._search_input.on_focus()
+
+  def action_escape(self) -> None:
+    if self._focus_target == "search":
+      self.action_toggle_focus()
+    elif self.view_mode == "detail":
+      self.action_toggle_view()
 
   def check_action(self, action: str, parameters: tuple[object, ...] = ()) -> bool:
     if action in {"copy_image", "copy_path", "download"}:
@@ -541,8 +549,7 @@ class RclipApp:
 
   def action_move_down_or_focus(self) -> None:
     if self._focus_target == "search":
-      self._focus_target = self.view_mode
-      self._on_selection_changed()
+      self.action_toggle_focus()
     elif self.view_mode != "detail":
       self.action_move_down()
 
@@ -611,7 +618,7 @@ class RclipApp:
         self.notify("Saved to ~/Downloads", title=Path(filepath).name)
 
   def action_quit(self) -> None:
-    self.is_running = False
+    self.exit()
 
   # ── Selection & Layout Helpers ────────────────────────────────────────
 
@@ -676,7 +683,7 @@ class RclipApp:
   def _on_input_changed(self, new_query: str) -> None:
     self.search_text = new_query
     self._search_input._value = new_query
-    self.cursor_pos = len(new_query)
+    self.cursor_pos = self._search_input.cursor_position
     if self._search_timer is not None:
       self._search_timer.cancel()
       self._search_timer = None
@@ -878,7 +885,7 @@ class RclipApp:
 
   def handle_key(self, key: str) -> None:
     if key in ("ctrl+c", "^C"):
-      self.exit()
+      self.action_quit()
       return
 
     if key == "ctrl+f":
@@ -904,125 +911,161 @@ class RclipApp:
         self.action_download()
       return
 
-    if key == "ctrl+q":
+    if key in ("ctrl+q", "^Q"):
       return
 
-    if key == "enter":
-      if self._focus_target == "search":
-        self._search_input.submit()
-      elif self.view_mode == "gallery":
-        self.action_open_detail()
-      else:
-        self.action_toggle_view()
+    if self._focus_target == "search":
+      self._handle_key_search(key)
+    elif self.view_mode == "detail":
+      self._handle_key_detail(key)
+    else:
+      self._handle_key_gallery(key)
+
+  def _handle_key_search(self, key: str) -> None:
+    if key == "down":
+      self.action_move_down_or_focus()
       return
 
     if key == "escape":
-      if self._focus_target == "search":
-        if self.view_mode == "detail":
-          self._focus_target = "detail"
-        else:
-          self._focus_target = "gallery"
-      elif self.view_mode == "detail":
-        self.action_toggle_view()
+      self.action_escape()
       return
 
-    if key == "/":
-      if self._focus_target == "search":
-        self._search_input.insert_text("/")
-      else:
-        self.action_focus_search()
+    if key == "enter":
+      self._search_input.submit()
+      return
+
+    if key == "left":
+      self._search_input.cursor_left()
+      return
+
+    if key == "right":
+      self._search_input.cursor_right()
+      return
+
+    if key in ("home", "ctrl+a"):
+      self._search_input.cursor_home()
+      return
+
+    if key in ("end", "ctrl+e"):
+      self._search_input.cursor_end()
       return
 
     if key == "backspace":
-      if self._focus_target == "search":
-        self._search_input.delete_backward()
+      self._search_input.delete_backward()
       return
 
-    if key in ("down", "j"):
-      if self._focus_target == "search":
-        if key == "down":
-          self.action_move_down_or_focus()
-        else:
-          self._search_input.insert_text(key)
-      elif self.view_mode == "detail":
-        if key == "down":
-          self.action_move_down_or_focus()
-        else:
-          self._search_input.insert_text(key)
-      else:
-        self.action_move_down()
+    if key in ("delete", "ctrl+d"):
+      self._search_input.delete_forward()
       return
 
-    if key in ("up", "k"):
-      if self._focus_target == "search":
-        if key != "up":
-          self._search_input.insert_text(key)
-      elif self.view_mode == "detail":
-        if key == "up":
-          self.action_focus_search()
-        else:
-          self._search_input.insert_text(key)
-      else:
-        if key == "up":
-          self.action_move_up_or_focus()
-        else:
-          self.action_move_up()
+    if key == "ctrl+k":
+      self._search_input.delete_to_end()
       return
 
-    if key in ("left", "h"):
-      if self._focus_target == "search":
-        self._search_input.insert_text(key)
-      else:
-        self.action_move_left()
+    if key == "ctrl+u":
+      self._search_input.clear()
       return
 
-    if key in ("right", "l"):
-      if self._focus_target == "search":
-        self._search_input.insert_text(key)
-      else:
-        self.action_move_right()
+    if key in ("tab", "shift+tab"):
+      self.action_move_down_or_focus()
       return
 
-    if key == "o":
-      if self._focus_target == "search":
-        self._search_input.insert_text("o")
-      else:
-        self.action_toggle_view()
+    if key == "up":
+      return
+
+    if len(key) == 1 and ord(key) >= 32:
+      self._search_input.insert_text(key)
+
+  def _handle_key_gallery(self, key: str) -> None:
+    if key in ("h", "left"):
+      self.action_move_left()
+      return
+
+    if key in ("l", "right"):
+      self.action_move_right()
+      return
+
+    if key in ("j", "down"):
+      self.action_move_down()
+      return
+
+    if key == "k":
+      self.action_move_up()
+      return
+
+    if key == "up":
+      self.action_move_up_or_focus()
+      return
+
+    if key in ("enter", "o"):
+      self.action_open_detail()
+      return
+
+    if key == "/":
+      self.action_focus_search()
       return
 
     if key == "y":
-      if self._focus_target == "search":
-        self._search_input.insert_text("y")
-      elif self.check_action("copy_image"):
+      if self.check_action("copy_image"):
         self.action_copy_image()
       return
 
     if key == "p":
-      if self._focus_target == "search":
-        self._search_input.insert_text("p")
-      elif self.check_action("copy_path"):
+      if self.check_action("copy_path"):
         self.action_copy_path()
       return
 
     if key == "s":
-      if self._focus_target == "search":
-        self._search_input.insert_text("s")
-      elif self.check_action("download"):
+      if self.check_action("download"):
         self.action_download()
       return
 
-    if key == "q":
-      if self._focus_target == "search":
-        self._search_input.insert_text("q")
-      elif self.view_mode == "gallery" and self._focus_target == "gallery":
-        pass
-      else:
-        self.action_quit()
+    if key == "escape":
       return
 
-    # Regular text input into search
-    if self._focus_target == "search":
-      self._search_input.insert_text(key)
+    if key in ("tab", "shift+tab"):
+      self.action_focus_search()
+      return
+
+  def _handle_key_detail(self, key: str) -> None:
+    if key in ("h", "left"):
+      self._move_detail(-1)
+      return
+
+    if key in ("l", "right"):
+      self._move_detail(1)
+      return
+
+    if key == "up":
+      self.action_focus_search()
+      return
+
+    if key in ("escape", "o", "enter"):
+      self.action_toggle_view()
+      return
+
+    if key == "/":
+      self.action_focus_search()
+      return
+
+    if key == "y":
+      if self.check_action("copy_image"):
+        self.action_copy_image()
+      return
+
+    if key == "p":
+      if self.check_action("copy_path"):
+        self.action_copy_path()
+      return
+
+    if key == "s":
+      if self.check_action("download"):
+        self.action_download()
+      return
+
+    if key in ("tab", "shift+tab"):
+      self.action_focus_search()
+      return
 
   # ── Terminal Rendering ───────────────────────────────────────────────
 
@@ -1043,18 +1086,38 @@ class RclipApp:
       self._last_rendered_generation = self._search_generation
 
     # Search Bar (rows 1-3)
+    is_search_focused = self._focus_target == "search"
+    s_border = f"{FG_CYAN}{BOLD}" if is_search_focused else f"{FG_BRIGHT_BLACK}"
+
     buf.write(cursor_to(1, 1))
     st = f" [{self.search_status}]" if self.search_status else ""
     title_str = f" rclip search{st} "
     border_len = max(0, w - len(title_str) - 2)
-    buf.write(f"╭─{BOLD}{title_str}{RESET}{'─' * border_len}╮")
+    buf.write(f"{s_border}╭─{RESET}{BOLD}{title_str}{RESET}{s_border}{'─' * border_len}╮{RESET}")
 
     buf.write(cursor_to(2, 1))
     display_q = self.search_text
-    buf.write(f"│ {display_q}{' ' * max(0, w - len(display_q) - 4)} │")
+    inner_width = max(0, w - 4)
+    if is_search_focused:
+      if self._search_input._has_selection and display_q:
+        rendered_text = f"\x1b[7m{display_q}\x1b[27m"
+        text_len = len(display_q)
+      else:
+        cpos = max(0, min(len(display_q), self._search_input.cursor_position))
+        before = display_q[:cpos]
+        cursor_char = display_q[cpos] if cpos < len(display_q) else " "
+        after = display_q[cpos + 1 :] if cpos < len(display_q) else ""
+        rendered_text = f"{before}\x1b[7m{cursor_char}\x1b[27m{after}"
+        text_len = len(display_q) if cpos < len(display_q) else len(display_q) + 1
+    else:
+      rendered_text = display_q
+      text_len = len(display_q)
+
+    pad_spaces = " " * max(0, inner_width - text_len)
+    buf.write(f"{s_border}│{RESET} {rendered_text}{pad_spaces} {s_border}│{RESET}")
 
     buf.write(cursor_to(3, 1))
-    buf.write(f"╰{'─' * max(0, w - 2)}╯")
+    buf.write(f"{s_border}╰{'─' * max(0, w - 2)}╯{RESET}")
 
     # Body (rows 4 to h - 2)
     if self.view_mode == "gallery":
