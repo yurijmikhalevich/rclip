@@ -28,7 +28,7 @@ from rclip.tui.media import StableTGPImage
 from rclip.tui.media import _TGPRenderable as TGPRenderable
 from rclip.tui.media import prepare_image
 from rclip.tui.media import prewarm_image
-from rclip.tui.terminal import CellSize, _parse_kitty_u
+from rclip.tui.terminal import CellSize, _parse_escape_seq, _parse_kitty_u, read_key
 from rclip.tui.transfer import TransferError
 from rclip.tui.transfer import _probe_kitty
 from rclip.tui.transfer import _run_kitten
@@ -2142,6 +2142,61 @@ def test_kitty_keyboard_protocol_parser() -> None:
   assert _parse_kitty_u("[32u") == " "
 
 
+def test_escape_sequence_parser() -> None:
+  # Standard CSI arrows
+  assert _parse_escape_seq("[A") == "up"
+  assert _parse_escape_seq("[B") == "down"
+  assert _parse_escape_seq("[C") == "right"
+  assert _parse_escape_seq("[D") == "left"
+
+  # Kitty and xterm modified arrows with modifier 1 (plain / unmodified)
+  assert _parse_escape_seq("[1;1A") == "up"
+  assert _parse_escape_seq("[1;1B") == "down"
+  assert _parse_escape_seq("[1;1C") == "right"
+  assert _parse_escape_seq("[1;1D") == "left"
+
+  # Kitty event types: :1 press, :2 repeat, :3 release
+  assert _parse_escape_seq("[1;1:1A") == "up"
+  assert _parse_escape_seq("[1;1:2B") == "down"
+  assert _parse_escape_seq("[1;1:3C") is None
+  assert _parse_escape_seq("[1;1:3D") is None
+
+  # Arrow keys with Ctrl modifier (5)
+  assert _parse_escape_seq("[1;5A") == "ctrl+up"
+  assert _parse_escape_seq("[1;5B") == "ctrl+down"
+  assert _parse_escape_seq("[1;5C") == "ctrl+right"
+  assert _parse_escape_seq("[1;5D") == "ctrl+left"
+
+  # Arrow keys with Shift modifier (2)
+  assert _parse_escape_seq("[1;2A") == "shift+up"
+  assert _parse_escape_seq("[1;2C") == "shift+right"
+
+  # SS3 cursor keys (application mode)
+  assert _parse_escape_seq("OA") == "up"
+  assert _parse_escape_seq("OB") == "down"
+  assert _parse_escape_seq("OC") == "right"
+  assert _parse_escape_seq("OD") == "left"
+  assert _parse_escape_seq("OH") == "home"
+  assert _parse_escape_seq("OF") == "end"
+
+  # Home / End
+  assert _parse_escape_seq("[H") == "home"
+  assert _parse_escape_seq("[F") == "end"
+  assert _parse_escape_seq("[1;1H") == "home"
+  assert _parse_escape_seq("[1;1F") == "end"
+  assert _parse_escape_seq("[1;5H") == "ctrl+home"
+  assert _parse_escape_seq("[1;5F") == "ctrl+end"
+
+  # VT sequences: delete, page_up, page_down
+  assert _parse_escape_seq("[3~") == "delete"
+  assert _parse_escape_seq("[3;1~") == "delete"
+  assert _parse_escape_seq("[3;5~") == "ctrl+delete"
+  assert _parse_escape_seq("[3;1:3~") is None
+  assert _parse_escape_seq("[5~") == "page_up"
+  assert _parse_escape_seq("[6~") == "page_down"
+  assert _parse_escape_seq("[Z") == "shift+tab"
+
+
 def test_search_input_editing_and_cursor_keys() -> None:
   inp = Input()
   inp.value = "hello"
@@ -2218,6 +2273,16 @@ def test_tui_focus_transitions_match_textual(tmp_path: Path) -> None:
       # 5. Enter opens Detail view
       await pilot.press("enter")
       assert detail.display and app.focused is detail
+      assert app.selected_index == 0
+      assert detail.filepath == paths[0]
+
+      # Left / Right navigation in Detail view
+      await pilot.press("right")
+      assert app.selected_index == 1
+      assert detail.filepath == paths[1]
+      await pilot.press("left")
+      assert app.selected_index == 0
+      assert detail.filepath == paths[0]
 
       # 6. Up from detail view focuses Search
       await pilot.press("up")
@@ -2230,6 +2295,14 @@ def test_tui_focus_transitions_match_textual(tmp_path: Path) -> None:
       # 8. Escape from detail view toggles back to Gallery
       await pilot.press("escape")
       assert not detail.display and isinstance(app.focused, ImageCard)
+
+      # Left / Right navigation in Gallery view
+      await pilot.press("right")
+      assert app.selected_index == 1
+      assert isinstance(app.focused, ImageCard)
+      await pilot.press("left")
+      assert app.selected_index == 0
+      assert isinstance(app.focused, ImageCard)
 
       # 9. Slash '/' focuses Search
       await pilot.press("/")
@@ -2249,3 +2322,43 @@ def test_tui_focus_transitions_match_textual(tmp_path: Path) -> None:
       assert search.value == ""
 
   asyncio.run(run())
+
+
+def test_read_key_pty() -> None:
+  import pty
+  import select
+  import tty
+
+  master, slave = pty.openpty()
+  try:
+    tty.setraw(slave)
+    with open(slave, "r", encoding="utf-8") as in_stream:
+      cases = [
+        (b"\x1b[1;1A", "up"),
+        (b"\x1b[1;1B", "down"),
+        (b"\x1b[1;1C", "right"),
+        (b"\x1b[1;1D", "left"),
+        (b"\x1bOA", "up"),
+        (b"\x1bOB", "down"),
+        (b"\x1bOC", "right"),
+        (b"\x1bOD", "left"),
+        (b"\x1b[1;5A", "ctrl+up"),
+        (b"\x1b[3~", "delete"),
+        (b"\x1b", "escape"),
+        (b"\r", "enter"),
+        (b"\t", "tab"),
+        ("привет".encode("utf-8"), "п"),
+      ]
+      for inp, expected in cases:
+        os.write(master, inp)
+        res = read_key(in_stream)
+        assert res == expected
+        # Drain any remainder
+        while True:
+          r, _, _ = select.select([slave], [], [], 0.001)
+          if not r:
+            break
+          os.read(slave, 1024)
+  finally:
+    os.close(master)
+

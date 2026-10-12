@@ -935,10 +935,18 @@ class RclipApp:
       return
 
     if key == "left":
+      if not self.search_text:
+        self.action_move_down_or_focus()
+        self.action_move_left()
+        return
       self._search_input.cursor_left()
       return
 
     if key == "right":
+      if not self.search_text:
+        self.action_move_down_or_focus()
+        self.action_move_right()
+        return
       self._search_input.cursor_right()
       return
 
@@ -1149,6 +1157,12 @@ class RclipApp:
     self.scroll_row = geo.ensure_visible(self.selected_index, self.scroll_row)
     cards = geo.get_visible_cards(self.scroll_row, self.results)
 
+    visible_paths = {card.result.filepath for card in cards}
+    for path, (kid, pid) in list(self._active_placements.items()):
+      if path not in visible_paths:
+        delete_placement(kid, pid)
+        del self._active_placements[path]
+
     for card in cards:
       is_sel = card.index == self.selected_index
       b_color = f"{FG_CYAN}{BOLD}" if is_sel else f"{FG_BRIGHT_BLACK}"
@@ -1177,6 +1191,9 @@ class RclipApp:
           transmitted = _IMAGE_CACHE.acquire(
             key, img_obj, decoded, lambda kid: _transmit_image(kid, img_obj, (pw, ph))
           )
+          if card.result.filepath in self._active_placements:
+            old_kid, old_pid = self._active_placements[card.result.filepath]
+            delete_placement(old_kid, old_pid)
           p_id = next_placement_id()
           self._active_placements[card.result.filepath] = (transmitted.kitty_id, p_id)
           create_placement(transmitted.kitty_id, p_id, cols, rows)
@@ -1219,6 +1236,11 @@ class RclipApp:
   def _render_detail(self, width: int, height: int) -> str:
     buf = StringIO()
     geo = DetailGeometry(avail_x=1, avail_y=4, avail_w=width, avail_h=height)
+
+    # Clean up previous detail placements so images do not linger
+    for kid, pid in self._active_detail_placements.values():
+      delete_placement(kid, pid)
+    self._active_detail_placements.clear()
 
     # Main Detail Frame Border
     f_color = f"{FG_BRIGHT_BLACK}"
@@ -1295,6 +1317,7 @@ class RclipApp:
             key, t_img, decoded, lambda kid: _transmit_image(kid, t_img, (pw, ph))
           )
           p_id = next_placement_id()
+          self._active_detail_placements[f"thumb_{thumb.offset}"] = (transmitted.kitty_id, p_id)
           create_placement(transmitted.kitty_id, p_id, cols, rows)
           _IMAGE_CACHE.release(transmitted)
 

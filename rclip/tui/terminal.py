@@ -255,22 +255,116 @@ def _parse_kitty_u(seq: str) -> str | None:
     return None
 
 
+def _parse_escape_seq(seq: str) -> str | None:
+  """Parse any ANSI CSI, SS3, or Kitty keyboard protocol sequence."""
+  # SS3 sequences: OA (up), OB (down), OC (right), OD (left), OH (home), OF (end)
+  if seq.startswith("O"):
+    ss3_map = {"A": "up", "B": "down", "C": "right", "D": "left", "H": "home", "F": "end"}
+    return ss3_map.get(seq[1:])
+
+  if not seq.startswith("["):
+    return None
+
+  # Kitty keyboard protocol: \x1b[...u
+  if seq.endswith("u"):
+    return _parse_kitty_u(seq)
+
+  # CSI sequences ending with A, B, C, D, H, F (arrows and home/end)
+  final = seq[-1]
+  if final in ("A", "B", "C", "D", "H", "F"):
+    dir_map = {"A": "up", "B": "down", "C": "right", "D": "left", "H": "home", "F": "end"}
+    base = dir_map[final]
+    param_str = seq[1:-1]
+    if not param_str:
+      return base
+
+    parts = param_str.split(";")
+    mods = 0
+    event_type = 1
+    if len(parts) > 1 and parts[1]:
+      mod_sub = parts[1].split(":")
+      if mod_sub[0].isdigit():
+        mods = max(0, int(mod_sub[0]) - 1)
+      if len(mod_sub) > 1 and mod_sub[1].isdigit():
+        event_type = int(mod_sub[1])
+    elif len(parts) == 1 and ":" in parts[0]:
+      sub = parts[0].split(":")
+      if len(sub) > 1 and sub[1].isdigit():
+        event_type = int(sub[1])
+
+    # event_type: 3 = release
+    if event_type == 3:
+      return None
+
+    is_ctrl = bool(mods & 4)
+    is_shift = bool(mods & 1)
+    if is_ctrl:
+      return f"ctrl+{base}"
+    if is_shift:
+      return f"shift+{base}"
+    return base
+
+  # CSI sequences ending with ~ (VT keys: delete, page_up, page_down, etc.)
+  if seq.endswith("~"):
+    body = seq[1:-1]
+    parts = body.split(";")
+    vt_code = parts[0]
+    mods = 0
+    event_type = 1
+    if len(parts) > 1 and parts[1]:
+      mod_sub = parts[1].split(":")
+      if mod_sub[0].isdigit():
+        mods = max(0, int(mod_sub[0]) - 1)
+      if len(mod_sub) > 1 and mod_sub[1].isdigit():
+        event_type = int(mod_sub[1])
+    elif ":" in vt_code:
+      sub = vt_code.split(":")
+      vt_code = sub[0]
+      if len(sub) > 1 and sub[1].isdigit():
+        event_type = int(sub[1])
+
+    if event_type == 3:
+      return None
+
+    is_ctrl = bool(mods & 4)
+    vt_map = {
+      "1": "home",
+      "2": "insert",
+      "3": "delete",
+      "4": "end",
+      "5": "page_up",
+      "6": "page_down",
+      "7": "home",
+      "8": "end",
+    }
+    base = vt_map.get(vt_code)
+    if base and is_ctrl:
+      return f"ctrl+{base}"
+    return base
+
+  if seq == "[Z":
+    return "shift+tab"
+
+  return None
+
+
 def read_key(in_stream: TextIO = sys.stdin, timeout: float = 0.05) -> str | None:
   """Read a single key or ANSI key sequence from raw stdin with timeout."""
   if not in_stream.isatty():
     return None
 
   try:
+    fd = in_stream.fileno()
     while True:
-      rlist, _, _ = select.select([in_stream], [], [], timeout)
+      rlist, _, _ = select.select([fd], [], [], timeout)
       if not rlist:
         return None
 
-      first = in_stream.read(1)
-      if not first:
+      raw = os.read(fd, 1)
+      if not raw:
         return None
 
-      code = ord(first)
+      code = raw[0]
       if code in _CTRL_MAP:
         return _CTRL_MAP[code]
       if code in (10, 13):
@@ -280,84 +374,57 @@ def read_key(in_stream: TextIO = sys.stdin, timeout: float = 0.05) -> str | None
       if code == 9:
         return "tab"
 
-      if first != ESC:
-        return first
+      if code != 27:  # Not ESC
+        needed = 0
+        if (code & 0xE0) == 0xC0:
+          needed = 1
+        elif (code & 0xF0) == 0xE0:
+          needed = 2
+        elif (code & 0xF8) == 0xF0:
+          needed = 3
 
-      # Read remaining escape sequence with a short timeout
+        if needed == 0:
+          return raw.decode("latin1")
+
+        buf = bytearray(raw)
+        while needed > 0:
+          r, _, _ = select.select([fd], [], [], 0.02)
+          if not r:
+            break
+          nxt = os.read(fd, 1)
+          if not nxt:
+            break
+          buf.extend(nxt)
+          needed -= 1
+        return buf.decode("utf-8", errors="ignore")
+
+      # Read remaining escape sequence with a short timeout directly from fd
       seq = ""
       while True:
-        rlist, _, _ = select.select([in_stream], [], [], 0.02)
+        rlist, _, _ = select.select([fd], [], [], 0.02)
         if not rlist:
           break
-        char = in_stream.read(1)
-        if not char:
+        nxt = os.read(fd, 1)
+        if not nxt:
           break
+        char = chr(nxt[0])
         seq += char
-        if char.isalpha() or char == "~":
+        if seq == "O":
+          # SS3 prefix: need to read the next character (e.g. 'A')
+          continue
+        if char.isalpha() or char in ("~", "@"):
           break
 
       if not seq:
         return "escape"
 
-      # Kitty keyboard protocol sequences: \x1b[...u
-      if seq.startswith("[") and seq.endswith("u"):
-        parsed = _parse_kitty_u(seq)
-        if parsed is not None:
-          return parsed
-        # If release event was filtered out, immediately check if next event is queued
+      parsed = _parse_escape_seq(seq)
+      if parsed is not None:
+        return parsed
+      # Discard release events (e.g. event_type: 3) and check next queued event
+      if ":3" in seq or ";3" in seq:
         timeout = 0.005
         continue
-
-      # Standard ANSI sequences
-      if seq in ("[A", "OA"):
-        return "up"
-      if seq in ("[B", "OB"):
-        return "down"
-      if seq in ("[C", "OC"):
-        return "right"
-      if seq in ("[D", "OD"):
-        return "left"
-      if seq in ("[H", "[1~", "[7~"):
-        return "home"
-      if seq in ("[F", "[4~", "[8~"):
-        return "end"
-      if seq == "[5~":
-        return "page_up"
-      if seq == "[6~":
-        return "page_down"
-      if seq == "[3~":
-        return "delete"
-      if seq == "[2~":
-        return "insert"
-      if seq == "[Z":
-        return "shift+tab"
-
-      # Modified arrows (xterm style)
-      if seq.startswith("[1;"):
-        mod_char = seq[-1]
-        mod_num = seq[3:-1]
-        if mod_num == "5":  # Ctrl
-          if mod_char == "A":
-            return "ctrl+up"
-          if mod_char == "B":
-            return "ctrl+down"
-          if mod_char == "C":
-            return "ctrl+right"
-          if mod_char == "D":
-            return "ctrl+left"
-          if mod_char == "H":
-            return "ctrl+home"
-          if mod_char == "F":
-            return "ctrl+end"
-        elif mod_num == "2":  # Shift
-          if mod_char == "A":
-            return "shift+up"
-          if mod_char == "B":
-            return "shift+down"
-          if mod_char == "C":
-            return "shift+right"
-          if mod_char == "D":
-            return "shift+left"
 
       return "escape"
   except (OSError, select.error):
