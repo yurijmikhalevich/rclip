@@ -147,6 +147,9 @@ def test_formula_renders_patchelf_for_linux_wheels():
     macos_wheel_resource="",
   )
 
-  assert 'system "patchelf", "--set-rpath", "$ORIGIN:#{formula_opt_lib(\'zlib-ng-compat\')}", so' in formula
-  assert 'system "patchelf", "--set-rpath", "$ORIGIN/../pillow.libs:#{formula_opt_lib(\'zlib-ng-compat\')}", so' in formula
+  assert 'system "patchelf", "--set-rpath", "$ORIGIN:#{formula_opt_lib(\\"zlib-ng-compat\\")}", so' in formula
+  assert (
+    'system "patchelf", "--set-rpath", "$ORIGIN/../pillow.libs:#{formula_opt_lib(\\"zlib-ng-compat\\")}", so'
+    in formula
+  )
 

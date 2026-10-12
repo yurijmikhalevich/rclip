@@ -151,23 +151,23 @@ WHEEL_PACKAGES: list[WheelPackage] = [
     "name": "numpy",
     "tag": TARGET_PYTHON_TAG,
     "patchelf": {
-      "numpy.libs/*.so*": "$ORIGIN:#{formula_opt_lib('zlib-ng-compat')}",
+      "numpy.libs/*.so*": '$ORIGIN:#{formula_opt_lib("zlib-ng-compat")}',
     },
   },
   {
     "name": "pillow",
     "tag": TARGET_PYTHON_TAG,
     "patchelf": {
-      "PIL/*.so": "$ORIGIN/../pillow.libs:#{formula_opt_lib('zlib-ng-compat')}",
-      "pillow.libs/*.so*": "$ORIGIN:#{formula_opt_lib('zlib-ng-compat')}",
+      "PIL/*.so": '$ORIGIN/../pillow.libs:#{formula_opt_lib("zlib-ng-compat")}',
+      "pillow.libs/*.so*": '$ORIGIN:#{formula_opt_lib("zlib-ng-compat")}',
     },
   },
   {
     "name": "rawpy",
     "tag": TARGET_PYTHON_TAG,
     "patchelf": {
-      "rawpy/_rawpy*.so": "$ORIGIN/../rawpy.libs:#{formula_opt_lib('zlib-ng-compat')}",
-      "rawpy.libs/*.so*": "$ORIGIN:#{formula_opt_lib('zlib-ng-compat')}",
+      "rawpy/_rawpy*.so": '$ORIGIN/../rawpy.libs:#{formula_opt_lib("zlib-ng-compat")}',
+      "rawpy.libs/*.so*": '$ORIGIN:#{formula_opt_lib("zlib-ng-compat")}',
     },
   },
   {"name": "hf-xet", "tag": "abi3"},
