@@ -422,8 +422,7 @@ class RclipApp(App[None], inherit_bindings=False):
     grid = self.query_one(ResultsGrid)
     grid.display = self._detail.display
     self._detail.display = not grid.display
-    # Re-place every image. Discarding the renderables first releases the hidden view's images, so
-    # the view that becomes visible can reuse them at its own size.
+    # Re-place every image when toggling views.
     for image in self.query(ImageWidget):
       image.refresh_image()
     self._update_selection()

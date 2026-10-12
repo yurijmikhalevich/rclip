@@ -297,7 +297,7 @@ def test_kitty_image_reuses_transmitted_data_in_a_new_renderable(
   assert f"\x1b_Ga=p,i={image_id}," in output.getvalue()
 
 
-def test_kitty_image_reuses_a_larger_image_for_a_smaller_placement(
+def test_kitty_image_does_not_reuse_data_for_a_different_box_size(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
   output = StringIO()
@@ -318,7 +318,56 @@ def test_kitty_image_reuses_a_larger_image_for_a_smaller_placement(
   small = StableTGPImage._Renderable(prepared, 4, 3)
   list(console.render(small))
 
-  assert small.terminal_image_id == image_id
+  assert small.terminal_image_id is not None and small.terminal_image_id != image_id
+  assert tgp_payload_bytes(output.getvalue()) > 0
+
+
+def test_kitty_image_does_not_reuse_between_centered_and_uncentered(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
+  console = Console(file=StringIO(), width=20)
+  prepared = prepare_image(str(make_image(tmp_path / "image.jpg")), (80, 60))
+
+  uncentered = StableTGPImage._Renderable(prepared, 4, 3)
+  list(console.render(uncentered))
+  uncentered_id = uncentered.terminal_image_id
+  assert uncentered_id is not None
+  uncentered.cleanup()
+
+  output.seek(0)
+  output.truncate()
+  centered = CenteredTGPImage._Renderable(prepared, 4, 3)
+  list(console.render(centered))
+
+  assert centered.terminal_image_id is not None and centered.terminal_image_id != uncentered_id
+  assert tgp_payload_bytes(output.getvalue()) > 0
+
+
+def test_kitty_image_caches_by_filepath_string_and_path(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
+  console = Console(file=StringIO(), width=20)
+  image_path = make_image(tmp_path / "image.jpg")
+
+  first = StableTGPImage._Renderable(str(image_path), 4, 3)
+  list(console.render(first))
+  image_id = first.terminal_image_id
+  assert image_id is not None
+  assert tgp_payload_bytes(output.getvalue()) > 0
+  first.cleanup()
+
+  output.seek(0)
+  output.truncate()
+  second = StableTGPImage._Renderable(image_path, 4, 3)
+  list(console.render(second))
+
+  assert second.terminal_image_id == image_id
   assert tgp_payload_bytes(output.getvalue()) == 0
 
 

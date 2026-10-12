@@ -2,6 +2,7 @@ from base64 import b64encode
 from collections import OrderedDict
 from io import BytesIO
 from itertools import count
+from pathlib import Path
 from typing import IO, Callable
 
 from PIL import Image as PILImage
@@ -52,27 +53,25 @@ def prepare_image(filepath: str, size: tuple[int, int]) -> BytesIO:
   return prepared
 
 
+def _extract_source(image: object) -> str | int:
+  if isinstance(image, (str, Path)):
+    return str(image)
+  source_path = getattr(image, "source_path", None)
+  if isinstance(source_path, (str, Path)):
+    return str(source_path)
+  return id(image)
+
+
 class _TransmittedImage:
-  """One copy of an image that lives in the terminal, reusable by later placements.
+  """One copy of an image that lives in the terminal, reusable by later placements."""
 
-  `box` is the size in cells the image was placed with. Kitty draws Unicode placeholder cells from
-  the first placement of an image id, so an image may only be shared by renderables that place it in
-  the same box. `size` is the pixel size of the transmitted data, which may be larger than what the
-  current box needs: Kitty scales it down.
-  """
-
-  def __init__(self, key: object, source: object, kitty_id: int, box: tuple[int, int], size: tuple[int, int]) -> None:
+  def __init__(self, key: object, source: object | None, kitty_id: int, decoded: int) -> None:
     self.key = key
-    # The source is kept alive so that identity-based keys stay valid for the lifetime of the image.
+    # Identity-based sources are kept alive so their id() stays valid for the lifetime of the image.
     self.source = source
     self.kitty_id = kitty_id
-    self.box = box
-    self.size = size
-    self.decoded = size[0] * size[1] * 4
+    self.decoded = decoded
     self.refs = 0
-
-  def fits(self, size: tuple[int, int]) -> bool:
-    return self.size[0] >= size[0] and self.size[1] >= size[1]
 
 
 class _ImageCache:
@@ -80,14 +79,13 @@ class _ImageCache:
 
   Kitty keeps an image's data until it is deleted or the per-buffer quota silently evicts the oldest
   image. Deleting only the placement (`d=i`) leaves the data in place, so showing the same image
-  again needs a placement but no transmission. Images are keyed by their source and prepared size, so
-  a preview and a detail view of one file never share data prepared for the other. Kitty renders
-  Unicode placeholder cells from the first placement of an image id, so renderables sharing an image
-  must agree on their placement size.
+  again needs a placement but no transmission. Images are keyed by renderable type, source,
+  prepared size, and cell box, so previews, detail views, and differently-padded or sized widgets
+  never share or distort each other's data.
   """
 
   def __init__(self, budget: int = _TGP_DECODED_BUDGET) -> None:
-    self._by_key: dict[object, list[_TransmittedImage]] = {}
+    self._by_key: dict[object, _TransmittedImage] = {}
     self._lru: OrderedDict[_TransmittedImage, None] = OrderedDict()
     self._decoded = 0
     self._budget = budget
@@ -95,25 +93,16 @@ class _ImageCache:
   def acquire(
     self,
     key: object,
-    source: object,
-    box: tuple[int, int],
-    size: tuple[int, int],
+    source: object | None,
+    decoded: int,
     transmit: Callable[[int], None],
   ) -> _TransmittedImage:
-    images = self._by_key.setdefault(key, [])
-    for image in images:
-      # A matching box renders identically for every renderable, so the data can be shared.
-      if image.box == box and image.fits(size):
-        return self._use(image)
-    # An unused image can be re-placed in any box its data is large enough for.
-    reusable = [image for image in images if not image.refs and image.fits(size)]
-    if reusable:
-      image = min(reusable, key=lambda image: image.size[0] * image.size[1])
-      image.box = box
+    image = self._by_key.get(key)
+    if image is not None:
       return self._use(image)
-    image = _TransmittedImage(key, source, next(TGPRenderable._image_id_counter), box, size)
+    image = _TransmittedImage(key, source, next(TGPRenderable._image_id_counter), decoded)
     transmit(image.kitty_id)
-    images.append(image)
+    self._by_key[key] = image
     self._decoded += image.decoded
     self._use(image)
     self._evict()
@@ -137,10 +126,7 @@ class _ImageCache:
         continue
       del self._lru[image]
       self._decoded -= image.decoded
-      images = self._by_key[image.key]
-      images.remove(image)
-      if not images:
-        del self._by_key[image.key]
+      del self._by_key[image.key]
       _send_tgp_message(a="d", d="I", i=image.kitty_id, q=2)
 
 
@@ -169,12 +155,8 @@ class _TGPRenderable(TGPRenderable):
     height: int | str | None = None,
   ) -> None:
     super().__init__(image, width, height)
-    self._source = image
-    # The prepared size is part of the identity: the same file prepared for a preview and for the
-    # detail view is different data, so their transmissions are kept apart.
-    source = getattr(image, "source_path", None) or id(image)
-    self._key = (source, self._image_data.width, self._image_data.height)
-    self._box = (0, 0)
+    self._source_id = _extract_source(image)
+    self._source_obj = image if not isinstance(self._source_id, str) else None
     self._size = (0, 0)
     self._transmitted: _TransmittedImage | None = None
     self._placement_id = next(_TGPRenderable._placement_ids)
@@ -184,8 +166,10 @@ class _TGPRenderable(TGPRenderable):
     self._size = (width, height)
 
   def _create_virtual_placement(self, width: int, height: int) -> None:
-    self._box = (width, height)
-    self._transmitted = _IMAGE_CACHE.acquire(self._key, self._source, self._box, self._size, self._transmit)
+    box = (width, height)
+    key = (type(self), self._source_id, self._image_data.width, self._image_data.height, box)
+    decoded = self._size[0] * self._size[1] * 4
+    self._transmitted = _IMAGE_CACHE.acquire(key, self._source_obj, decoded, self._transmit)
     self.terminal_image_id = self._transmitted.kitty_id
     _send_tgp_message(a="p", i=self.terminal_image_id, p=self._placement_id, c=width, r=height, U=1, q=2)
 
