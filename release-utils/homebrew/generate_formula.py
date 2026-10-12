@@ -30,8 +30,8 @@ TEMPLATE = env.from_string("""class Rclip < Formula
   license "MIT"
 
   if OS.linux?
-    depends_on "patchelf" => :build # for rawpy
-    depends_on "zlib-ng-compat" # rawpy bundled libs link against libz
+    depends_on "patchelf" => :build
+    depends_on "zlib-ng-compat" # bundled Linux wheels link against libz
   end
   depends_on "pkgconf" => :build
   # Homebrew CI builds uv_build's maturin dependency from source.
@@ -147,14 +147,27 @@ class WheelPackage(_WheelPackageRequired, total=False):
 
 # These deps are installed from platform-specific wheels (excluded from virtualenv resources)
 WHEEL_PACKAGES: list[WheelPackage] = [
-  {"name": "numpy", "tag": TARGET_PYTHON_TAG},
-  {"name": "pillow", "tag": TARGET_PYTHON_TAG},
+  {
+    "name": "numpy",
+    "tag": TARGET_PYTHON_TAG,
+    "patchelf": {
+      "numpy.libs/*.so*": '$ORIGIN:#{formula_opt_lib("zlib-ng-compat")}',
+    },
+  },
+  {
+    "name": "pillow",
+    "tag": TARGET_PYTHON_TAG,
+    "patchelf": {
+      "PIL/*.so": '$ORIGIN/../pillow.libs:#{formula_opt_lib("zlib-ng-compat")}',
+      "pillow.libs/*.so*": '$ORIGIN:#{formula_opt_lib("zlib-ng-compat")}',
+    },
+  },
   {
     "name": "rawpy",
     "tag": TARGET_PYTHON_TAG,
     "patchelf": {
-      "rawpy/_rawpy*.so": "$ORIGIN/../rawpy.libs",
-      "rawpy.libs/*.so*": "$ORIGIN",
+      "rawpy/_rawpy*.so": '$ORIGIN/../rawpy.libs:#{formula_opt_lib("zlib-ng-compat")}',
+      "rawpy.libs/*.so*": '$ORIGIN:#{formula_opt_lib("zlib-ng-compat")}',
     },
   },
   {"name": "hf-xet", "tag": "abi3"},
