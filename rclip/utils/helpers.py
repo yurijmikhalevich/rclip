@@ -323,6 +323,18 @@ def init_arg_parser() -> argparse.ArgumentParser:
     help="outputs only filepaths",
   )
   parser.add_argument(
+    "--force-interactive",
+    action="store_true",
+    default=False,
+    help="forces interactive mode even if the terminal is not recognized as supporting Kitty graphics",
+  )
+  parser.add_argument(
+    "--force-preview",
+    action="store_true",
+    default=False,
+    help="forces image previews even if the terminal is not recognized as supporting Kitty graphics",
+  )
+  parser.add_argument(
     "--preview-height",
     "-H",
     metavar="PREVIEW_HEIGHT_PX",

@@ -19,7 +19,7 @@ from rclip.const import IMAGE_EXT, IMAGE_RAW_EXT
 from rclip.utils.preprocess import preprocess
 from rclip.utils.preview import preview
 from rclip.utils.snap import check_snap_permissions, is_snap, get_snap_permission_error
-from rclip.utils import helpers
+from rclip.utils import helpers, terminal
 
 
 class ImageMeta(TypedDict):
@@ -440,6 +440,22 @@ def print_results(result: List[RClip.SearchResult], args: helpers.argparse.Names
 def main():
   arg_parser = helpers.init_arg_parser()
   args = arg_parser.parse_args()
+  if args.force_interactive:
+    args.interactive = True
+  if args.force_preview:
+    args.preview = True
+
+  if args.force_interactive and args.preview and not args.force_preview:
+    arg_parser.error("--force-interactive cannot be used with --preview")
+  if args.force_preview and args.interactive and not args.force_interactive:
+    arg_parser.error("--force-preview cannot be used with --interactive")
+  if args.force_interactive and args.force_preview:
+    arg_parser.error("--force-interactive and --force-preview cannot be used together")
+  if args.force_interactive and args.filepath_only:
+    arg_parser.error("--force-interactive cannot be used with --filepath-only")
+  if args.force_preview and args.filepath_only:
+    arg_parser.error("--force-preview cannot be used with --filepath-only")
+
   if args.query is None and not args.interactive:
     arg_parser.error("query is required unless --interactive is used")
   if args.interactive and args.query is not None:
@@ -449,6 +465,11 @@ def main():
   if args.interactive and args.top and args.top > 100:
     arg_parser.error("--top cannot exceed 100 with --interactive")
   top_k = args.top or (100 if args.interactive else 10)
+
+  if args.interactive and not args.force_interactive:
+    terminal.check_interactive_terminal_or_exit()
+  if args.preview and not args.force_preview:
+    terminal.check_preview_terminal_or_exit()
 
   current_directory = os.getcwd()
   if is_snap():

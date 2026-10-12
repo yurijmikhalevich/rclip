@@ -129,6 +129,7 @@ def test_interactive_main_allows_database_use_from_search_worker(monkeypatch: py
 
   monkeypatch.setattr(sys, "argv", ["rclip", "--interactive"])
   monkeypatch.setattr(main_module, "is_snap", lambda: False)
+  monkeypatch.setattr(main_module.terminal, "check_interactive_terminal_or_exit", lambda: None)
   monkeypatch.setattr(main_module, "init_rclip", fake_init_rclip)
   monkeypatch.setattr("rclip.tui.run_tui", lambda *args: tui_arguments.extend(args))
 
