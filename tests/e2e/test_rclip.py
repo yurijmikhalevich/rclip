@@ -162,9 +162,23 @@ def test_interactive_starts_and_exits_cleanly(
   monkeypatch.setenv("TEXTUAL_PRESS", "ctrl+c")
   command = ["rclip"] if os.getenv("RCLIP_TEST_RUN_SYSTEM_RCLIP") else [sys.executable, "-m", "rclip"]
 
-  completed_run = subprocess.run([*command, "--interactive"], cwd=test_empty_dir, capture_output=True, timeout=300)
+  completed_run = subprocess.run(
+    [*command, "--force-interactive"], cwd=test_empty_dir, capture_output=True, timeout=300
+  )
 
   assert completed_run.returncode == 0, completed_run.stderr.decode(errors="replace")
+
+
+def test_interactive_rejects_unsupported_terminal_in_non_tty(
+  test_empty_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
+) -> None:
+  monkeypatch.setenv("RCLIP_MODEL_CACHE_DIR", shared_model_cache_dir)
+  command = ["rclip"] if os.getenv("RCLIP_TEST_RUN_SYSTEM_RCLIP") else [sys.executable, "-m", "rclip"]
+
+  completed_run = subprocess.run([*command, "--interactive"], cwd=test_empty_dir, capture_output=True, timeout=300)
+
+  assert completed_run.returncode == 1
+  assert "rclip:" in completed_run.stderr.decode(errors="replace")
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
