@@ -4,7 +4,7 @@ from collections import OrderedDict
 from io import BytesIO
 from itertools import count
 from pathlib import Path
-from threading import Lock
+from threading import Event, Lock
 from typing import IO, Callable
 
 from PIL import Image as PILImage
@@ -73,6 +73,8 @@ class _TransmittedImage:
     self.kitty_id = kitty_id
     self.decoded = decoded
     self.refs = 0
+    self.ready = Event()
+    self.error: BaseException | None = None
 
 
 class _ImageCache:
@@ -102,14 +104,35 @@ class _ImageCache:
     with self._lock:
       image = self._by_key.get(key)
       if image is not None:
-        return self._use(image)
-      image = _TransmittedImage(key, source, next(TGPRenderable._image_id_counter), decoded)
-      transmit(image.kitty_id)
-      self._by_key[key] = image
-      self._decoded += image.decoded
-      self._use(image)
-      self._evict()
-      return image
+        self._use(image)
+        should_transmit = False
+      else:
+        image = _TransmittedImage(key, source, next(TGPRenderable._image_id_counter), decoded)
+        self._by_key[key] = image
+        self._decoded += image.decoded
+        self._use(image)
+        self._evict()
+        should_transmit = True
+
+    if should_transmit:
+      try:
+        transmit(image.kitty_id)
+      except BaseException as error:
+        with self._lock:
+          self._by_key.pop(key, None)
+          self._lru.pop(image, None)
+          self._decoded -= image.decoded
+        image.error = error
+        image.ready.set()
+        raise
+      else:
+        image.ready.set()
+    else:
+      image.ready.wait()
+      if image.error is not None:
+        raise image.error
+
+    return image
 
   def release(self, image: _TransmittedImage) -> None:
     with self._lock:
