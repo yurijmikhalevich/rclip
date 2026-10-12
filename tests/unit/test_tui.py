@@ -398,6 +398,7 @@ def test_kitty_image_does_not_reuse_data_prepared_at_another_size(
 def test_kitty_image_cache_frees_evicted_data_in_the_terminal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
   # One 40x60 image decodes to 9,600 bytes: the budget holds one image but not two.
   monkeypatch.setattr(media_module, "_IMAGE_CACHE", media_module._ImageCache(budget=10_000))
   console = Console(file=StringIO(), width=20)
