@@ -133,3 +133,20 @@ def test_formula_checks_dependencies_after_wheel_installation():
   check = 'system "python3.13", "-m", "pip", "--python=#{libexec}/bin/python", "check"'
   assert formula.rindex('"install", "--no-deps", valid_wheel') < formula.index(check)
   assert formula.index(check) < formula.index('"rclip._compliance", "collect"')
+
+
+def test_formula_renders_patchelf_for_linux_wheels():
+  formula = generate_formula.TEMPLATE.render(
+    package={"url": "https://example.test/rclip.tar.gz", "checksum": "sha256"},
+    resources="",
+    target_python_version=generate_formula.TARGET_PYTHON_VERSION,
+    wheel_resources="",
+    wheel_names="numpy pillow rawpy",
+    wheel_packages=generate_formula.WHEEL_PACKAGES,
+    include_macos_wheel_resource=False,
+    macos_wheel_resource="",
+  )
+
+  assert 'system "patchelf", "--set-rpath", "$ORIGIN:#{formula_opt_lib(\'zlib-ng-compat\')}", so' in formula
+  assert 'system "patchelf", "--set-rpath", "$ORIGIN/../pillow.libs:#{formula_opt_lib(\'zlib-ng-compat\')}", so' in formula
+
