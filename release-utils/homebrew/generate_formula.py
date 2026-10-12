@@ -36,11 +36,8 @@ TEMPLATE = env.from_string("""class Rclip < Formula
   depends_on "pkgconf" => :build
   # Homebrew CI builds uv_build's maturin dependency from source.
   depends_on "rust" => :build
-  depends_on "certifi"
   depends_on "libraw"
   depends_on "libyaml"
-  depends_on "numpy"
-  depends_on "pillow"
   depends_on "python@{{ target_python_version }}"
 
 {{ resources }}
@@ -115,7 +112,7 @@ end
 
 
 # These deps are handled by Homebrew formulas (excluded from virtualenv resources)
-BREW_DEPS = ["numpy", "pillow", "certifi"]
+BREW_DEPS: list[str] = []
 
 
 class WheelInfo(TypedDict):
@@ -150,6 +147,8 @@ class WheelPackage(_WheelPackageRequired, total=False):
 
 # These deps are installed from platform-specific wheels (excluded from virtualenv resources)
 WHEEL_PACKAGES: list[WheelPackage] = [
+  {"name": "numpy", "tag": TARGET_PYTHON_TAG},
+  {"name": "pillow", "tag": TARGET_PYTHON_TAG},
   {
     "name": "rawpy",
     "tag": TARGET_PYTHON_TAG,
