@@ -33,6 +33,7 @@ from rclip.tui.app import run_tui
 from rclip.tui.media import CenteredTGPImage
 from rclip.tui.media import StableTGPImage
 from rclip.tui.media import prepare_image
+from rclip.tui.media import prewarm_image
 from rclip.tui.transfer import TransferError
 from rclip.tui.transfer import _run_kitten
 from rclip.tui.transfer import _probe_kitty
@@ -189,15 +190,15 @@ def test_tui_uses_the_terminal_palette(monkeypatch: pytest.MonkeyPatch, tmp_path
   assert RclipApp(FakeRclip([]), str(tmp_path)).theme == "ansi-light"
 
 
-def test_prepare_image_returns_a_small_jpeg_in_memory(tmp_path: Path) -> None:
+def test_prepare_image_returns_a_small_image_in_memory(tmp_path: Path) -> None:
   source = make_image(tmp_path / "source.jpg")
   prepared = prepare_image(str(source), (32, 32))
 
   assert list(tmp_path.iterdir()) == [source]
-  with Image.open(prepared) as preview:
-    assert preview.format == "JPEG"
-    assert preview.width <= 32
-    assert preview.height <= 32
+  assert isinstance(prepared, Image.Image)
+  assert prepared.width <= 32
+  assert prepared.height <= 32
+  assert prepared.mode == "RGB"
 
 
 def test_kitty_image_reuses_its_renderable_until_its_size_changes(
@@ -492,6 +493,40 @@ def test_kitty_image_renderable_placement_resize_releases_previous_cache_referen
   renderable.cleanup()
   assert renderable._transmitted is None
   assert all(image.refs == 0 for image in cache._by_key.values())
+
+
+def test_prewarm_image_populates_cache_and_render_avoids_retransmission(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
+  cache = media_module._ImageCache(budget=50_000)
+  monkeypatch.setattr(media_module, "_IMAGE_CACHE", cache)
+  console = Console(file=StringIO(), width=20)
+
+  prepared = prepare_image(str(make_image(tmp_path / "image.jpg")), (80, 60))
+  prewarm_image(StableTGPImage, prepared, 20, 20, styled_size=(4, 3))
+
+  assert tgp_payload_bytes(output.getvalue()) > 0
+  assert len(cache._by_key) == 1
+  key = next(iter(cache._by_key))
+  cached_image = cache._by_key[key]
+  assert cached_image.refs == 0
+  transmitted_id = cached_image.kitty_id
+
+  output.seek(0)
+  output.truncate()
+  renderable = StableTGPImage._Renderable(prepared, 4, 3)
+  list(console.render(renderable))
+  assert renderable.terminal_image_id == transmitted_id
+  assert renderable._transmitted is cached_image
+  assert cached_image.refs == 1
+  assert tgp_payload_bytes(output.getvalue()) == 0
+  assert f"\x1b_Ga=p,i={transmitted_id}," in output.getvalue()
+
+  renderable.cleanup()
+  assert cached_image.refs == 0
 
 
 def test_copy_image_keeps_common_formats_and_converts_others(
