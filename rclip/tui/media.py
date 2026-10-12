@@ -121,6 +121,7 @@ class _ImageCache:
 
   def release(self, image: _TransmittedImage) -> None:
     image.refs -= 1
+    self._evict()
 
   def _use(self, image: _TransmittedImage) -> _TransmittedImage:
     image.refs += 1

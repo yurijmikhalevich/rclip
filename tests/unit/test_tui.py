@@ -349,7 +349,8 @@ def test_kitty_image_does_not_reuse_data_prepared_at_another_size(
 def test_kitty_image_cache_frees_evicted_data_in_the_terminal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stdout__", output)
-  monkeypatch.setattr(media_module, "_IMAGE_CACHE", media_module._ImageCache(budget=0))
+  # One 40x60 image decodes to 9,600 bytes: the budget holds one image but not two.
+  monkeypatch.setattr(media_module, "_IMAGE_CACHE", media_module._ImageCache(budget=10_000))
   console = Console(file=StringIO(), width=20)
 
   first = StableTGPImage._Renderable(prepare_image(str(make_image(tmp_path / "first.jpg")), (80, 60)), 4, 3)
@@ -365,6 +366,29 @@ def test_kitty_image_cache_frees_evicted_data_in_the_terminal(tmp_path: Path, mo
 
   assert f"\x1b_Ga=d,d=I,i={first_id},q=2\x1b\\" in output.getvalue()
   assert second.terminal_image_id is not None and second.terminal_image_id != first_id
+
+
+def test_kitty_image_cache_evicts_when_a_reference_is_released(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
+  monkeypatch.setattr(media_module, "_IMAGE_CACHE", media_module._ImageCache(budget=1))
+  console = Console(file=StringIO(), width=20)
+
+  first = StableTGPImage._Renderable(prepare_image(str(make_image(tmp_path / "first.jpg")), (80, 60)), 4, 3)
+  list(console.render(first))
+  first_id = first.terminal_image_id
+  assert first_id is not None
+  second = StableTGPImage._Renderable(prepare_image(str(make_image(tmp_path / "second.jpg")), (80, 60)), 4, 3)
+  list(console.render(second))
+  # Both images are in use, so the budget cannot be met yet.
+  assert f"\x1b_Ga=d,d=I,i={first_id},q=2\x1b\\" not in output.getvalue()
+
+  output.seek(0)
+  output.truncate()
+  first.cleanup()
+
+  assert f"\x1b_Ga=d,d=I,i={first_id},q=2\x1b\\" in output.getvalue()
 
 
 def test_copy_image_keeps_common_formats_and_converts_others(
