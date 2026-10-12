@@ -422,7 +422,7 @@ class RclipApp(App[None], inherit_bindings=False):
     grid = self.query_one(ResultsGrid)
     grid.display = self._detail.display
     self._detail.display = not grid.display
-    # The terminal may have evicted images while the other view was active.
+    # Re-place every image when toggling views.
     for image in self.query(ImageWidget):
       image.refresh_image()
     self._update_selection()
