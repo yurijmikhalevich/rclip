@@ -299,5 +299,8 @@ def prewarm_image(
   renderable._size = (pixel_width, pixel_height)
   decoded = pixel_width * pixel_height * 4
 
-  transmitted = _IMAGE_CACHE.acquire(key, image, decoded, renderable._transmit)
+  try:
+    transmitted = _IMAGE_CACHE.acquire(key, image, decoded, renderable._transmit)
+  except Exception:
+    return
   _IMAGE_CACHE.release(transmitted)

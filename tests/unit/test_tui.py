@@ -529,6 +529,22 @@ def test_prewarm_image_populates_cache_and_render_avoids_retransmission(
   assert cached_image.refs == 0
 
 
+def test_prewarm_image_ignores_transmission_failure(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  prepared = prepare_image(str(make_image(tmp_path / "image.jpg")), (80, 60))
+  cache = media_module._ImageCache(budget=50_000)
+  monkeypatch.setattr(media_module, "_IMAGE_CACHE", cache)
+
+  def failing_acquire(*args: object, **kwargs: object) -> media_module._TransmittedImage:
+    raise RuntimeError("transmission error")
+
+  monkeypatch.setattr(cache, "acquire", failing_acquire)
+
+  # Should return normally without raising
+  prewarm_image(StableTGPImage, prepared, 20, 20, styled_size=(4, 3))
+
+
 def test_image_cache_transmit_runs_outside_lock() -> None:
   cache = media_module._ImageCache(budget=50_000)
   in_transmit = Event()
