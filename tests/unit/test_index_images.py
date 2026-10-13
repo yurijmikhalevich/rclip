@@ -24,13 +24,13 @@ def _get_stored_image(database: DB, filepath: str) -> "sqlite3.Row | None":
   return database._con.execute("SELECT * FROM images WHERE filepath = ?", (filepath,)).fetchone()
 
 
-def _fail_on_b(path: str) -> Image.Image:
+def _fail_on_b(path: str, **_kwargs) -> Image.Image:
   if path == "b.jpg":
     raise PIL.UnidentifiedImageError()
   return Image.new("RGB", (1, 1))
 
 
-def _too_large_on_b(path: str) -> Image.Image:
+def _too_large_on_b(path: str, **_kwargs) -> Image.Image:
   if path == "b.jpg":
     raise helpers.ImageTooLargeError(path, 200_000_000, 100_000_000)
   return Image.new("RGB", (1, 1))
@@ -282,7 +282,7 @@ def test_index_images_keeps_meta_aligned_when_an_image_fails_to_load(monkeypatch
 
 def test_rename_reuses_vector_without_recomputing(monkeypatch):
   monkeypatch.setattr(helpers, "_ensure_image_loading_configured", lambda: None)
-  monkeypatch.setattr(helpers, "read_image", lambda path: Image.new("RGB", (1, 1)))
+  monkeypatch.setattr(helpers, "read_image", lambda path, **_kwargs: Image.new("RGB", (1, 1)))
 
   with tempfile.TemporaryDirectory() as tmp_dir:
     database = DB(Path(tmp_dir) / "test.db")
@@ -325,7 +325,7 @@ def test_rename_reuses_vector_without_recomputing(monkeypatch):
 
 def test_same_hash_different_size_reindexes(monkeypatch):
   monkeypatch.setattr(helpers, "_ensure_image_loading_configured", lambda: None)
-  monkeypatch.setattr(helpers, "read_image", lambda path: Image.new("RGB", (1, 1)))
+  monkeypatch.setattr(helpers, "read_image", lambda path, **_kwargs: Image.new("RGB", (1, 1)))
 
   with tempfile.TemporaryDirectory() as tmp_dir:
     database = DB(Path(tmp_dir) / "test.db")

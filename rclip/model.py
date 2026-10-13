@@ -8,7 +8,7 @@ from PIL import Image, UnidentifiedImageError
 
 from rclip import model_download
 from rclip.utils import helpers
-from rclip.utils.preprocess import preprocess
+from rclip.utils.preprocess import IMAGE_SIZE, preprocess
 from rclip.utils.tokenizer import SimpleTokenizer
 
 logging.getLogger("coremltools").setLevel(logging.ERROR)
@@ -157,7 +157,7 @@ class Model:
         # memory cap doesn't apply; read them as trusted (bypassing the cap) and only fail on a
         # genuine out-of-memory while decoding.
         images = [helpers.download_image(url_path, trusted=True) for url_path in url_paths] + [
-          helpers.read_image(file_path, trusted=True) for file_path in file_paths
+          helpers.read_image(file_path, trusted=True, min_side=IMAGE_SIZE) for file_path in file_paths
         ]
         image_multipliers = np.array(url_multipliers + file_multipliers)
         image_features = np.add.reduce(self.compute_image_features(images) * image_multipliers.reshape(-1, 1))

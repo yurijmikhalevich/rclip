@@ -12,7 +12,6 @@ from rclip.utils.native_heif import (
   NativeHeifDecodeError,
   NativeHeifTooLargeError,
 )
-from rclip.utils.preprocess import IMAGE_SIZE
 
 
 _CORE_FOUNDATION = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
@@ -78,17 +77,17 @@ _K_CG_IMAGE_SOURCE_THUMBNAIL_MAX_PIXEL_SIZE = ctypes.c_void_p.in_dll(
 ).value
 
 
-def _thumbnail_max_pixel_size(width: int, height: int) -> int:
-  """Largest side of the smallest thumbnail whose shortest side still covers the CLIP input crop."""
-  return IMAGE_SIZE * max(width, height) // min(width, height) + 1
+def _thumbnail_max_pixel_size(width: int, height: int, min_side: int) -> int:
+  """Largest side of the smallest thumbnail whose shortest side still covers ``min_side``."""
+  return min_side * max(width, height) // min(width, height) + 1
 
 
-def _create_thumbnail(image_source: int, width: int, height: int) -> int:
+def _create_thumbnail(image_source: int, width: int, height: int, min_side: int) -> int:
   """Asks Image I/O to downscale while decoding instead of decoding the full frame.
 
   Returns 0 when Image I/O cannot produce a thumbnail, so the caller can fall back to the full frame.
   """
-  max_pixel_size = ctypes.c_int(_thumbnail_max_pixel_size(width, height))
+  max_pixel_size = ctypes.c_int(_thumbnail_max_pixel_size(width, height, min_side))
   number = None
   options = _CORE_FOUNDATION.CFDictionaryCreateMutable(None, 0, None, None)
   try:
@@ -160,7 +159,7 @@ def _copy_as_pillow_image(cg_image: int) -> Image.Image:
         _CORE_FOUNDATION.CFRelease(value)
 
 
-def decode_path(path: str | os.PathLike[str], max_pixels: int | None) -> Image.Image:
+def decode_path(path: str | os.PathLike[str], max_pixels: int | None, min_side: int | None = None) -> Image.Image:
   encoded_path = os.fsencode(Path(path))
   path_buffer = (ctypes.c_ubyte * len(encoded_path)).from_buffer_copy(encoded_path)
   file_url = _CORE_FOUNDATION.CFURLCreateFromFileSystemRepresentation(None, path_buffer, len(encoded_path), False)
@@ -184,7 +183,8 @@ def decode_path(path: str | os.PathLike[str], max_pixels: int | None) -> Image.I
     if max_pixels is not None and pixels > max_pixels:
       raise NativeHeifTooLargeError(pixels, max_pixels)
     # a downscaled frame avoids decoding the full image and re-encoding it as a full-size PNG
-    thumbnail = _create_thumbnail(image_source, width, height)
+    if min_side is not None:
+      thumbnail = _create_thumbnail(image_source, width, height, min_side)
     return _apply_orientation(_copy_as_pillow_image(thumbnail or cg_image), _copy_orientation(image_source))
   finally:
     for value in (thumbnail, cg_image, image_source, file_url):

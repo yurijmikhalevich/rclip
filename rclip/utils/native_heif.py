@@ -35,18 +35,22 @@ class NativeHeifTooLargeError(NativeHeifError):
     super().__init__(f"image has {pixels} pixels, which exceeds the limit of {limit} pixels")
 
 
-def decode_path(path: str | os.PathLike[str], max_pixels: int | None) -> Image.Image:
-  """Decode a HEIF image using the current operating system's imaging API."""
+def decode_path(path: str | os.PathLike[str], max_pixels: int | None, min_side: int | None = None) -> Image.Image:
+  """Decode a HEIF image using the current operating system's imaging API.
+
+  ``min_side`` lets the decoder downscale while decoding, as long as the shortest side stays at least
+  that long. Callers that display the image leave it unset to get the full frame.
+  """
   if not Path(path).exists():
     raise FileNotFoundError(errno.ENOENT, os.strerror(errno.ENOENT), path)
   if sys.platform == "darwin":
     from rclip.utils._macos_heif import decode_path as platform_decode_path
 
-    return platform_decode_path(path, max_pixels)
+    return platform_decode_path(path, max_pixels, min_side)
   if sys.platform == "win32":
     from rclip.utils._windows_heif import decode_path as platform_decode_path
 
-    return platform_decode_path(path, max_pixels)
+    return platform_decode_path(path, max_pixels, min_side)
   raise NativeHeifCodecUnavailableError("native HEIF decoding is available only on macOS and Windows")
 
 
