@@ -12,6 +12,7 @@ from rclip.utils.native_heif import (
   NativeHeifDecodeError,
   NativeHeifTooLargeError,
 )
+from rclip.utils.preprocess import IMAGE_SIZE
 
 
 _CORE_FOUNDATION = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
@@ -36,8 +37,15 @@ _CORE_FOUNDATION.CFDataGetLength.argtypes = [ctypes.c_void_p]
 _CORE_FOUNDATION.CFDataGetLength.restype = ctypes.c_long
 _CORE_FOUNDATION.CFDataGetBytePtr.argtypes = [ctypes.c_void_p]
 _CORE_FOUNDATION.CFDataGetBytePtr.restype = ctypes.POINTER(ctypes.c_ubyte)
+_CORE_FOUNDATION.CFNumberCreate.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+_CORE_FOUNDATION.CFNumberCreate.restype = ctypes.c_void_p
+_CORE_FOUNDATION.CFDictionaryCreateMutable.argtypes = [ctypes.c_void_p, ctypes.c_long, ctypes.c_void_p, ctypes.c_void_p]
+_CORE_FOUNDATION.CFDictionaryCreateMutable.restype = ctypes.c_void_p
+_CORE_FOUNDATION.CFDictionarySetValue.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
 _CORE_FOUNDATION.CFStringCreateWithCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32]
 _CORE_FOUNDATION.CFStringCreateWithCString.restype = ctypes.c_void_p
+_IMAGE_IO.CGImageSourceCreateThumbnailAtIndex.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p]
+_IMAGE_IO.CGImageSourceCreateThumbnailAtIndex.restype = ctypes.c_void_p
 _IMAGE_IO.CGImageSourceCreateWithURL.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
 _IMAGE_IO.CGImageSourceCreateWithURL.restype = ctypes.c_void_p
 _IMAGE_IO.CGImageSourceCreateImageAtIndex.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p]
@@ -61,6 +69,42 @@ _CORE_GRAPHICS.CGImageGetHeight.restype = ctypes.c_size_t
 
 _K_CF_NUMBER_INT_TYPE = 9
 _K_CF_STRING_ENCODING_UTF8 = 0x08000100
+_K_CF_BOOLEAN_TRUE = ctypes.c_void_p.in_dll(_CORE_FOUNDATION, "kCFBooleanTrue").value
+_K_CG_IMAGE_SOURCE_CREATE_THUMBNAIL_FROM_IMAGE_ALWAYS = ctypes.c_void_p.in_dll(
+  _IMAGE_IO, "kCGImageSourceCreateThumbnailFromImageAlways"
+).value
+_K_CG_IMAGE_SOURCE_THUMBNAIL_MAX_PIXEL_SIZE = ctypes.c_void_p.in_dll(
+  _IMAGE_IO, "kCGImageSourceThumbnailMaxPixelSize"
+).value
+
+
+def _thumbnail_max_pixel_size(width: int, height: int) -> int:
+  """Largest side of the smallest thumbnail whose shortest side still covers the CLIP input crop."""
+  return IMAGE_SIZE * max(width, height) // min(width, height) + 1
+
+
+def _create_thumbnail(image_source: int, width: int, height: int) -> int:
+  """Asks Image I/O to downscale while decoding instead of decoding the full frame.
+
+  Returns 0 when Image I/O cannot produce a thumbnail, so the caller can fall back to the full frame.
+  """
+  max_pixel_size = ctypes.c_int(_thumbnail_max_pixel_size(width, height))
+  number = None
+  options = _CORE_FOUNDATION.CFDictionaryCreateMutable(None, 0, None, None)
+  try:
+    number = _CORE_FOUNDATION.CFNumberCreate(None, _K_CF_NUMBER_INT_TYPE, ctypes.byref(max_pixel_size))
+    if not options or not number:
+      return 0
+    # the dictionary does not retain its values, so they outlive it only until the thumbnail is created
+    _CORE_FOUNDATION.CFDictionarySetValue(
+      options, _K_CG_IMAGE_SOURCE_CREATE_THUMBNAIL_FROM_IMAGE_ALWAYS, _K_CF_BOOLEAN_TRUE
+    )
+    _CORE_FOUNDATION.CFDictionarySetValue(options, _K_CG_IMAGE_SOURCE_THUMBNAIL_MAX_PIXEL_SIZE, number)
+    return _IMAGE_IO.CGImageSourceCreateThumbnailAtIndex(image_source, 0, options) or 0
+  finally:
+    for value in (number, options):
+      if value:
+        _CORE_FOUNDATION.CFRelease(value)
 
 
 def _copy_orientation(image_source: int) -> int:
@@ -124,6 +168,7 @@ def decode_path(path: str | os.PathLike[str], max_pixels: int | None) -> Image.I
     raise NativeHeifDecodeError(f'Image I/O could not open "{path}"')
   image_source = None
   cg_image = None
+  thumbnail = None
   try:
     image_source = _IMAGE_IO.CGImageSourceCreateWithURL(file_url, None)
     if not image_source:
@@ -138,8 +183,10 @@ def decode_path(path: str | os.PathLike[str], max_pixels: int | None) -> Image.I
       raise NativeHeifDecodeError("macOS returned invalid HEIF image dimensions")
     if max_pixels is not None and pixels > max_pixels:
       raise NativeHeifTooLargeError(pixels, max_pixels)
-    return _apply_orientation(_copy_as_pillow_image(cg_image), _copy_orientation(image_source))
+    # a downscaled frame avoids decoding the full image and re-encoding it as a full-size PNG
+    thumbnail = _create_thumbnail(image_source, width, height)
+    return _apply_orientation(_copy_as_pillow_image(thumbnail or cg_image), _copy_orientation(image_source))
   finally:
-    for value in (cg_image, image_source, file_url):
+    for value in (thumbnail, cg_image, image_source, file_url):
       if value:
         _CORE_FOUNDATION.CFRelease(value)
