@@ -354,7 +354,16 @@ mod tests {
     }
     insert(&db, "/other/a.jpg", 1.0);
     db.commit().unwrap();
-    let states = db.scan_vectors("/photos", || 0usize, |count, _, _| Ok(*count += 1)).unwrap();
+    let states = db
+      .scan_vectors(
+        "/photos",
+        || 0usize,
+        |count, _, _| {
+          let _: () = *count += 1;
+          Ok(())
+        },
+      )
+      .unwrap();
     assert!(states.len() > 1 || std::thread::available_parallelism().map_or(1, usize::from) == 1);
     assert_eq!(states.iter().sum::<usize>(), count);
   }

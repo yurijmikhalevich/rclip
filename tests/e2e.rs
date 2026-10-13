@@ -363,3 +363,67 @@ fn prints_the_version() {
   let output = run.rclip(&images(), &["--version"]);
   assert_eq!(String::from_utf8(output.stdout).unwrap(), format!("rclip {}\n", env!("CARGO_PKG_VERSION")));
 }
+
+/// Runs the interactive UI in a pseudo-terminal, lets it start, and quits it with Ctrl+C.
+#[cfg(unix)]
+#[test]
+fn interactive_starts_and_exits_cleanly() {
+  use std::io::{Read, Write};
+  use std::os::fd::{FromRawFd, OwnedFd};
+  use std::os::unix::process::CommandExt;
+  use std::time::{Duration, Instant};
+
+  let run = Run::new();
+  let (mut controller, device) = unsafe {
+    let (mut controller, mut device) = (0, 0);
+    let mut size = libc::winsize { ws_row: 40, ws_col: 120, ws_xpixel: 1200, ws_ypixel: 800 };
+    assert_eq!(libc::openpty(&mut controller, &mut device, std::ptr::null_mut(), std::ptr::null_mut(), &mut size), 0);
+    (std::fs::File::from_raw_fd(controller), OwnedFd::from_raw_fd(device))
+  };
+  let mut command = Command::new(env!("CARGO_BIN_EXE_rclip"));
+  command
+    .arg("--force-interactive")
+    .current_dir(fixtures().join("empty_directory"))
+    .env("RCLIP_DATADIR", &run.datadir)
+    .stdin(device.try_clone().unwrap())
+    .stdout(device.try_clone().unwrap())
+    .stderr(device);
+  // SAFETY: setsid and ioctl are async-signal-safe; they make the pseudo-terminal the controlling
+  // terminal of the child, like a real terminal session.
+  unsafe {
+    command.pre_exec(|| {
+      libc::setsid();
+      libc::ioctl(0, libc::TIOCSCTTY as _, 0);
+      Ok(())
+    });
+  }
+  let mut child = command.spawn().unwrap();
+
+  // Read the output on another thread until the UI has drawn its hotkeys.
+  let mut reader = controller.try_clone().unwrap();
+  let output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+  let collected = std::sync::Arc::clone(&output);
+  std::thread::spawn(move || {
+    let mut buffer = [0u8; 4096];
+    while let Ok(read) = reader.read(&mut buffer) {
+      if read == 0 {
+        break;
+      }
+      collected.lock().unwrap().extend_from_slice(&buffer[..read]);
+    }
+  });
+  let started = Instant::now();
+  while !String::from_utf8_lossy(&output.lock().unwrap()).contains("Quit") {
+    assert!(started.elapsed() < Duration::from_secs(60), "the interactive UI did not start");
+    std::thread::sleep(Duration::from_millis(50));
+  }
+  controller.write_all(b"\x03").unwrap();
+  let status = loop {
+    if let Some(status) = child.try_wait().unwrap() {
+      break status;
+    }
+    assert!(started.elapsed() < Duration::from_secs(60), "the interactive UI did not exit");
+    std::thread::sleep(Duration::from_millis(50));
+  };
+  assert!(status.success(), "{status}");
+}

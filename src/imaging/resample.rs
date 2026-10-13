@@ -152,12 +152,12 @@ fn resample_horizontal(rows: &[u8], in_width: usize, coefficients: &Coefficients
   // Deinterleaving each row into planes lets every tap loop run over contiguous memory.
   let mut planes = [vec![0i32; in_width], vec![0i32; in_width], vec![0i32; in_width]];
   for (row, out_row) in rows.chunks_exact(in_width * 3).zip(output.chunks_exact_mut(out_width * 3)) {
-    for (x, pixel) in row.chunks_exact(3).enumerate() {
+    for (x, pixel) in row.as_chunks::<3>().0.iter().enumerate() {
       planes[0][x] = i32::from(pixel[0]);
       planes[1][x] = i32::from(pixel[1]);
       planes[2][x] = i32::from(pixel[2]);
     }
-    for (xx, out_pixel) in out_row.chunks_exact_mut(3).enumerate() {
+    for (xx, out_pixel) in out_row.as_chunks_mut::<3>().0.iter_mut().enumerate() {
       let (xmin, _) = coefficients.bounds[xx];
       let weights = coefficients.weights(xx);
       for (channel, plane) in planes.iter().enumerate() {

@@ -77,7 +77,7 @@ pub struct Args {
   pub force_preview: bool,
 
   /// preview height in pixels; default: 400
-  #[arg(long, short = 'H', value_name = "PREVIEW_HEIGHT_PX", default_value_t = 400)]
+  #[arg(long, short = 'H', value_name = "PREVIEW_HEIGHT_PX", default_value_t = 400, hide_default_value = true)]
   pub preview_height: u32,
 
   /// allows to skip updating the index if no images were added, changed, or removed
@@ -86,7 +86,7 @@ pub struct Args {
 
   /// the size of the image batch used when updating the search index; larger values may improve the indexing
   /// speed a bit on some hardware but will increase RAM usage; default: 8
-  #[arg(long, short = 'b', value_parser = positive_int, default_value_t = 8)]
+  #[arg(long, short = 'b', value_parser = positive_int, default_value_t = 8, hide_default_value = true)]
   pub indexing_batch_size: usize,
 
   /// dir to exclude from search, can be used multiple times; adding this argument overrides the default of
@@ -106,7 +106,7 @@ pub struct Args {
   /// maximum size, in megapixels, an image may have to be indexed; larger images are skipped to avoid running out
   /// of memory on huge or maliciously crafted images; pass "none" to disable the limit; default: chosen
   /// automatically based on available memory
-  #[arg(long, value_name = "MP", value_parser = max_image_megapixels, default_value = "auto")]
+  #[arg(long, value_name = "MP", value_parser = max_image_megapixels, default_value = "auto", hide_default_value = true)]
   pub max_image_megapixels: MaxImagePixels,
 }
 

@@ -200,7 +200,7 @@ fn dot(query: &[f64], vector: &[u8]) -> f64 {
   debug_assert_eq!(vector.len(), VECTOR_SIZE * 4);
   // Eight independent accumulators let the compiler keep the multiply-adds in SIMD registers.
   let mut sums = [0.0f64; 8];
-  for (query, values) in query.chunks_exact(8).zip(vector.chunks_exact(32)) {
+  for (query, values) in query.as_chunks::<8>().0.iter().zip(vector.as_chunks::<32>().0) {
     for lane in 0..8 {
       let value = f32::from_le_bytes(values[lane * 4..lane * 4 + 4].try_into().expect("four bytes"));
       sums[lane] += query[lane] * f64::from(value);

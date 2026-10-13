@@ -163,7 +163,7 @@ impl Model {
 
 fn weighted_sum(features: &[f32], multipliers: &[f64]) -> FeatureVector {
   let mut sum = vec![0.0f64; VECTOR_SIZE];
-  for (row, &multiplier) in features.chunks_exact(VECTOR_SIZE).zip(multipliers) {
+  for (row, &multiplier) in features.as_chunks::<VECTOR_SIZE>().0.iter().zip(multipliers) {
     for (total, &value) in sum.iter_mut().zip(row) {
       *total += f64::from(value) * multiplier;
     }
@@ -172,7 +172,7 @@ fn weighted_sum(features: &[f32], multipliers: &[f64]) -> FeatureVector {
 }
 
 fn normalize_rows(features: &mut [f32]) {
-  for row in features.chunks_exact_mut(VECTOR_SIZE) {
+  for row in features.as_chunks_mut::<VECTOR_SIZE>().0 {
     let norm = row.iter().map(|&value| f64::from(value) * f64::from(value)).sum::<f64>().sqrt() as f32;
     for value in row {
       *value /= norm;
