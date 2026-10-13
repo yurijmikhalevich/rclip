@@ -279,6 +279,15 @@ impl Indexer<'_> {
   fn report(&mut self, issue: WalkIssue) {
     match issue {
       WalkIssue::UnreadableDir(dir, error) => {
+        // The confined snap cannot follow symlinks out of the directories it was granted.
+        if crate::snap::is_snap()
+          && error.kind() == std::io::ErrorKind::PermissionDenied
+          && std::path::Path::new(&dir).is_symlink()
+        {
+          self.progress.finish_and_clear();
+          eprintln!();
+          crate::snap::exit_with_permission_error(&dir, false);
+        }
         self.warn(format!("cannot read {dir}: {error}; keeping its images in the index as they are"));
         self.unreadable_dirs.push(dir);
       }
