@@ -108,7 +108,9 @@ fn cmyk_to_rgb(cmyk: &[u8], inverted: bool) -> Vec<u8> {
     ((tmp >> 8) + tmp) >> 8
   };
   cmyk
-    .chunks_exact(4)
+    .as_chunks::<4>()
+    .0
+    .iter()
     .flat_map(|pixel| {
       let pixel =
         [pixel[0], pixel[1], pixel[2], pixel[3]].map(|value| i32::from(if inverted { 255 - value } else { value }));

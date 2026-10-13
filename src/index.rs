@@ -257,7 +257,7 @@ impl Indexer<'_> {
   }
 
   fn store(&mut self, images: &[(FileEntry, String)], embeddings: &[f32]) -> Result<()> {
-    for ((entry, hash), embedding) in images.iter().zip(embeddings.chunks_exact(VECTOR_SIZE)) {
+    for ((entry, hash), embedding) in images.iter().zip(embeddings.as_chunks::<VECTOR_SIZE>().0) {
       let vector: Vec<u8> = embedding.iter().flat_map(|value| value.to_le_bytes()).collect();
       self.upsert(entry, hash, &vector)?;
     }
@@ -316,10 +316,13 @@ impl Indexer<'_> {
   }
 }
 
+/// The images of a batch with their embeddings, or the error that prevented computing them.
+type Embedded = (Vec<(FileEntry, String)>, Result<Vec<f32>>);
+
 /// Runs the encoder on its own thread so that decoding continues while the model works.
 struct Inference {
   batches_tx: Option<Sender<Batch>>,
-  embeddings_rx: Receiver<(Vec<(FileEntry, String)>, Result<Vec<f32>>)>,
+  embeddings_rx: Receiver<Embedded>,
   thread: Option<std::thread::JoinHandle<()>>,
   busy: usize,
 }

@@ -5,6 +5,7 @@
 //! embeddings for the same files and can share one index.
 
 mod decode;
+mod exif;
 mod heif;
 mod jp2;
 mod jpeg;
@@ -42,7 +43,11 @@ impl RgbImage {
 
   /// Drops the alpha channel without compositing, like Pillow's RGBA to RGB conversion.
   pub fn from_rgba(width: u32, height: u32, rgba: &[u8]) -> Self {
-    Self { width, height, pixels: rgba.chunks_exact(4).flat_map(|pixel| [pixel[0], pixel[1], pixel[2]]).collect() }
+    Self {
+      width,
+      height,
+      pixels: rgba.as_chunks::<4>().0.iter().flat_map(|pixel| [pixel[0], pixel[1], pixel[2]]).collect(),
+    }
   }
 
   /// Applies an EXIF orientation (1-8), returning the image as it should be displayed.
@@ -114,6 +119,23 @@ pub fn read_image(path: &str, max_pixels: Option<u64>) -> Result<RgbImage, Image
   decode(&data, &file_extension(path), max_pixels)
 }
 
+/// The interactive UI's background, shown behind transparent pixels.
+const DISPLAY_BACKGROUND: u8 = 0x12;
+
+/// Reads an image for display: upright according to its EXIF orientation and with transparency
+/// flattened onto the UI background, like the Python version's interactive UI.
+pub fn read_display_image(path: &str) -> Result<RgbImage, ImageError> {
+  let data = std::fs::read(path)?;
+  let extension = file_extension(path);
+  let image = decode::decode_flattened(&data, &extension, DISPLAY_BACKGROUND)?;
+  // RAW files show their embedded preview or LibRaw's output, which are already upright, and the
+  // native HEIF decoders apply the orientation themselves.
+  if IMAGE_RAW_EXT.contains(&extension.as_str()) || extension == "heic" {
+    return Ok(image);
+  }
+  Ok(image.oriented(exif::orientation(&data).map_or(1, u32::from)))
+}
+
 /// Picks the pixel cap from the machine's RAM so that only images we can reasonably decode are
 /// attempted, never going below [`MIN_MAX_IMAGE_PIXELS`].
 pub fn default_max_image_pixels(workers: usize) -> u64 {
@@ -154,7 +176,7 @@ mod tests {
   }
 
   fn values(image: &RgbImage) -> Vec<u8> {
-    image.pixels.chunks_exact(3).map(|pixel| pixel[0]).collect()
+    image.pixels.as_chunks::<3>().0.iter().map(|pixel| pixel[0]).collect()
   }
 
   #[test]

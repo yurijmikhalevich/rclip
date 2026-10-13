@@ -118,7 +118,7 @@ impl Tokenizer {
   /// Tokenizes `texts` into a row-major `[texts.len(), 77]` matrix.
   pub fn tokenize(&self, texts: &[&str]) -> Vec<i64> {
     let mut result = vec![0i64; texts.len() * CONTEXT_LENGTH];
-    for (row, text) in result.chunks_exact_mut(CONTEXT_LENGTH).zip(texts) {
+    for (row, text) in result.as_chunks_mut::<CONTEXT_LENGTH>().0.iter_mut().zip(texts) {
       let mut tokens = vec![self.sot_token];
       tokens.extend(self.encode(text));
       tokens.push(self.eot_token);

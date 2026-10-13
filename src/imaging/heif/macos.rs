@@ -52,7 +52,7 @@ fn render_rgb(image: &CGImage, width: usize, height: usize) -> Result<Vec<u8>, I
   let rect = CGRect { origin: CGPoint { x: 0.0, y: 0.0 }, size: CGSize { width: width as f64, height: height as f64 } };
   CGContext::draw_image(Some(&context), rect, Some(image));
   drop(context);
-  Ok(rgbx.chunks_exact(4).flat_map(|pixel| [pixel[0], pixel[1], pixel[2]]).collect())
+  Ok(rgbx.as_chunks::<4>().0.iter().flat_map(|pixel| [pixel[0], pixel[1], pixel[2]]).collect())
 }
 
 fn orientation(source: &CGImageSource) -> u32 {

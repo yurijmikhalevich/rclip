@@ -9,7 +9,7 @@ pub const IMAGE_SIZE: u32 = 256;
 pub const TENSOR_LEN: usize = 3 * (IMAGE_SIZE * IMAGE_SIZE) as usize;
 
 const MEAN: [f32; 3] = [0.481_454_66, 0.457_827_5, 0.408_210_73];
-const STD: [f32; 3] = [0.268_629_54, 0.261_302_58, 0.275_777_11];
+const STD: [f32; 3] = [0.268_629_54, 0.261_302_6, 0.275_777_1];
 
 /// Preprocesses an image into a normalized `[3, 256, 256]` tensor, appending it to `output`.
 pub fn preprocess_into(image: &RgbImage, output: &mut Vec<f32>) {
@@ -34,7 +34,7 @@ pub fn preprocess_into(image: &RgbImage, output: &mut Vec<f32>) {
   for y in 0..IMAGE_SIZE as usize {
     let row_start = (top as usize + y) * stride + left as usize * 3;
     let row = &resized.pixels[row_start..row_start + IMAGE_SIZE as usize * 3];
-    for (x, pixel) in row.chunks_exact(3).enumerate() {
+    for (x, pixel) in row.as_chunks::<3>().0.iter().enumerate() {
       for channel in 0..3 {
         let value = f32::from(pixel[channel]) / 255.0;
         planes[channel * plane_len + y * IMAGE_SIZE as usize + x] = (value - MEAN[channel]) / STD[channel];
