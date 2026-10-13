@@ -14,7 +14,14 @@ STD = np.array([0.26862954, 0.26130258, 0.27577711], dtype=np.float32)
 
 
 def preprocess(image: Image.Image) -> npt.NDArray[np.float32]:
-  """Preprocess one PIL image into a float32 array of shape [3, 256, 256]."""
+  """Preprocess one PIL image into a float32 array of shape [3, 256, 256].
+
+  Modifies ``image`` in place when it is a lazily-decoded JPEG: the decoder is asked to hand back
+  the largest power-of-two DCT reduction that still covers the 256px crop, which skips most of the
+  decoding and resampling work for camera-sized photos. No-op for smaller images, other formats,
+  and images that are already decoded.
+  """
+  image.draft("RGB", (IMAGE_SIZE, IMAGE_SIZE))
   image = image.convert("RGB")
 
   # Resize shortest side to 256. PIL.Image.resize expects (width, height).
