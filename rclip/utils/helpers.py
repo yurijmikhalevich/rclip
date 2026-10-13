@@ -131,11 +131,11 @@ def _ensure_image_loading_configured() -> None:
   _image_loading_configured = True
 
 
-def _native_heif_path(path: str) -> Image.Image:
+def _native_heif_path(path: str, min_side: int | None = None) -> Image.Image:
   from rclip.utils import native_heif
 
   try:
-    return native_heif.decode_path(path, Image.MAX_IMAGE_PIXELS)
+    return native_heif.decode_path(path, Image.MAX_IMAGE_PIXELS, min_side)
   except native_heif.NativeHeifTooLargeError as error:
     raise ImageTooLargeError(path, error.pixels, error.limit) from error
   except native_heif.NativeHeifError as error:
@@ -489,7 +489,9 @@ def image_pixel_limit_disabled():
     Image.MAX_IMAGE_PIXELS = previous
 
 
-def read_image(query: str, *, trusted: bool = False) -> Image.Image:
+def read_image(query: str, *, trusted: bool = False, min_side: int | None = None) -> Image.Image:
+  """Opens an image file. ``min_side`` lets decoders that support it downscale while decoding, keeping
+  the shortest side at least that long; leave it unset when the image is displayed."""
   _ensure_image_loading_configured()
   path = str.removeprefix(query, "file://")
   # an explicit query image is chosen by the user and decoded one at a time, so the indexing memory
@@ -501,7 +503,7 @@ def read_image(query: str, *, trusted: bool = False) -> Image.Image:
       if file_ext in IMAGE_RAW_EXT:
         image = read_raw_image_file(path)
       elif file_ext == "heic" and sys.platform in ("darwin", "win32"):
-        image = _native_heif_path(path)
+        image = _native_heif_path(path, min_side)
       else:
         # Image.open only reads the header and runs PIL's decompression-bomb check there, so oversized
         # images are rejected before we ever decode and allocate memory for them.

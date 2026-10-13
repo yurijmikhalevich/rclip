@@ -42,15 +42,26 @@ def test_decode_bytes_removes_its_temporary_file(monkeypatch):
 def test_read_image_routes_heic_to_native_decoder(monkeypatch):
   expected = Image.new("RGB", (2, 3))
   monkeypatch.setattr(helpers.sys, "platform", "darwin")
-  monkeypatch.setattr(helpers, "_native_heif_path", lambda path: expected)
+  monkeypatch.setattr(helpers, "_native_heif_path", lambda path, min_side: expected)
 
   assert helpers.read_image("photo.heic") is expected
+
+
+def test_read_image_passes_min_side_to_native_decoder(monkeypatch):
+  calls = []
+  monkeypatch.setattr(helpers.sys, "platform", "darwin")
+  monkeypatch.setattr(helpers, "_native_heif_path", lambda path, min_side: calls.append(min_side))
+
+  helpers.read_image("photo.heic")
+  helpers.read_image("photo.heic", min_side=256)
+
+  assert calls == [None, 256]
 
 
 @pytest.mark.parametrize("platform", ["linux", "cygwin"])
 def test_read_image_does_not_use_native_decoder_on_unsupported_platform(monkeypatch, platform):
   monkeypatch.setattr(helpers.sys, "platform", platform)
-  monkeypatch.setattr(helpers, "_native_heif_path", lambda path: pytest.fail("native decoder was called"))
+  monkeypatch.setattr(helpers, "_native_heif_path", lambda path, min_side: pytest.fail("native decoder was called"))
   monkeypatch.setattr(helpers.Image, "open", lambda path: (_ for _ in ()).throw(UnidentifiedImageError()))
 
   with pytest.raises(UnidentifiedImageError):
@@ -76,7 +87,7 @@ def test_download_image_does_not_use_native_decoder_on_cygwin(monkeypatch):
 
 
 def test_native_pixel_limit_is_reported_as_rclip_error(monkeypatch):
-  def too_large(path, max_pixels):
+  def too_large(path, max_pixels, min_side):
     raise native_heif.NativeHeifTooLargeError(200, 100)
 
   monkeypatch.setattr(native_heif, "decode_path", too_large)

@@ -16,7 +16,7 @@ import PIL.Image
 
 from rclip import db, fs, model
 from rclip.const import IMAGE_EXT, IMAGE_RAW_EXT
-from rclip.utils.preprocess import preprocess
+from rclip.utils.preprocess import IMAGE_SIZE, preprocess
 from rclip.utils.preview import preview
 from rclip.utils.snap import check_snap_permissions, is_snap, get_snap_permission_error
 from rclip.utils import helpers, terminal
@@ -53,7 +53,7 @@ def _read_and_preprocess(path: str) -> Tuple[str, str, npt.NDArray[np.float32]]:
   threads so that the decoding and resizing happen in parallel and only the
   model forward pass is left for the consumer."""
   file_hash = helpers.compute_file_hash(path)
-  preprocessed = preprocess(helpers.read_image(path))
+  preprocessed = preprocess(helpers.read_image(path, min_side=IMAGE_SIZE))
   return path, file_hash, preprocessed
 
 

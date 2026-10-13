@@ -65,7 +65,7 @@ def _release(interface: ctypes.c_void_p | None) -> None:
     _method(interface, 2, ctypes.c_ulong)(interface)
 
 
-def decode_path(path: str | os.PathLike[str], max_pixels: int | None) -> Image.Image:
+def decode_path(path: str | os.PathLike[str], max_pixels: int | None, min_side: int | None = None) -> Image.Image:
   ole32 = getattr(ctypes, "OleDLL")("ole32")
   ole32.CoInitializeEx.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
   ole32.CoInitializeEx.restype = _HRESULT
