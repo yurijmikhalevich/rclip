@@ -273,6 +273,17 @@ uv sync
 
 Then use `uv run rclip` in place of `rclip`.
 
+### Building the Rust version
+
+The repository also contains a Rust implementation of **rclip** with the same command-line interface, interactive UI, and index format, so both versions can share an index. It needs [Rust](https://rustup.rs/) 1.92 or newer, a C/C++ compiler, and [CMake](https://cmake.org/).
+
+```bash
+cargo build --release
+./target/release/rclip "search query"
+```
+
+The build downloads a prebuilt ONNX Runtime and compiles libjpeg-turbo, OpenJPEG, SQLite, zlib, and the vendored [LibRaw](vendor/README.md) from source. Run the tests with `cargo test --release`; the end-to-end tests download the model on their first run.
+
 ## Distribution compliance
 
 Self-contained rclip bundles include a `THIRD_PARTY_NOTICES.txt` file and the

@@ -2,7 +2,7 @@
 name = "rclip"
 version = "4.0.3"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.92"
 description = "Semantic photo search for the command line"
 authors = ["Yurij Mikhalevich <yurij@mikhalevi.ch>"]
 license = "MIT"
@@ -23,10 +23,10 @@ image = { version = "0.25.10", default-features = false, features = ["bmp", "gif
 indicatif = "0.18"
 jpeg2k = { version = "0.10", default-features = false, features = ["openjpeg-sys", "image"] }
 libc = "0.2"
+libz-sys = { version = "1", default-features = false, features = ["static"] }
 ort = { version = "=2.0.0-rc.14", default-features = false, features = ["std", "download-binaries", "tls-native"] }
 ratatui = "0.30"
 regex = "1"
-rsraw-sys = "0.1"
 rusqlite = { version = "0.33", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -45,7 +45,10 @@ objc2-foundation = "0.3"
 objc2-image-io = "0.3"
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Imaging", "Win32_System_Com"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Imaging", "Win32_System_Com", "Win32_System_SystemInformation"] }
+
+[build-dependencies]
+cc = { version = "1", features = ["parallel"] }
 
 [dev-dependencies]
 libc = "0.2"
