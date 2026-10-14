@@ -64,6 +64,8 @@ class RClip:
   # cost little memory.
   LOOKAHEAD_BATCHES = 3
   MAX_IMAGE_LOADING_WORKERS = 16
+  # how many scanned files the walk may get ahead of the database lookups
+  SCAN_LOOKAHEAD = 4096
   SEARCH_BATCH_SIZE = 4096
 
   class SearchResult(NamedTuple):
@@ -240,12 +242,10 @@ class RClip:
         return True
     return False
 
-  def _iter_images_to_index(
-    self, directory: str, pbar: tqdm, seen: set[str], unreadable_dirs: list[str]
-  ) -> Iterator[Tuple[str, ImageMeta]]:
-    """Walks the directory and yields (path, meta) for every image that needs (re)indexing, adding the
-    ones already up to date in the database to `seen` and the directories it couldn't read to `unreadable_dirs`.
-    Advances the progress bar once per scanned file."""
+  def _scan_images(self, directory: str, unreadable_dirs: list[str]) -> Iterator[Tuple[str, Optional[ImageMeta]]]:
+    """Walks the directory and yields (path, meta) for every image found, adding the directories it couldn't
+    read to `unreadable_dirs`. Raw images that have a processed sibling are yielded without meta, as they are
+    skipped."""
 
     def on_unreadable_dir(dir: str, error: OSError):
       # under snap, the caller explains how to give rclip access to the directory a symlink points to
@@ -254,21 +254,36 @@ class RClip:
       print(f"cannot read {dir}: {error.strerror or error}; keeping its images in the index as they are", file=sys.stderr)
       unreadable_dirs.append(dir)
 
-    images_processed = 0
     for entry in fs.walk(directory, self._exclude_dir_regex, self._image_regex, self._skip_hidden, on_unreadable_dir):
       filepath = entry.path
 
       if self._enable_raw_support:
         file_ext = helpers.get_file_extension(filepath)
         if file_ext in IMAGE_RAW_EXT and self._does_processed_image_exist_for_raw(filepath):
-          images_processed += 1
-          pbar.update()
+          yield filepath, None
           continue
 
       try:
         meta = get_image_meta(entry)
       except Exception as ex:
         print(f"error getting fs metadata for {filepath}:", ex, file=sys.stderr)
+        continue
+
+      yield filepath, meta
+
+  def _iter_images_to_index(
+    self, directory: str, pbar: tqdm, seen: set[str], unreadable_dirs: list[str]
+  ) -> Iterator[Tuple[str, ImageMeta]]:
+    """Yields (path, meta) for every image that needs (re)indexing, adding the ones already up to date
+    in the database to `seen` and the directories it couldn't read to `unreadable_dirs`. Advances the progress
+    bar once per scanned file.
+
+    The walk runs on a background thread, so the file system calls overlap with the database lookups."""
+    images_processed = 0
+    for filepath, meta in helpers.iter_in_background(self._scan_images(directory, unreadable_dirs), self.SCAN_LOOKAHEAD):
+      if meta is None:
+        images_processed += 1
+        pbar.update()
         continue
 
       if not images_processed % self.DB_IMAGES_BEFORE_COMMIT:

@@ -4,10 +4,11 @@ import hashlib
 import io
 import os
 import pathlib
+import queue
 import textwrap
 import threading
 import warnings
-from typing import Optional, Union, cast
+from typing import Generator, Iterable, Optional, TypeVar, Union, cast
 from PIL import Image, UnidentifiedImageError
 import re
 import numpy as np
@@ -46,6 +47,54 @@ _max_image_pixels: Optional[int] = MIN_MAX_IMAGE_PIXELS
 def raise_if_cancelled(event: threading.Event | None) -> None:
   if event is not None and event.is_set():
     raise InterruptedError
+
+
+T = TypeVar("T")
+
+
+def iter_in_background(items: Iterable[T], max_buffered: int, chunk_size: int = 256) -> Generator[T, None, None]:
+  """Iterates `items` on a background thread, keeping up to `max_buffered` items ready for the consumer.
+
+  Items cross threads in chunks to keep the per-item locking overhead low. Exceptions raised while
+  iterating are re-raised in the consumer, and the background thread stops when the consumer does."""
+  chunks: "queue.Queue[tuple[list[T], BaseException | None, bool]]" = queue.Queue(max(1, max_buffered // chunk_size))
+  stopped = threading.Event()
+
+  def put(chunk: list[T], error: BaseException | None = None, done: bool = False) -> bool:
+    while not stopped.is_set():
+      try:
+        chunks.put((chunk, error, done), timeout=0.1)
+        return True
+      except queue.Full:
+        pass
+    return False
+
+  def produce() -> None:
+    chunk: list[T] = []
+    try:
+      for item in items:
+        chunk.append(item)
+        if len(chunk) == chunk_size:
+          if not put(chunk):
+            return
+          chunk = []
+      put(chunk, done=True)
+    except BaseException as error:
+      put(chunk, error, done=True)
+
+  thread = threading.Thread(target=produce, daemon=True)
+  thread.start()
+  try:
+    while True:
+      chunk, error, done = chunks.get()
+      yield from chunk
+      if error is not None:
+        raise error
+      if done:
+        return
+  finally:
+    stopped.set()
+    thread.join()
 
 
 class ImageTooLargeError(Exception):
