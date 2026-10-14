@@ -1,6 +1,7 @@
 """HEIF decoding through Windows Imaging Component (WIC)."""
 
 import ctypes
+import math
 import os
 import uuid
 
@@ -40,6 +41,7 @@ _GENERIC_READ = 0x80000000
 _WIC_DECODE_METADATA_CACHE_ON_DEMAND = 0
 _WIC_BITMAP_DITHER_TYPE_NONE = 0
 _WIC_BITMAP_PALETTE_TYPE_CUSTOM = 0
+_WIC_BITMAP_INTERPOLATION_MODE_FANT = 3
 
 _HRESULT = ctypes.c_int32
 _WINFUNCTYPE = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)
@@ -65,6 +67,12 @@ def _release(interface: ctypes.c_void_p | None) -> None:
     _method(interface, 2, ctypes.c_ulong)(interface)
 
 
+def _scaled_size(width: int, height: int, min_side: int) -> tuple[int, int]:
+  """The smallest size whose shortest side still covers ``min_side``, never upscaling."""
+  scale = min(1.0, min_side / min(width, height))
+  return math.ceil(width * scale), math.ceil(height * scale)
+
+
 def decode_path(path: str | os.PathLike[str], max_pixels: int | None, min_side: int | None = None) -> Image.Image:
   ole32 = getattr(ctypes, "OleDLL")("ole32")
   ole32.CoInitializeEx.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
@@ -87,6 +95,7 @@ def decode_path(path: str | os.PathLike[str], max_pixels: int | None, min_side: 
   factory = ctypes.c_void_p()
   decoder = ctypes.c_void_p()
   frame = ctypes.c_void_p()
+  scaler = ctypes.c_void_p()
   converter = ctypes.c_void_p()
   try:
     _check(
@@ -129,6 +138,37 @@ def decode_path(path: str | os.PathLike[str], max_pixels: int | None, min_side: 
     get_frame = _method(decoder, 13, _HRESULT, ctypes.c_uint32, ctypes.POINTER(ctypes.c_void_p))
     _check(int(get_frame(decoder, 0, ctypes.byref(frame))), "read the first HEIF frame")
 
+    # the pixel limit applies to the source image, which is what the scaler below reads
+    get_frame_size = _method(frame, 3, _HRESULT, ctypes.POINTER(ctypes.c_uint32), ctypes.POINTER(ctypes.c_uint32))
+    frame_width = ctypes.c_uint32()
+    frame_height = ctypes.c_uint32()
+    _check(
+      int(get_frame_size(frame, ctypes.byref(frame_width), ctypes.byref(frame_height))),
+      "read the HEIF dimensions",
+    )
+    if not frame_width.value or not frame_height.value:
+      raise NativeHeifDecodeError("Windows WIC returned invalid HEIF image dimensions")
+    pixels = int(frame_width.value) * int(frame_height.value)
+    if max_pixels is not None and pixels > max_pixels:
+      raise NativeHeifTooLargeError(pixels, max_pixels)
+
+    # Decoding straight to the requested size keeps the full-resolution RGBA buffer out of memory.
+    # WIC hands the scaling to the HEIF codec's own downscaler when the codec has one, so the
+    # interpolation mode below only applies to WIC's software resampling.
+    source = frame
+    target_width, target_height = frame_width.value, frame_height.value
+    if min_side is not None:
+      target_width, target_height = _scaled_size(frame_width.value, frame_height.value, min_side)
+    if (target_width, target_height) != (frame_width.value, frame_height.value):
+      create_bitmap_scaler = _method(factory, 11, _HRESULT, ctypes.POINTER(ctypes.c_void_p))
+      _check(int(create_bitmap_scaler(factory, ctypes.byref(scaler))), "create a bitmap scaler")
+      initialize_scaler = _method(scaler, 8, _HRESULT, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_uint32, ctypes.c_int)
+      _check(
+        int(initialize_scaler(scaler, frame, target_width, target_height, _WIC_BITMAP_INTERPOLATION_MODE_FANT)),
+        "scale the HEIF image",
+      )
+      source = scaler
+
     create_format_converter = _method(factory, 10, _HRESULT, ctypes.POINTER(ctypes.c_void_p))
     _check(int(create_format_converter(factory, ctypes.byref(converter))), "create an RGBA converter")
     initialize_converter = _method(
@@ -146,7 +186,7 @@ def decode_path(path: str | os.PathLike[str], max_pixels: int | None, min_side: 
       int(
         initialize_converter(
           converter,
-          frame,
+          source,
           ctypes.byref(_GUID_WIC_PIXEL_FORMAT_32BPP_RGBA),
           _WIC_BITMAP_DITHER_TYPE_NONE,
           None,
@@ -160,12 +200,9 @@ def decode_path(path: str | os.PathLike[str], max_pixels: int | None, min_side: 
     width = ctypes.c_uint32()
     height = ctypes.c_uint32()
     get_size = _method(converter, 3, _HRESULT, ctypes.POINTER(ctypes.c_uint32), ctypes.POINTER(ctypes.c_uint32))
-    _check(int(get_size(converter, ctypes.byref(width), ctypes.byref(height))), "read the HEIF dimensions")
-    pixels = int(width.value) * int(height.value)
+    _check(int(get_size(converter, ctypes.byref(width), ctypes.byref(height))), "read the decoded dimensions")
     if not width.value or not height.value:
       raise NativeHeifDecodeError("Windows WIC returned invalid HEIF image dimensions")
-    if max_pixels is not None and pixels > max_pixels:
-      raise NativeHeifTooLargeError(pixels, max_pixels)
 
     stride = int(width.value) * 4
     buffer_size = stride * int(height.value)
@@ -183,6 +220,7 @@ def decode_path(path: str | os.PathLike[str], max_pixels: int | None, min_side: 
     return Image.frombytes("RGBA", (width.value, height.value), bytes(pixel_buffer))
   finally:
     _release(converter)
+    _release(scaler)
     _release(frame)
     _release(decoder)
     _release(factory)
