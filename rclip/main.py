@@ -165,7 +165,8 @@ class RClip:
       except Exception as ex:
         print(f"skipping {path}: {ex}", file=sys.stderr)
 
-  def _index_images(self, items: Iterable[Tuple[str, ImageMeta]]) -> None:
+  def _index_images(self, items: Iterable[Tuple[str, ImageMeta]], seen: set[str]) -> None:
+    """Indexes `items`, adding every stored path to `seen`."""
     paths: List[str] = []
     metas: List[ImageMeta] = []
     hashes: List[str] = []
@@ -174,7 +175,7 @@ class RClip:
 
     def flush() -> None:
       if images:
-        self._store_image_features(paths, metas, hashes, images)
+        self._store_image_features(paths, metas, hashes, images, seen)
         paths.clear()
         metas.clear()
         hashes.clear()
@@ -184,6 +185,7 @@ class RClip:
           db.NewImage(filepath=path, modified_at=meta["modified_at"], size=meta["size"], vector=vector, hash=file_hash),
           commit=False,
         )
+        seen.add(path)
       renamed_items.clear()
 
     for path, meta, file_hash, image in self._load_images(items):
@@ -201,7 +203,12 @@ class RClip:
     flush()
 
   def _store_image_features(
-    self, paths: List[str], metas: List[ImageMeta], hashes: List[str], images: List[npt.NDArray[np.float32]]
+    self,
+    paths: List[str],
+    metas: List[ImageMeta],
+    hashes: List[str],
+    images: List[npt.NDArray[np.float32]],
+    seen: set[str],
   ) -> None:
     try:
       features = self._model.compute_preprocessed_image_features(images, for_indexing=True)
@@ -215,6 +222,7 @@ class RClip:
         ),
         commit=False,
       )
+      seen.add(path)
 
   def _does_processed_image_exist_for_raw(self, raw_path: str) -> bool:
     """Check if there is a processed image alongside the raw one; doesn't support mixed-case extensions,
@@ -228,9 +236,9 @@ class RClip:
         return True
     return False
 
-  def _iter_images_to_index(self, directory: str, pbar: tqdm) -> Iterator[Tuple[str, ImageMeta]]:
-    """Walks the directory and yields (path, meta) for every image that needs (re)indexing, skipping
-    the ones already up to date in the database. Advances the progress bar once per scanned file."""
+  def _iter_images_to_index(self, directory: str, pbar: tqdm, seen: set[str]) -> Iterator[Tuple[str, ImageMeta]]:
+    """Walks the directory and yields (path, meta) for every image that needs (re)indexing, adding the
+    ones already up to date in the database to `seen`. Advances the progress bar once per scanned file."""
     images_processed = 0
     for entry in fs.walk(directory, self._exclude_dir_regex, self._image_regex, self._skip_hidden):
       filepath = entry.path
@@ -257,8 +265,7 @@ class RClip:
       if image and is_image_meta_equal(image, meta):
         if image["deleted"]:
           self._db.restore_image(filepath, commit=False)
-        else:
-          self._db.remove_indexing_flag(filepath, commit=False)
+        seen.add(filepath)
         continue
 
       yield filepath, meta
@@ -270,13 +277,7 @@ class RClip:
       file=sys.stderr,
     )
 
-    self._db.remove_indexing_flag_from_all_images(commit=False)
-    self._db.flag_images_in_a_dir_as_indexing(directory, commit=True)
-    # Excluded paths were not inspected, so leave their cached state alone.
-    for row in self._db.get_image_filepaths_by_dir_path(directory):
-      if self._is_excluded(row["filepath"], directory):
-        self._db.remove_indexing_flag(row["filepath"], commit=False)
-
+    seen: set[str] = set()
     with tqdm(total=None, unit="images") as pbar:
 
       def update_total_images(count: int):
@@ -289,13 +290,24 @@ class RClip:
       )
       counter_thread.start()
 
-      self._index_images(self._iter_images_to_index(directory, pbar))
+      self._index_images(self._iter_images_to_index(directory, pbar, seen), seen)
 
       self._db.commit()
       counter_thread.join()
 
-    self._db.flag_indexing_images_in_a_dir_as_deleted(directory)
+    self._mark_missing_images_as_deleted(directory, seen)
     print("", file=sys.stderr)
+
+  def _mark_missing_images_as_deleted(self, directory: str, seen: set[str]) -> None:
+    """Marks indexed images under `directory` that weren't found during this run as deleted.
+    Excluded paths weren't inspected, so their cached state is kept."""
+    self._db.mark_images_as_deleted(
+      [
+        row["filepath"]
+        for row in self._db.get_filepaths_by_dir_path(directory)
+        if row["filepath"] not in seen and not self._is_excluded(row["filepath"], directory)
+      ]
+    )
 
   def search(
     self,

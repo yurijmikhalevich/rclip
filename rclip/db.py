@@ -2,7 +2,7 @@ import os.path
 import pathlib
 import sqlite3
 import sys
-from typing import Optional, TypedDict, Union, cast
+from typing import Iterable, Optional, TypedDict, Union, cast
 
 
 class ImageOmittable(TypedDict, total=False):
@@ -86,6 +86,7 @@ class DB:
         file=sys.stderr,
       )
     if db_version < 2:
+      # Unused since rclip stopped flagging images during indexing; kept so older versions can still open the index.
       self._con.execute("ALTER TABLE images ADD COLUMN indexing BOOLEAN")
       db_version = 2
     if db_version < 3:
@@ -139,36 +140,18 @@ class DB:
     if commit:
       self._con.commit()
 
-  def remove_indexing_flag_from_all_images(self, commit: bool = True):
-    self._con.execute("UPDATE images SET indexing = NULL")
-    if commit:
-      self._con.commit()
-
-  def flag_images_in_a_dir_as_indexing(self, path: str, commit: bool = True):
-    start, end = self._get_dirpath_range(path)
-    self._con.execute("UPDATE images SET indexing = 1 WHERE filepath >= ? AND filepath < ?", (start, end))
-    if commit:
-      self._con.commit()
-
-  def flag_indexing_images_in_a_dir_as_deleted(self, path: str):
-    start, end = self._get_dirpath_range(path)
-    self._con.execute(
-      "UPDATE images SET deleted = 1, indexing = NULL WHERE filepath >= ? AND filepath < ? AND indexing = 1",
-      (start, end),
-    )
-    self._con.commit()
-
-  def remove_indexing_flag(self, filepath: str, commit: bool = True):
-    self._con.execute("UPDATE images SET indexing = NULL WHERE filepath = ?", (filepath,))
-    if commit:
-      self._con.commit()
-
   def get_image_state(self, filepath: str) -> Optional[ImageState]:
     """Fetches the fields used to detect changes, without reading the image vector."""
     cur = self._con.execute(
       "SELECT modified_at, size, deleted FROM images WHERE filepath = ? LIMIT 1", (filepath,)
     )
     return cur.fetchone()
+
+  def mark_images_as_deleted(self, filepaths: Iterable[str]):
+    self._con.executemany(
+      "UPDATE images SET deleted = 1, indexing = NULL WHERE filepath = ?", ((f,) for f in filepaths)
+    )
+    self._con.commit()
 
   def restore_image(self, filepath: str, commit: bool = True):
     self._con.execute("UPDATE images SET deleted = NULL, indexing = NULL WHERE filepath = ?", (filepath,))
@@ -187,6 +170,12 @@ class DB:
     return self._con.execute(
       "SELECT filepath, vector FROM images WHERE filepath >= ? AND filepath < ? AND deleted IS NULL",
       (start, end),
+    )
+
+  def get_filepaths_by_dir_path(self, path: str) -> sqlite3.Cursor:
+    start, end = self._get_dirpath_range(path)
+    return self._con.execute(
+      "SELECT filepath FROM images WHERE filepath >= ? AND filepath < ? AND deleted IS NULL", (start, end)
     )
 
   def get_image_filepaths_by_dir_path(

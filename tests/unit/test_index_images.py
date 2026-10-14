@@ -265,7 +265,7 @@ def test_index_images_keeps_meta_aligned_when_an_image_fails_to_load(monkeypatch
 
   rclip = _make_rclip(model, database)
   try:
-    rclip._index_images([("a.jpg", meta_a), ("b.jpg", meta_b), ("c.jpg", meta_c)])
+    rclip._index_images([("a.jpg", meta_a), ("b.jpg", meta_b), ("c.jpg", meta_c)], set())
   finally:
     rclip.close()
 
@@ -307,7 +307,7 @@ def test_rename_reuses_vector_without_recomputing(monkeypatch):
     model = Mock()
     rclip = _make_rclip(model, database)
     try:
-      rclip._index_images([("/new/path/renamed_cat.jpg", ImageMeta(modified_at=2.0, size=100))])
+      rclip._index_images([("/new/path/renamed_cat.jpg", ImageMeta(modified_at=2.0, size=100))], set())
     finally:
       rclip.close()
 
@@ -352,7 +352,7 @@ def test_same_hash_different_size_reindexes(monkeypatch):
     model.compute_preprocessed_image_features.return_value = [new_vector]
     rclip = _make_rclip(model, database)
     try:
-      rclip._index_images([("/new/path/edited_cat.jpg", ImageMeta(modified_at=2.0, size=200))])
+      rclip._index_images([("/new/path/edited_cat.jpg", ImageMeta(modified_at=2.0, size=200))], set())
     finally:
       rclip.close()
 
@@ -487,6 +487,145 @@ def test_index_restores_unchanged_deleted_image(tmp_path: Path):
     assert restored["deleted"] is None
     assert restored["vector"] == vector
     model.compute_preprocessed_image_features.assert_not_called()
+  finally:
+    app.close()
+    database.close()
+
+
+def test_index_does_not_write_when_nothing_changed(tmp_path: Path):
+  for name in ("a.jpg", "b.jpg"):
+    Image.new("RGB", (2, 2)).save(tmp_path / name)
+  database = DB(tmp_path / "db.sqlite3")
+  model = Mock()
+  model.compute_preprocessed_image_features.side_effect = lambda images, **kwargs: np.ones(
+    (len(images), 512), dtype=np.float32
+  )
+  app = _make_rclip(model, database)
+  try:
+    app.ensure_index(str(tmp_path))
+    changes = database._con.total_changes
+    app.ensure_index(str(tmp_path))
+    assert database._con.total_changes == changes
+  finally:
+    app.close()
+    database.close()
+
+
+def test_index_marks_missing_and_unreadable_images_as_deleted(tmp_path: Path, monkeypatch):
+  kept, removed, broken = tmp_path / "kept.jpg", tmp_path / "removed.jpg", tmp_path / "broken.jpg"
+  for path in (kept, removed, broken):
+    Image.new("RGB", (2, 2)).save(path)
+  database = DB(tmp_path / "db.sqlite3")
+  model = Mock()
+  model.compute_preprocessed_image_features.side_effect = lambda images, **kwargs: np.ones(
+    (len(images), 512), dtype=np.float32
+  )
+  app = _make_rclip(model, database)
+  try:
+    app.ensure_index(str(tmp_path))
+    removed.unlink()
+    broken.write_bytes(b"not an image")
+    app.ensure_index(str(tmp_path))
+    assert app.list_images(str(tmp_path), 10).filepaths == [str(kept)]
+    removed_row, broken_row = _get_stored_image(database, str(removed)), _get_stored_image(database, str(broken))
+    assert removed_row is not None and removed_row["deleted"] == 1
+    assert broken_row is not None and broken_row["deleted"] == 1
+  finally:
+    app.close()
+    database.close()
+
+
+def _fake_model() -> Mock:
+  model = Mock()
+  model.compute_preprocessed_image_features.side_effect = lambda images, **kwargs: np.ones(
+    (len(images), 512), dtype=np.float32
+  )
+  return model
+
+
+def test_index_marks_the_old_path_of_a_renamed_image_as_deleted(tmp_path: Path):
+  old, new = tmp_path / "old.jpg", tmp_path / "new.jpg"
+  Image.new("RGB", (2, 2), "red").save(old)
+  database = DB(tmp_path / "db.sqlite3")
+  model = _fake_model()
+  app = _make_rclip(model, database)
+  try:
+    app.ensure_index(str(tmp_path))
+    old.rename(new)
+    app.ensure_index(str(tmp_path))
+
+    assert app.list_images(str(tmp_path), 10).filepaths == [str(new)]
+    assert model.compute_preprocessed_image_features.call_count == 1
+  finally:
+    app.close()
+    database.close()
+
+
+def test_index_tracks_deleted_images_through_random_changes(tmp_path: Path):
+  """Applies random changes to a directory and checks after each indexing run that exactly the readable images
+  on disk are in the index, and that every other image in the index is marked as deleted."""
+  rng = np.random.default_rng(372)
+  photos = tmp_path / "photos"
+  photos.mkdir()
+  removed = tmp_path / "removed"
+  removed.mkdir()
+  database = DB(tmp_path / "db.sqlite3")
+  app = _make_rclip(_fake_model(), database)
+  clock = 1_000_000_000
+
+  def write_image(path: Path, color: int) -> None:
+    nonlocal clock
+    Image.new("RGB", (2, 2), (color, color, color)).save(path, format="PNG")
+    clock += 10
+    os.utime(path, (clock, clock))
+
+  def is_readable(path: Path) -> bool:
+    try:
+      Image.open(path).verify()
+      return True
+    except Exception:
+      return False
+
+  try:
+    for name in range(8):
+      write_image(photos / f"{name}.png", name)
+    next_name = 8
+    for _ in range(40):
+      for _ in range(int(rng.integers(1, 4))):
+        files = sorted(photos.iterdir())
+        removed_files = sorted(removed.iterdir())
+        operation = rng.choice(["add", "change", "delete", "rename", "duplicate", "corrupt", "restore"])
+        if operation == "add" or not files:
+          write_image(photos / f"{next_name}.png", int(rng.integers(256)))
+          next_name += 1
+        elif operation == "change":
+          write_image(files[int(rng.integers(len(files)))], int(rng.integers(256)))
+        elif operation == "delete":
+          victim = files[int(rng.integers(len(files)))]
+          victim.rename(removed / victim.name)
+        elif operation == "rename":
+          files[int(rng.integers(len(files)))].rename(photos / f"{next_name}.png")
+          next_name += 1
+        elif operation == "duplicate":
+          (photos / f"{next_name}.png").write_bytes(files[int(rng.integers(len(files)))].read_bytes())
+          next_name += 1
+        elif operation == "corrupt":
+          victim = files[int(rng.integers(len(files)))]
+          victim.write_bytes(b"not an image")
+          clock += 10
+          os.utime(victim, (clock, clock))
+        elif operation == "restore" and removed_files:
+          # restores the file unchanged, with the same modification time, as it is in the index
+          restored = removed_files[int(rng.integers(len(removed_files)))]
+          if not (photos / restored.name).exists():
+            restored.rename(photos / restored.name)
+
+      app.ensure_index(str(photos))
+
+      expected = sorted(str(path) for path in photos.iterdir() if is_readable(path))
+      rows = database._con.execute("SELECT filepath, deleted FROM images").fetchall()
+      assert sorted(row["filepath"] for row in rows if not row["deleted"]) == expected
+      assert sorted(app.list_images(str(photos), 1000).filepaths) == expected
   finally:
     app.close()
     database.close()
