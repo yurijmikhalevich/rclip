@@ -103,6 +103,14 @@ def test_get_image_vectors_by_dir_path_filters_with_the_filepath_index(tmp_path)
     database.close()
 
 
+def test_database_reads_the_index_through_a_memory_map(tmp_path):
+  database = DB(tmp_path / "db.sqlite3")
+  try:
+    assert database._con.execute("PRAGMA mmap_size").fetchone()[0] > 0
+  finally:
+    database.close()
+
+
 def test_database_allows_configured_cross_thread_reads(tmp_path):
   database = DB(tmp_path / "db.sqlite3", allow_cross_thread=True)
   try:

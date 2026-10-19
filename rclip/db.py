@@ -29,6 +29,7 @@ class ImageState(TypedDict):
 
 class DB:
   VERSION = 4
+  MMAP_SIZE = 2**31
 
   def __init__(
     self,
@@ -38,6 +39,9 @@ class DB:
   ):
     self._con = sqlite3.connect(filename, check_same_thread=not allow_cross_thread)
     self._con.row_factory = sqlite3.Row
+    # A search reads every vector in the index, and reading them through a memory map skips copying each page
+    # into SQLite's page cache. SQLite caps the map at its compile-time maximum, which is 2 GB by default.
+    self._con.execute(f"PRAGMA mmap_size={self.MMAP_SIZE}")
     self.ensure_tables()
     self.ensure_version(allow_vector_cache_reset=allow_vector_cache_reset)
 
