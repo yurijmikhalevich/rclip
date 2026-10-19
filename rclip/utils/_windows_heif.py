@@ -44,12 +44,19 @@ _WIC_BITMAP_DITHER_TYPE_NONE = 0
 _WIC_BITMAP_PALETTE_TYPE_CUSTOM = 0
 _WIC_BITMAP_INTERPOLATION_MODE_FANT = 3
 
+_FACILITY_WIN32 = 7
+
 _HRESULT = ctypes.c_int32
 _WINFUNCTYPE = getattr(ctypes, "WINFUNCTYPE", ctypes.CFUNCTYPE)
 
 
 def _failed(result: int) -> bool:
   return result < 0
+
+
+def _is_file_error(result: int) -> bool:
+  """Whether a failed HRESULT wraps a Win32 error, such as a missing, locked, or unreadable file."""
+  return _failed(result) and (result >> 16) & 0x1FFF == _FACILITY_WIN32
 
 
 def _check(result: int, action: str, error: type[NativeHeifError] = NativeHeifDecodeError) -> None:
@@ -123,20 +130,20 @@ def decode_path(path: str | os.PathLike[str], max_pixels: int | None, min_side: 
       ctypes.c_int,
       ctypes.POINTER(ctypes.c_void_p),
     )
-    _check(
-      int(
-        create_decoder_from_filename(
-          factory,
-          os.fspath(path),
-          None,
-          _GENERIC_READ,
-          _WIC_DECODE_METADATA_CACHE_ON_DEMAND,
-          ctypes.byref(decoder),
-        )
-      ),
-      "find an installed HEIF decoder",
-      NativeHeifCodecUnavailableError,
+    create_decoder_result = int(
+      create_decoder_from_filename(
+        factory,
+        os.fspath(path),
+        None,
+        _GENERIC_READ,
+        _WIC_DECODE_METADATA_CACHE_ON_DEMAND,
+        ctypes.byref(decoder),
+      )
     )
+    # WIC opens the file before it looks for a decoder, so a Win32 error means the file couldn't be read
+    if _is_file_error(create_decoder_result):
+      _check(create_decoder_result, "open the HEIF file")
+    _check(create_decoder_result, "find an installed HEIF decoder", NativeHeifCodecUnavailableError)
 
     get_frame = _method(decoder, 13, _HRESULT, ctypes.c_uint32, ctypes.POINTER(ctypes.c_void_p))
     _check(int(get_frame(decoder, 0, ctypes.byref(frame))), "read the first HEIF frame")

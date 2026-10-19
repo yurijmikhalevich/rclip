@@ -1,3 +1,4 @@
+import ctypes
 import importlib
 import sys
 from pathlib import Path
@@ -6,7 +7,7 @@ from typing import Any
 import pytest
 
 from rclip.utils import native_heif, preprocess
-from rclip.utils._windows_heif import _scaled_size
+from rclip.utils._windows_heif import _is_file_error, _scaled_size
 
 requires_wic = pytest.mark.skipif(sys.platform != "win32", reason="Windows Imaging Component is required")
 
@@ -36,6 +37,21 @@ def test_scaled_size_covers_min_side(size: tuple[int, int]):
 @pytest.mark.parametrize("size", [(384, 256), (256, 256), (100, 50), (256, 1000), (2000, 256)])
 def test_scaled_size_leaves_images_that_already_fit_untouched(size: tuple[int, int]):
   assert _scaled_size(*size, preprocess.IMAGE_SIZE) == size
+
+
+@pytest.mark.parametrize(
+  ("hresult", "expected"),
+  [
+    (0x80070002, True),  # ERROR_FILE_NOT_FOUND
+    (0x80070005, True),  # ERROR_ACCESS_DENIED
+    (0x80070020, True),  # ERROR_SHARING_VIOLATION
+    (0x88982F50, False),  # WINCODEC_ERR_COMPONENTNOTFOUND
+    (0x88982F07, False),  # WINCODEC_ERR_UNKNOWNIMAGEFORMAT
+    (0x00000000, False),  # S_OK
+  ],
+)
+def test_is_file_error_tells_file_failures_from_missing_codecs(hresult: int, expected: bool):
+  assert _is_file_error(ctypes.c_int32(hresult).value) is expected
 
 
 @requires_wic
