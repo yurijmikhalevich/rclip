@@ -10,6 +10,7 @@ from PIL import Image
 from rclip.utils.native_heif import (
   NativeHeifCodecUnavailableError,
   NativeHeifDecodeError,
+  NativeHeifError,
   NativeHeifTooLargeError,
 )
 
@@ -51,9 +52,9 @@ def _failed(result: int) -> bool:
   return result < 0
 
 
-def _check(result: int, action: str) -> None:
+def _check(result: int, action: str, error: type[NativeHeifError] = NativeHeifDecodeError) -> None:
   if _failed(result):
-    raise NativeHeifCodecUnavailableError(f"Windows WIC could not {action} (HRESULT 0x{result & 0xFFFFFFFF:08X})")
+    raise error(f"Windows WIC could not {action} (HRESULT 0x{result & 0xFFFFFFFF:08X})")
 
 
 def _method(interface: ctypes.c_void_p, index: int, result_type, *argument_types):
@@ -109,6 +110,7 @@ def decode_path(path: str | os.PathLike[str], max_pixels: int | None, min_side: 
         )
       ),
       "create the imaging factory",
+      NativeHeifCodecUnavailableError,
     )
 
     create_decoder_from_filename = _method(
@@ -133,6 +135,7 @@ def decode_path(path: str | os.PathLike[str], max_pixels: int | None, min_side: 
         )
       ),
       "find an installed HEIF decoder",
+      NativeHeifCodecUnavailableError,
     )
 
     get_frame = _method(decoder, 13, _HRESULT, ctypes.c_uint32, ctypes.POINTER(ctypes.c_void_p))

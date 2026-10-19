@@ -19,7 +19,7 @@ def windows_heif() -> Any:
   module = importlib.import_module("rclip.utils._windows_heif")
   try:
     module.decode_path(FIXTURE, None)
-  except native_heif.NativeHeifError as error:
+  except native_heif.NativeHeifCodecUnavailableError as error:
     pytest.skip(f"the operating system HEIF codec is unavailable: {error}")
   return module
 
