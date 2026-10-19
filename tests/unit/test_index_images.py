@@ -41,9 +41,9 @@ def test_search_stops_loading_vectors_when_cancelled() -> None:
   database = Mock()
 
   def rows(_directory: str):
-    yield {"filepath": "a.jpg", "vector": np.zeros(512, dtype=np.float32).tobytes()}
+    yield ("a.jpg", np.zeros(512, dtype=np.float32).tobytes())
     cancel_event.set()
-    yield {"filepath": "b.jpg", "vector": np.zeros(512, dtype=np.float32).tobytes()}
+    yield ("b.jpg", np.zeros(512, dtype=np.float32).tobytes())
 
   database.get_image_vectors_by_dir_path.side_effect = rows
   model = Mock()
@@ -80,7 +80,7 @@ def test_search_stops_when_cancelled_during_final_sort(monkeypatch) -> None:
   model.compute_features_for_queries.return_value = np.zeros(2, dtype=np.float32)
   database = Mock()
   database.get_image_vectors_by_dir_path.return_value = [
-    {"filepath": "a.jpg", "vector": np.zeros(2, dtype=np.float32).tobytes()}
+    ("a.jpg", np.zeros(2, dtype=np.float32).tobytes())
   ]
 
   def sort_results(results, *, key):
@@ -107,7 +107,7 @@ def test_search_continues_after_an_entirely_excluded_batch(monkeypatch, tmp_path
   ]
   database = Mock()
   database.get_image_vectors_by_dir_path.return_value = [
-    {"filepath": str(tmp_path / filepath), "vector": np.array([score, 0], dtype=np.float32).tobytes()}
+    (str(tmp_path / filepath), np.array([score, 0], dtype=np.float32).tobytes())
     for filepath, score in (
       ("private/a.jpg", 4),
       ("query.jpg", 3),
@@ -131,7 +131,7 @@ def test_search_keeps_only_global_top_results_across_vector_batches(monkeypatch)
   ]
   database = Mock()
   database.get_image_vectors_by_dir_path.return_value = [
-    {"filepath": filepath, "vector": np.array(vector, dtype=np.float32).tobytes()}
+    (filepath, np.array(vector, dtype=np.float32).tobytes())
     for filepath, vector in (
       ("z.jpg", [0.8, 0]),
       ("b.jpg", [0.9, 0]),
@@ -143,13 +143,14 @@ def test_search_keeps_only_global_top_results_across_vector_batches(monkeypatch)
   rclip = _make_rclip(model, database)
   monkeypatch.setattr(RClip, "SEARCH_BATCH_SIZE", 2)
   batch_sizes: list[int] = []
-  stack = main_module.np.stack
+  frombuffer = main_module.np.frombuffer
 
-  def record_stack(features):
-    batch_sizes.append(len(features))
-    return stack(features)
+  def record_frombuffer(buffer, dtype):
+    vectors = frombuffer(buffer, dtype)
+    batch_sizes.append(len(vectors) // 2)
+    return vectors
 
-  monkeypatch.setattr(main_module.np, "stack", record_stack)
+  monkeypatch.setattr(main_module.np, "frombuffer", record_frombuffer)
 
   results = rclip.search("cat", ".", 3, ["bright"], ["dark"])
 
@@ -159,11 +160,50 @@ def test_search_keeps_only_global_top_results_across_vector_batches(monkeypatch)
   assert batch_sizes == [2, 2, 1]
 
 
+def test_search_breaks_ties_within_a_batch_by_filepath() -> None:
+  database = Mock()
+  database.get_image_vectors_by_dir_path.return_value = [
+    (filepath, np.array([1, 0], dtype=np.float32).tobytes()) for filepath in ("c.jpg", "a.jpg", "d.jpg", "b.jpg")
+  ]
+  model = Mock()
+  model.compute_features_for_queries.side_effect = [
+    np.array([1, 0], dtype=np.float32),
+    np.array([0, 0], dtype=np.float32),
+  ]
+  rclip = _make_rclip(model, database)
+
+  assert [result.filepath for result in rclip.search("cat", ".", top_k=2)] == ["a.jpg", "b.jpg"]
+
+
+def test_search_checks_only_the_best_candidates_for_exclusion(monkeypatch) -> None:
+  database = Mock()
+  database.get_image_vectors_by_dir_path.return_value = [
+    (f"{index}.jpg", np.array([index, 0], dtype=np.float32).tobytes()) for index in range(1000)
+  ]
+  model = Mock()
+  model.compute_features_for_queries.side_effect = [
+    np.array([1, 0], dtype=np.float32),
+    np.array([0, 0], dtype=np.float32),
+  ]
+  rclip = _make_rclip(model, database)
+  checked: list[str] = []
+  is_excluded = rclip._is_excluded
+
+  def record_is_excluded(filepath: str, directory: str) -> bool:
+    checked.append(filepath)
+    return is_excluded(filepath, directory)
+
+  monkeypatch.setattr(rclip, "_is_excluded", record_is_excluded)
+
+  assert [result.filepath for result in rclip.search("cat", ".", top_k=3)] == ["999.jpg", "998.jpg", "997.jpg"]
+  assert checked == ["999.jpg", "998.jpg", "997.jpg"]
+
+
 def test_search_can_return_every_ranked_result(monkeypatch) -> None:
   monkeypatch.setattr(RClip, "SEARCH_BATCH_SIZE", 2)
   database = Mock()
   database.get_image_vectors_by_dir_path.return_value = [
-    {"filepath": f"{index}.jpg", "vector": np.array([index, 0], dtype=np.float32).tobytes()}
+    (f"{index}.jpg", np.array([index, 0], dtype=np.float32).tobytes())
     for index in range(12)
   ]
   model = Mock()

@@ -6,7 +6,7 @@ import sys
 import threading
 from collections import deque
 from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Deque, Iterable, Iterator, List, NamedTuple, Optional, Tuple, TypedDict, cast
+from typing import Callable, Deque, Iterable, Iterator, List, NamedTuple, Optional, Tuple, TypedDict, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -320,37 +320,43 @@ class RClip:
       os.path.abspath(query) for query in positive_queries + negative_queries if helpers.is_file_path(query)
     }
 
-    def iter_results() -> Iterator[RClip.SearchResult]:
-      images = iter(self._db.get_image_vectors_by_dir_path(directory))
-      while True:
-        batch_size = 0
-        filepaths: list[str] = []
-        features: list[model.FeatureVector] = []
-        for image in itertools.islice(images, self.SEARCH_BATCH_SIZE):
-          helpers.raise_if_cancelled(cancel_event)
-          batch_size += 1
-          filepath = image["filepath"]
-          if self._is_excluded(filepath, directory) or filepath in exclude_files:
-            continue
-          filepaths.append(filepath)
-          features.append(np.frombuffer(image["vector"], np.float32))
-        if not batch_size:
-          break
-        if not features:
-          continue
-        stacked_features = np.stack(features)
-        helpers.raise_if_cancelled(cancel_event)
-        similarities = query_features @ stacked_features.T
-        helpers.raise_if_cancelled(cancel_event)
-        yield from (
-          RClip.SearchResult(filepath, float(score)) for filepath, score in zip(filepaths, similarities)
-        )
+    def is_excluded(filepath: str) -> bool:
+      return filepath in exclude_files or self._is_excluded(filepath, directory)
+
+    candidates: List[RClip.SearchResult] = []
+    rows = iter(self._db.get_image_vectors_by_dir_path(directory))
+    while batch := list(itertools.islice(rows, self.SEARCH_BATCH_SIZE)):
+      helpers.raise_if_cancelled(cancel_event)
+      filepaths = [row[0] for row in batch]
+      vectors = np.frombuffer(b"".join(row[1] for row in batch), np.float32).reshape(len(batch), -1)
+      similarities = query_features @ vectors.T
+      candidates.extend(self._best_results(filepaths, similarities, top_k, is_excluded))
+      helpers.raise_if_cancelled(cancel_event)
 
     if top_k is None:
-      results = sorted(iter_results(), key=lambda result: (-result.score, result.filepath))
+      results = sorted(candidates, key=lambda result: (-result.score, result.filepath))
     else:
-      results = heapq.nsmallest(top_k, iter_results(), key=lambda result: (-result.score, result.filepath))
+      results = heapq.nsmallest(top_k, candidates, key=lambda result: (-result.score, result.filepath))
     helpers.raise_if_cancelled(cancel_event)
+    return results
+
+  @staticmethod
+  def _best_results(
+    filepaths: List[str],
+    similarities: npt.NDArray[np.floating],
+    top_k: int | None,
+    is_excluded: Callable[[str], bool],
+  ) -> List[SearchResult]:
+    """Returns the `top_k` best results that aren't excluded, along with the ones tied with the worst of them,
+    so that the final ranking can break ties by filepath. Walking the results from the best one down means only
+    those few candidates are checked for exclusion, rather than every indexed image."""
+    results: List[RClip.SearchResult] = []
+    for index in np.argsort(-similarities, kind="stable"):
+      score = float(similarities[index])
+      if top_k is not None and len(results) >= top_k and (not results or score < results[-1].score):
+        break
+      if not is_excluded(filepaths[index]):
+        results.append(RClip.SearchResult(filepaths[index], score))
     return results
 
   def list_images(
