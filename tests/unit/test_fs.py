@@ -60,3 +60,24 @@ def test_walk_exclusions_are_relative_to_root(tmp_path: Path, ancestor: str):
   _touch(root / "node_modules" / "excluded.jpg")
 
   assert _walked_names(root) == ["nested.jpg", "photo.jpg"]
+
+
+def test_walk_reports_and_skips_unreadable_directories(tmp_path: Path, monkeypatch):
+  _touch(tmp_path / "photo.jpg")
+  _touch(tmp_path / "locked" / "hidden.jpg")
+  _touch(tmp_path / "locked" / "nested" / "deeper.jpg")
+  scandir = os.scandir
+
+  def deny_locked_dir(path):
+    if os.fspath(path) == str(tmp_path / "locked"):
+      raise PermissionError(13, "Permission denied", path)
+    return scandir(path)
+
+  monkeypatch.setattr(os, "scandir", deny_locked_dir)
+  errors: list[str] = []
+  entries = fs.walk(str(tmp_path), EXCLUDE_DIR_RE, IMAGE_RE, on_error=lambda dir, error: errors.append(dir))
+
+  assert sorted(entry.name for entry in entries) == ["photo.jpg"]
+  assert errors == [str(tmp_path / "locked")]
+  with pytest.raises(PermissionError):
+    _walked_names(tmp_path)

@@ -236,11 +236,22 @@ class RClip:
         return True
     return False
 
-  def _iter_images_to_index(self, directory: str, pbar: tqdm, seen: set[str]) -> Iterator[Tuple[str, ImageMeta]]:
+  def _iter_images_to_index(
+    self, directory: str, pbar: tqdm, seen: set[str], unreadable_dirs: list[str]
+  ) -> Iterator[Tuple[str, ImageMeta]]:
     """Walks the directory and yields (path, meta) for every image that needs (re)indexing, adding the
-    ones already up to date in the database to `seen`. Advances the progress bar once per scanned file."""
+    ones already up to date in the database to `seen` and the directories it couldn't read to `unreadable_dirs`.
+    Advances the progress bar once per scanned file."""
+
+    def on_unreadable_dir(dir: str, error: OSError):
+      # under snap, the caller explains how to give rclip access to the directory a symlink points to
+      if is_snap() and isinstance(error, PermissionError) and os.path.islink(dir):
+        raise error
+      print(f"cannot read {dir}: {error.strerror or error}; keeping its images in the index as they are", file=sys.stderr)
+      unreadable_dirs.append(dir)
+
     images_processed = 0
-    for entry in fs.walk(directory, self._exclude_dir_regex, self._image_regex, self._skip_hidden):
+    for entry in fs.walk(directory, self._exclude_dir_regex, self._image_regex, self._skip_hidden, on_unreadable_dir):
       filepath = entry.path
 
       if self._enable_raw_support:
@@ -278,6 +289,7 @@ class RClip:
     )
 
     seen: set[str] = set()
+    unreadable_dirs: list[str] = []
     with tqdm(total=None, unit="images") as pbar:
 
       def update_total_images(count: int):
@@ -290,22 +302,25 @@ class RClip:
       )
       counter_thread.start()
 
-      self._index_images(self._iter_images_to_index(directory, pbar, seen), seen)
+      self._index_images(self._iter_images_to_index(directory, pbar, seen, unreadable_dirs), seen)
 
       self._db.commit()
       counter_thread.join()
 
-    self._mark_missing_images_as_deleted(directory, seen)
+    self._mark_missing_images_as_deleted(directory, seen, unreadable_dirs)
     print("", file=sys.stderr)
 
-  def _mark_missing_images_as_deleted(self, directory: str, seen: set[str]) -> None:
+  def _mark_missing_images_as_deleted(self, directory: str, seen: set[str], unreadable_dirs: list[str]) -> None:
     """Marks indexed images under `directory` that weren't found during this run as deleted.
-    Excluded paths weren't inspected, so their cached state is kept."""
+    Excluded paths and unreadable directories weren't inspected, so their cached state is kept."""
+    unreadable_prefixes = tuple(os.path.join(dir, "") for dir in unreadable_dirs)
     self._db.mark_images_as_deleted(
       [
         row["filepath"]
         for row in self._db.get_filepaths_by_dir_path(directory)
-        if row["filepath"] not in seen and not self._is_excluded(row["filepath"], directory)
+        if row["filepath"] not in seen
+        and not row["filepath"].startswith(unreadable_prefixes)
+        and not self._is_excluded(row["filepath"], directory)
       ]
     )
 
