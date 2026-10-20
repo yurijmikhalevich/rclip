@@ -1487,6 +1487,10 @@ def test_detail_preloads_only_adjacent_images_and_navigates_immediately(
       await pilot.press("down")
       app.select_card(app.query_one(ResultsGrid).cards[2])
       app.action_open_detail()
+      # Opening the detail view starts loading after the next refresh.
+      refreshed = asyncio.Event()
+      app.call_after_refresh(refreshed.set)
+      await refreshed.wait()
       await app.workers.wait_for_complete()
       screen = app.query_one(DetailView)
       assert sorted(loaded) == paths[1:4]

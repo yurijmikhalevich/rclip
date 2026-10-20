@@ -437,7 +437,8 @@ class RclipApp(App[None], inherit_bindings=False):
     # Re-place every image when toggling views.
     for image in self.query(ImageWidget):
       image.refresh_image()
-    self._update_selection()
+    # Load images once the shown view is laid out, so they're sent at the size it will draw them.
+    self.call_after_refresh(self._update_selection)
     if search_focused:
       self.action_focus_search()
     elif self._detail.display:
