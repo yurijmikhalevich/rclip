@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
 import sqlite3
+import sys
 from threading import Event
 from unittest.mock import call, Mock
 import tempfile
@@ -723,5 +724,37 @@ def test_index_tracks_deleted_images_through_random_changes(tmp_path: Path):
       assert sorted(row["filepath"] for row in rows if not row["deleted"]) == expected
       assert sorted(app.list_images(str(photos), 1000).filepaths) == expected
   finally:
+    app.close()
+    database.close()
+
+
+@pytest.mark.skipif(
+  sys.platform == "win32" or os.geteuid() == 0, reason="needs POSIX permissions that apply to the current user"
+)
+def test_index_keeps_images_behind_inaccessible_symlinks(tmp_path: Path, capsys):
+  root, locked = tmp_path / "root", tmp_path / "locked"
+  (locked / "sub").mkdir(parents=True)
+  root.mkdir()
+  kept, removed = root / "kept.jpg", root / "removed.jpg"
+  for path in (kept, removed, locked / "sub" / "linked.jpg", locked / "linked.jpg"):
+    Image.new("RGB", (2, 2)).save(path)
+  (root / "dir_link").symlink_to(locked / "sub")
+  (root / "file_link.jpg").symlink_to(locked / "linked.jpg")
+  database = DB(tmp_path / "db.sqlite3")
+  app = _make_rclip(_fake_model(), database)
+  try:
+    app.ensure_index(str(root))
+    locked.chmod(0)
+    removed.unlink()
+    app.ensure_index(str(root))
+
+    assert f"cannot read {root / 'dir_link'}: Permission denied" in capsys.readouterr().err
+    assert sorted(app.list_images(str(root), 10).filepaths) == sorted(
+      [str(kept), str(root / "dir_link" / "linked.jpg"), str(root / "file_link.jpg")]
+    )
+    removed_row = _get_stored_image(database, str(removed))
+    assert removed_row is not None and removed_row["deleted"] == 1
+  finally:
+    locked.chmod(0o755)
     app.close()
     database.close()
