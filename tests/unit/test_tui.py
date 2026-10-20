@@ -212,21 +212,36 @@ def test_kitty_image_reuses_its_renderable_until_its_size_changes(
       self.cleaned = True
 
   monkeypatch.setattr(StableTGPImage, "_Renderable", FakeRenderable)
-  image = StableTGPImage(make_image(tmp_path / "image.jpg"))
 
-  first = image.render()
-  assert isinstance(first, FakeRenderable)
-  assert image.render() is first
-  assert not first.cleaned
+  async def run() -> None:
+    async with App[None]().run_test() as pilot:
+      image = StableTGPImage(make_image(tmp_path / "image.jpg"))
 
-  image._rendered_size = Size(image.content_size.width + 1, image.content_size.height)
-  second = image.render()
-  assert isinstance(second, FakeRenderable)
-  assert second is not first
-  assert first.cleaned
+      first = image.render()
+      assert isinstance(first, FakeRenderable)
+      assert image.render() is first
+      assert not first.cleaned
 
-  image.on_unmount()
-  assert second.cleaned
+      image._rendered_size = Size(image.content_size.width + 1, image.content_size.height)
+      second = image.render()
+      assert isinstance(second, FakeRenderable)
+      assert second is not first
+      # The old placement stays until the next frame draws over it.
+      assert not first.cleaned
+      await pilot.pause()
+      assert first.cleaned
+
+      image.image = make_image(tmp_path / "other.jpg", "blue")
+      assert not second.cleaned
+      await pilot.pause()
+      assert second.cleaned
+
+      third = image.render()
+      assert isinstance(third, FakeRenderable)
+      image.on_unmount()
+      assert third.cleaned
+
+  asyncio.run(run())
 
 
 @pytest.mark.parametrize("size", [(1200, 800), (800, 1200), (800, 800)])
@@ -276,27 +291,32 @@ def test_kitty_image_reuses_transmitted_data_in_a_new_renderable(
   output = StringIO()
   monkeypatch.setattr(sys, "__stdout__", output)
   console = Console(file=StringIO(), width=20)
-  image = StableTGPImage(prepare_image(str(make_image(tmp_path / "image.jpg")), (80, 60)))
 
-  first = image.render()
-  assert isinstance(first, TGPRenderable)
-  # Widget.render() only returns the renderable; Rich performs the image transfer.
-  list(console.render(first))
-  image_id = first.terminal_image_id
-  assert image_id is not None
-  assert tgp_payload_bytes(output.getvalue()) > 0
+  async def run() -> None:
+    async with App[None]().run_test():
+      image = StableTGPImage(prepare_image(str(make_image(tmp_path / "image.jpg")), (80, 60)))
 
-  output.seek(0)
-  output.truncate()
-  image.refresh_image()
-  second = image.render()
-  assert isinstance(second, TGPRenderable)
-  assert second is not first
-  list(console.render(second))
+      first = image.render()
+      assert isinstance(first, TGPRenderable)
+      # Widget.render() only returns the renderable; Rich performs the image transfer.
+      list(console.render(first))
+      image_id = first.terminal_image_id
+      assert image_id is not None
+      assert tgp_payload_bytes(output.getvalue()) > 0
 
-  assert second.terminal_image_id == image_id
-  assert tgp_payload_bytes(output.getvalue()) == 0
-  assert f"\x1b_Ga=p,i={image_id}," in output.getvalue()
+      output.seek(0)
+      output.truncate()
+      image.refresh_image()
+      second = image.render()
+      assert isinstance(second, TGPRenderable)
+      assert second is not first
+      list(console.render(second))
+
+      assert second.terminal_image_id == image_id
+      assert tgp_payload_bytes(output.getvalue()) == 0
+      assert f"\x1b_Ga=p,i={image_id}," in output.getvalue()
+
+  asyncio.run(run())
 
 
 def test_kitty_image_does_not_reuse_data_for_a_different_box_size(

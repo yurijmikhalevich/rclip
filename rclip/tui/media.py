@@ -242,16 +242,25 @@ class StableTGPImage(TGPImage, Renderable=_TGPRenderable):
     self._rendered_size = self.content_size
     return self._renderable
 
+  def _set_image(self, value: StrOrBytesPath | IO[bytes] | PILImage.Image | None) -> None:
+    self._discard_renderable()
+    TGPImage.image.fset(self, value)
+
+  image = TGPImage.image.setter(_set_image)
+
   def refresh_image(self) -> None:
     self._discard_renderable()
     self.refresh()
 
   def on_unmount(self) -> None:
-    self._discard_renderable()
-
-  def _discard_renderable(self) -> None:
     if self._renderable is not None:
       self._renderable.cleanup()
+      self._renderable = None
+
+  def _discard_renderable(self) -> None:
+    # Delete the placement only after the next frame draws over it, so the image never blanks for a frame.
+    if self._renderable is not None:
+      self.app.call_after_refresh(self._renderable.cleanup)
       self._renderable = None
     self._rendered_size = None
 
