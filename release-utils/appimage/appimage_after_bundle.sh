@@ -16,7 +16,6 @@ build_python="$RCLIP_BUILD_TOOLS_DIR/bin/python"
 "$build_python" -m uv export --locked --format requirements.txt --no-dev --no-editable --no-emit-project --no-hashes --output-file requirements.txt
 "$build_python" -m pip install --upgrade --isolated --no-input --ignore-installed --root="$APPDIR" --prefix=/usr/local -r requirements.txt
 "$build_python" -m pip install --no-dependencies --isolated --no-input --root="$APPDIR" --prefix=/usr/local dist/*.whl
-"$build_python" -m pip install --upgrade --isolated --no-input --ignore-installed --target="$APPDIR/usr/local/lib/python3.13/site-packages" certifi
 
 # The bundled pip, setuptools, and wheel packages are build tools inherited
 # from the Ubuntu Python packages. They are not needed by the application.
