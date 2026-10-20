@@ -141,3 +141,18 @@ def test_lists_recent_image_filepaths(tmp_path):
     ]
   finally:
     database.close()
+
+
+def test_mark_images_as_deleted_hides_only_the_given_images(tmp_path):
+  database = DB(tmp_path / "db.sqlite3")
+  try:
+    photos = tmp_path / "photos"
+    cat, dog = str(photos / "cat.jpg"), str(photos / "dog.jpg")
+    database.upsert_image(_new_image(cat))
+    database.upsert_image(_new_image(dog))
+
+    database.mark_images_as_deleted([cat])
+
+    assert [row["filepath"] for row in database.get_filepaths_by_dir_path(str(photos))] == [dog]
+  finally:
+    database.close()
