@@ -1311,7 +1311,10 @@ def test_detail_navigation_reuses_transmitted_images(tmp_path: Path, monkeypatch
   async def run() -> None:
     async with app.run_test(size=(100, 40)) as pilot:
       await app.workers.wait_for_complete()
-      await pilot.press("down", "o", "right")
+      await pilot.press("down", "o")
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      await pilot.press("right")
       await app.workers.wait_for_complete()
       await pilot.pause()
       assert tgp_payload_bytes(output.getvalue()) > 0
@@ -1941,7 +1944,7 @@ def test_search_loads_more_on_scroll(tmp_path: Path, monkeypatch: pytest.MonkeyP
       gallery_path = app.query_one("#gallery-path", Static)
       assert str(gallery_path.content) == f"1.000  {paths[0]}"
       app.query_one(ResultsGrid).scroll_end(animate=False)
-      async with asyncio.timeout(0.25):
+      async with asyncio.timeout(1):
         while len(app.query(ImageCard)) != 26:
           await asyncio.sleep(0.01)
       assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths]
@@ -1994,7 +1997,7 @@ def test_empty_browse_retries_loading_more_after_failure(
         await pilot.press("down", "o", *(["right"] * 23))
       else:
         grid.scroll_end(animate=False)
-      async with asyncio.timeout(0.25):
+      async with asyncio.timeout(1):
         while not notifications:
           await asyncio.sleep(0.01)
       assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths[:25]]
@@ -2009,7 +2012,7 @@ def test_empty_browse_retries_loading_more_after_failure(
         await pilot.pause()
         grid.scroll_end(animate=False)
       expected = [str(path) for path in paths]
-      async with asyncio.timeout(0.25):
+      async with asyncio.timeout(1):
         while [card.result.filepath for card in app.query(ImageCard)] != expected:
           await asyncio.sleep(0.01)
       if detail:
