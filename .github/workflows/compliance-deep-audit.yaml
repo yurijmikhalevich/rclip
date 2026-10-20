@@ -38,7 +38,7 @@ jobs:
       - name: Install production dependencies and ScanCode
         run: |
           UV_PROJECT_ENVIRONMENT=.compliance-venv uv sync --locked --no-dev
-          python -m pip install scancode-toolkit==32.5.0
+          python -m pip install scancode-toolkit==32.5.0 'pluggy<1.7'
       - name: Collect legal materials
         run: |
           .compliance-venv/bin/python -m rclip._compliance collect \
@@ -66,7 +66,7 @@ jobs:
           python-version: '3.13'
       - name: Install ScanCode and extraction tools
         run: |
-          python -m pip install scancode-toolkit==32.5.0
+          python -m pip install scancode-toolkit==32.5.0 'pluggy<1.7'
           sudo apt-get update
           sudo apt-get install -y p7zip-full squashfs-tools
       - name: Download latest AppImage, MSI, and Snaps
