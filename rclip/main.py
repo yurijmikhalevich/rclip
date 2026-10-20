@@ -316,13 +316,15 @@ class RClip:
 
   def _mark_missing_images_as_deleted(self, directory: str, seen: set[str], unreadable_dirs: list[str]) -> None:
     """Marks indexed images under `directory` that weren't found during this run as deleted.
-    Excluded paths and unreadable directories weren't inspected, so their cached state is kept."""
+    Excluded paths and unreadable directories and entries weren't inspected, so their cached state is kept."""
+    unreadable_paths = set(unreadable_dirs)
     unreadable_prefixes = tuple(os.path.join(dir, "") for dir in unreadable_dirs)
     self._db.mark_images_as_deleted(
       [
         row["filepath"]
         for row in self._db.get_filepaths_by_dir_path(directory)
         if row["filepath"] not in seen
+        and row["filepath"] not in unreadable_paths
         and not row["filepath"].startswith(unreadable_prefixes)
         and not self._is_excluded(row["filepath"], directory)
       ]

@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -81,3 +82,40 @@ def test_walk_reports_and_skips_unreadable_directories(tmp_path: Path, monkeypat
   assert errors == [str(tmp_path / "locked")]
   with pytest.raises(PermissionError):
     _walked_names(tmp_path)
+
+
+cannot_lock_dirs = pytest.mark.skipif(
+  sys.platform == "win32" or os.geteuid() == 0, reason="needs POSIX permissions that apply to the current user"
+)
+
+
+@cannot_lock_dirs
+def test_walk_reports_and_skips_symlinks_to_inaccessible_targets(tmp_path: Path):
+  root, locked = tmp_path / "root", tmp_path / "locked"
+  _touch(root / "a.jpg")
+  _touch(root / "z.jpg")
+  _touch(locked / "sub" / "hidden.jpg")
+  _touch(locked / "linked.jpg")
+  (root / "b_dir_link").symlink_to(locked / "sub")
+  (root / "c_file_link.jpg").symlink_to(locked / "linked.jpg")
+  locked.chmod(0)
+  try:
+    errors: list[str] = []
+    entries = fs.walk(str(root), EXCLUDE_DIR_RE, IMAGE_RE, on_error=lambda path, error: errors.append(path))
+
+    assert sorted(entry.name for entry in entries) == ["a.jpg", "z.jpg"]
+    assert sorted(errors) == [str(root / "b_dir_link"), str(root / "c_file_link.jpg")]
+    with pytest.raises(PermissionError):
+      _walked_names(root)
+
+    def reraise(path: str, error: OSError):
+      errors.append(path)
+      raise error
+
+    errors.clear()
+    with pytest.raises(PermissionError):
+      list(fs.walk(str(root), EXCLUDE_DIR_RE, IMAGE_RE, on_error=reraise))
+    # an error re-raised for an entry isn't reported again as an error reading its directory
+    assert len(errors) == 1 and errors[0] != str(root)
+  finally:
+    locked.chmod(0o755)

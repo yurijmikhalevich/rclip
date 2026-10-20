@@ -1,5 +1,5 @@
 import os
-from typing import Callable, Optional, Pattern
+from typing import Callable, Iterator, Optional, Pattern
 
 COUNT_FILES_UPDATE_EVERY = 10_000
 
@@ -30,21 +30,38 @@ def walk(
   on_error: Optional[Callable[[str, OSError], None]] = None,
 ):
   """Walks through a directory recursively and yields files that match the given regex.
-  Directories that can't be read are passed to `on_error` and skipped, or raise if it isn't set."""
+  Directories and entries that can't be read, such as a symlink to an inaccessible target, are passed to
+  `on_error` and skipped, or raise if it isn't set."""
+
+  def report(path: str, error: OSError) -> None:
+    if on_error is None:
+      raise error
+    on_error(path, error)
+
   dirs_to_process = [directory]
   while dirs_to_process:
     dir = dirs_to_process.pop()
-    try:
-      with os.scandir(dir) as it:
-        for entry in it:
-          if skip_hidden and entry.name.startswith("."):
-            continue
-          if entry.is_dir():
-            if not exclude_dir_re.match(os.path.join(".", os.path.relpath(entry.path, directory))):
-              dirs_to_process.append(entry.path)
-          elif entry.is_file() and file_re.match(entry.name):
-            yield entry
-    except OSError as error:
-      if on_error is None:
-        raise
-      on_error(dir, error)
+    for entry in _scandir(dir, report):
+      if skip_hidden and entry.name.startswith("."):
+        continue
+      try:
+        is_dir = entry.is_dir()
+        is_file = not is_dir and entry.is_file()
+      except OSError as error:
+        report(entry.path, error)
+        continue
+      if is_dir:
+        if not exclude_dir_re.match(os.path.join(".", os.path.relpath(entry.path, directory))):
+          dirs_to_process.append(entry.path)
+      elif is_file and file_re.match(entry.name):
+        yield entry
+
+
+def _scandir(dir: str, report: Callable[[str, OSError], None]) -> Iterator[os.DirEntry[str]]:
+  """Yields the entries of `dir`, passing an error reading it to `report`. Errors raised while handling
+  an entry stay with the caller, since they aren't raised inside this generator."""
+  try:
+    with os.scandir(dir) as it:
+      yield from it
+  except OSError as error:
+    report(dir, error)
