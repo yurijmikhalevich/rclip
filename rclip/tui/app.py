@@ -13,8 +13,11 @@ from textual.binding import Binding
 from textual.color import Color
 from textual.containers import Horizontal
 from textual.content import Content
+from textual.reactive import Reactive
+from textual.screen import Screen
 from textual.style import Style
 from textual.timer import Timer
+from textual.widget import Widget
 from textual.worker import get_current_worker
 from textual.widgets import Input, Static
 
@@ -64,6 +67,12 @@ def _safe_suspend(app: App[None], message: str) -> Iterator[None]:
     print("\x1b\\", end="", flush=True)
   if failure is not None:
     raise failure
+
+
+class _Screen(Screen[None]):
+  # Textual repaints the whole screen whenever focus moves, which rewrites every image on each arrow key.
+  # The :focus styles already repaint the widgets that gain and lose focus.
+  focused: Reactive[Widget | None] = Reactive(None, repaint=False)
 
 
 class RclipApp(App[None], inherit_bindings=False):
@@ -118,6 +127,9 @@ class RclipApp(App[None], inherit_bindings=False):
       variables["border-blurred"] = "ansi_bright_black"
       variables["border"] = variables["scrollbar-active"]
     return variables
+
+  def get_default_screen(self) -> Screen[None]:
+    return _Screen(id="_default")
 
   def compose(self) -> ComposeResult:
     directory = _display_directory(self.working_directory)

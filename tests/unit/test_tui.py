@@ -1116,6 +1116,31 @@ def test_grid_navigation_keeps_selection_after_queued_arrows(
   asyncio.run(run())
 
 
+def test_grid_navigation_repaints_only_the_cards_that_change_focus(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+  results = [RClip.SearchResult(str(tmp_path / f"image-{index}.jpg"), 1) for index in range(15)]
+  app = RclipApp(FakeRclip(results), str(tmp_path))
+  monkeypatch.setattr(ImageCard, "load_preview", lambda self: None)
+
+  async def run() -> None:
+    async with app.run_test(size=(100, 40)) as pilot:
+      await app.workers.wait_for_complete()
+      await pilot.press("down")
+      await pilot.pause()
+      cards = app.query_one(ResultsGrid).cards
+      screen_refreshes: list[bool] = []
+      monkeypatch.setattr(app.screen, "refresh", lambda *args, **kwargs: screen_refreshes.append(True))
+      await pilot.press("right")
+      await pilot.pause()
+      assert app.focused is cards[1]
+      assert cards[1].has_pseudo_class("focus")
+      assert not cards[0].has_pseudo_class("focus")
+      assert not screen_refreshes
+
+  asyncio.run(run())
+
+
 def test_modifier_hotkeys_respect_visible_target_and_preserve_search(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
