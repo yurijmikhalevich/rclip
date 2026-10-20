@@ -4,9 +4,8 @@ import os
 import re
 import sys
 import threading
-from collections import deque
-from concurrent.futures import Future, ThreadPoolExecutor
-from typing import Callable, Deque, Iterable, Iterator, List, NamedTuple, Optional, Tuple, TypedDict, cast
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from typing import Callable, Dict, Iterable, Iterator, List, NamedTuple, Optional, Tuple, TypedDict, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -128,42 +127,47 @@ class RClip:
   def _load_images(
     self, items: Iterable[Tuple[str, ImageMeta]]
   ) -> Iterator[Tuple[str, ImageMeta, str, npt.NDArray[np.float32]]]:
+    """Reads and preprocesses images on the loader threads, yielding them as soon as each one is ready.
+    One slow image doesn't hold back the ones queued behind it, so the yield order may differ from `items`."""
     helpers._ensure_image_loading_configured()
     executor = self._get_image_loading_executor()
     # keep a few full batches in flight so they preprocess while the model
     # processes the current one.
     max_in_flight = max(self.LOOKAHEAD_BATCHES * self._indexing_batch_size, self._image_loading_workers)
     items_iter = iter(items)
-    in_flight: Deque[Tuple[str, ImageMeta, Future[Tuple[str, str, npt.NDArray[np.float32]]]]] = deque()
+    in_flight: Dict[Future[Tuple[str, str, npt.NDArray[np.float32]]], Tuple[str, ImageMeta]] = {}
 
     def submit_next() -> None:
       item = next(items_iter, None)
       if item is not None:
         path, meta = item
-        in_flight.append((path, meta, executor.submit(_read_and_preprocess, path)))
+        in_flight[executor.submit(_read_and_preprocess, path)] = (path, meta)
 
     for _ in range(max_in_flight):
       submit_next()
 
     while in_flight:
-      path, meta, future = in_flight.popleft()
-      submit_next()  # refill so the window stays full while the consumer is busy
-      try:
-        _, file_hash, preprocessed = future.result()
-        yield path, meta, file_hash, preprocessed
-      except helpers.ImageTooLargeError as ex:
-        print(_too_large_message(path, ex.pixels, ex.limit), file=sys.stderr)
-      except (PIL.Image.DecompressionBombError, PIL.Image.DecompressionBombWarning) as ex:
-        # backstop for formats whose true size only surfaces while decoding in the worker
-        print(
-          _too_large_message(path, helpers.parse_bomb_pixels(ex), helpers.get_max_image_pixels() or 0), file=sys.stderr
-        )
-      except MemoryError:
-        print(f"skipping {path}: ran out of memory while processing it", file=sys.stderr)
-      except PIL.UnidentifiedImageError:
-        print(f"skipping {path}: it is not a readable image", file=sys.stderr)
-      except Exception as ex:
-        print(f"skipping {path}: {ex}", file=sys.stderr)
+      done, _ = wait(in_flight, return_when=FIRST_COMPLETED)
+      for future in done:
+        path, meta = in_flight.pop(future)
+        submit_next()  # refill so the window stays full while the consumer is busy
+        try:
+          _, file_hash, preprocessed = future.result()
+          yield path, meta, file_hash, preprocessed
+        except helpers.ImageTooLargeError as ex:
+          print(_too_large_message(path, ex.pixels, ex.limit), file=sys.stderr)
+        except (PIL.Image.DecompressionBombError, PIL.Image.DecompressionBombWarning) as ex:
+          # backstop for formats whose true size only surfaces while decoding in the worker
+          print(
+            _too_large_message(path, helpers.parse_bomb_pixels(ex), helpers.get_max_image_pixels() or 0),
+            file=sys.stderr,
+          )
+        except MemoryError:
+          print(f"skipping {path}: ran out of memory while processing it", file=sys.stderr)
+        except PIL.UnidentifiedImageError:
+          print(f"skipping {path}: it is not a readable image", file=sys.stderr)
+        except Exception as ex:
+          print(f"skipping {path}: {ex}", file=sys.stderr)
 
   def _index_images(self, items: Iterable[Tuple[str, ImageMeta]], seen: set[str]) -> None:
     """Indexes `items`, adding every stored path to `seen`."""

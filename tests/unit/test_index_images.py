@@ -218,7 +218,7 @@ def test_search_can_return_every_ranked_result(monkeypatch) -> None:
   ]
 
 
-def test_load_images_preserves_order_and_skips_failures(monkeypatch):
+def test_load_images_skips_failures(monkeypatch):
   monkeypatch.setattr(helpers, "_ensure_image_loading_configured", lambda: None)
   monkeypatch.setattr(helpers, "read_image", _fail_on_b)
   monkeypatch.setattr(helpers, "compute_file_hash", lambda path: "dummy_hash")
@@ -233,10 +233,35 @@ def test_load_images_preserves_order_and_skips_failures(monkeypatch):
   finally:
     rclip.close()
 
-  # b.jpg failed to load and is dropped; the survivors keep their order and their own metas/images
-  assert [(path, meta) for path, meta, _hash, _image in loaded] == [("a.jpg", meta_a), ("c.jpg", meta_c)]
+  # b.jpg failed to load and is dropped; the survivors keep their own metas/images
+  assert sorted((path, meta["size"]) for path, meta, _hash, _image in loaded) == [("a.jpg", 100), ("c.jpg", 300)]
   # the loader threads preprocess the images, so it yields ready-to-encode CLIP tensors
   assert all(isinstance(image, np.ndarray) and image.shape == (3, 256, 256) for _path, _meta, _hash, image in loaded)
+
+
+def test_load_images_does_not_wait_for_a_slow_image(monkeypatch):
+  monkeypatch.setattr(helpers, "_ensure_image_loading_configured", lambda: None)
+  monkeypatch.setattr(helpers, "compute_file_hash", lambda path: "dummy_hash")
+  slow_image_released = Event()
+
+  def read_image(path: str, **_kwargs) -> Image.Image:
+    if path == "slow.jpg":
+      assert slow_image_released.wait(timeout=5)
+    return Image.new("RGB", (1, 1))
+
+  monkeypatch.setattr(helpers, "read_image", read_image)
+  meta = ImageMeta(modified_at=1.0, size=100)
+  rclip = _make_rclip(Mock(), Mock())
+  # one worker would be stuck on slow.jpg, e.g. on a single-CPU machine
+  rclip._image_loading_workers = 2
+  try:
+    loaded = rclip._load_images([("slow.jpg", meta), ("fast.jpg", meta)])
+    assert next(loaded)[0] == "fast.jpg"
+    slow_image_released.set()
+    assert [path for path, _meta, _hash, _image in loaded] == ["slow.jpg"]
+  finally:
+    slow_image_released.set()
+    rclip.close()
 
 
 def test_list_images_applies_exclusions_before_the_limit(tmp_path: Path) -> None:
@@ -274,8 +299,8 @@ def test_load_images_skips_images_that_are_too_large(monkeypatch, capsys):
   finally:
     rclip.close()
 
-  # the too-large image is dropped, the rest survive in order
-  assert [path for path, _meta, _hash, _image in loaded] == ["a.jpg", "c.jpg"]
+  # the too-large image is dropped, the rest survive
+  assert sorted(path for path, _meta, _hash, _image in loaded) == ["a.jpg", "c.jpg"]
   # the user gets a friendly, actionable message naming the file and the limit
   err = capsys.readouterr().err
   assert "skipping b.jpg" in err
