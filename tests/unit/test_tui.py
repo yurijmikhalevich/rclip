@@ -8,17 +8,18 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-from threading import Event, Lock, Thread
+from threading import Event, Lock, Thread, current_thread, main_thread
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from PIL import Image
 from rich.console import Console
 from textual_image.renderable import TGPImage as TGPRenderable
-from textual_image._terminal import CellSize
+from textual_image._terminal import CellSize, TerminalCapabilities, probe_terminal
 import pytest
 from textual import events
-from textual.app import App
+from textual.app import App, ComposeResult
+from textual.containers import Container
 from textual.drivers.headless_driver import HeadlessDriver
 from textual.geometry import Region, Size
 from textual.widgets import Input, Static
@@ -533,7 +534,9 @@ def test_prewarm_image_populates_cache_and_render_avoids_retransmission(
   console = Console(file=StringIO(), width=20)
 
   prepared = prepare_image(str(make_image(tmp_path / "image.jpg")), (80, 60))
-  prewarm_image(StableTGPImage, prepared, 20, 20, styled_size=(4, 3))
+  widget = StableTGPImage()
+  monkeypatch.setattr(widget, "_get_styled_size", lambda: (4, 3))
+  prewarm_image(widget, prepared, 20, 20)
 
   assert tgp_payload_bytes(output.getvalue()) > 0
   assert len(cache._by_key) == 1
@@ -556,6 +559,87 @@ def test_prewarm_image_populates_cache_and_render_avoids_retransmission(
   assert cached_image.refs == 0
 
 
+@pytest.mark.parametrize(
+  ("widget_type", "css"),
+  [
+    (StableTGPImage, "width: auto; height: auto; max-width: 100%; max-height: 100%;"),
+    (CenteredTGPImage, "width: 100%; height: 100%;"),
+  ],
+)
+def test_prewarmed_image_is_reused_when_drawn_in_its_frame(
+  tmp_path: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  widget_type: type[StableTGPImage],
+  css: str,
+) -> None:
+  monkeypatch.setattr(sys, "__stdout__", StringIO())
+  monkeypatch.setattr(probe_terminal, "_result", TerminalCapabilities(CellSize(10, 20), False, True), raising=False)
+  cache = media_module._ImageCache()
+  monkeypatch.setattr(media_module, "_IMAGE_CACHE", cache)
+  image = prepare_image(str(make_image(tmp_path / "image.jpg")), (80, 60))
+
+  class FrameApp(App[None]):
+    CSS = f"#frame {{ width: 22; height: 13; }} #frame > * {{ {css} }}"
+
+    def compose(self) -> ComposeResult:
+      with Container(id="frame"):
+        yield widget_type()
+
+  async def run() -> None:
+    app = FrameApp()
+    async with app.run_test(size=(40, 20)) as pilot:
+      frame = app.query_one("#frame").size
+      widget = app.query_one(widget_type)
+      prewarm_image(widget, image, frame.width, frame.height)
+      prewarmed = set(cache._by_key)
+      widget.image = image
+      await pilot.pause()
+      assert set(cache._by_key) == prewarmed
+
+  asyncio.run(run())
+
+
+def test_tui_draws_images_from_data_sent_in_the_background(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(sys, "__stdout__", StringIO())
+  monkeypatch.setattr(probe_terminal, "_result", TerminalCapabilities(CellSize(10, 20), False, True), raising=False)
+  cache = media_module._ImageCache()
+  monkeypatch.setattr(media_module, "_IMAGE_CACHE", cache)
+  drawn: list[tuple[object, bool]] = []
+  acquire = cache.acquire
+
+  def record_drawn(
+    key: object, source: object | None, decoded: int, transmit: Callable[[int], None]
+  ) -> media_module._TransmittedImage:
+    if current_thread() is main_thread():
+      assert isinstance(key, tuple)
+      drawn.append((key[0], key in cache._by_key))
+    return acquire(key, source, decoded, transmit)
+
+  monkeypatch.setattr(cache, "acquire", record_drawn)
+  paths = [make_image(tmp_path / f"image-{index}.jpg") for index in range(3)]
+  app = RclipApp(FakeRclip([RClip.SearchResult(str(path), 1) for path in paths]), str(tmp_path))
+
+  async def settle(pilot) -> None:
+    for _ in range(3):
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+
+  async def run() -> None:
+    async with app.run_test(size=(100, 40)) as pilot:
+      await settle(pilot)
+      await pilot.press("down", "enter")
+      await settle(pilot)
+      await pilot.press("right")
+      await settle(pilot)
+
+  asyncio.run(run())
+
+  # The grid previews and the main detail images; filmstrip thumbnails are covered above.
+  grid_and_detail = [sent for renderable_class, sent in drawn if renderable_class is media_module._TGPRenderable]
+  assert len(grid_and_detail) >= 5
+  assert all(grid_and_detail)
+
+
 def test_prewarm_image_ignores_transmission_failure(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -569,7 +653,7 @@ def test_prewarm_image_ignores_transmission_failure(
   monkeypatch.setattr(cache, "acquire", failing_acquire)
 
   # Should return normally without raising
-  prewarm_image(StableTGPImage, prepared, 20, 20, styled_size=(4, 3))
+  prewarm_image(StableTGPImage(), prepared, 20, 20)
 
 
 def test_image_cache_transmit_runs_outside_lock() -> None:

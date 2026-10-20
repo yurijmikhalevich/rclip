@@ -280,21 +280,19 @@ class CenteredTGPImage(StableTGPImage, Renderable=_CenteredTGPRenderable):
   """Center an aspect-preserving image in its full widget area, at pixel precision."""
 
 
-def prewarm_image(
-  widget_type: type[StableTGPImage],
-  image: PILImage.Image,
-  max_width: int,
-  max_height: int,
-  styled_size: tuple[int | str | None, int | str | None] = (None, None),
-) -> None:
-  """Pre-scale, encode, and transmit Kitty image data in the background before rendering."""
+def prewarm_image(widget: StableTGPImage, image: PILImage.Image, max_width: int, max_height: int) -> None:
+  """Pre-scale, encode, and transmit Kitty image data in the background before `widget` renders it."""
   if max_width <= 0 or max_height <= 0:
     return
-  renderable_class = getattr(widget_type, "_Renderable", _TGPRenderable)
+  renderable_class = widget._Renderable
+  styled_size = widget._get_styled_size()
   terminal_sizes = get_cell_size()
   render_size = ImageSize(image.width, image.height, *styled_size)
-  cell_width, cell_height = render_size.get_cell_size(max_width, max_height, terminal_sizes)
-  pixel_width, pixel_height = render_size.get_pixel_size(max_width, max_height, terminal_sizes)
+  # Textual first fits the widget into its frame, then the renderable fits the image into the widget.
+  width, _ = render_size.get_cell_size(max_width, max_height, terminal_sizes)
+  _, height = render_size.get_cell_size(width, max_height, terminal_sizes)
+  cell_width, cell_height = render_size.get_cell_size(width, height, terminal_sizes)
+  pixel_width, pixel_height = render_size.get_pixel_size(width, height, terminal_sizes)
 
   box = (cell_width, cell_height)
   source_id = _extract_source(image)
