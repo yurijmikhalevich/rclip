@@ -215,6 +215,13 @@ def test_kitty_image_reuses_its_renderable_until_its_size_changes(
 
   async def run() -> None:
     async with App[None]().run_test() as pilot:
+      app = pilot.app
+
+      async def after_refresh() -> None:
+        refreshed = asyncio.Event()
+        app.call_after_refresh(refreshed.set)
+        await refreshed.wait()
+
       image = StableTGPImage(make_image(tmp_path / "image.jpg"))
 
       first = image.render()
@@ -228,12 +235,12 @@ def test_kitty_image_reuses_its_renderable_until_its_size_changes(
       assert second is not first
       # The old placement stays until the next frame draws over it.
       assert not first.cleaned
-      await pilot.pause()
+      await after_refresh()
       assert first.cleaned
 
       image.image = make_image(tmp_path / "other.jpg", "blue")
       assert not second.cleaned
-      await pilot.pause()
+      await after_refresh()
       assert second.cleaned
 
       third = image.render()
