@@ -576,6 +576,37 @@ def test_index_does_not_write_when_nothing_changed(tmp_path: Path):
     database.close()
 
 
+def test_index_keeps_images_in_unreadable_directories(tmp_path: Path, monkeypatch, capsys):
+  locked_dir = tmp_path / "locked"
+  locked_dir.mkdir()
+  kept, locked = tmp_path / "kept.jpg", locked_dir / "locked.jpg"
+  for path in (kept, locked):
+    Image.new("RGB", (2, 2)).save(path)
+  database = DB(tmp_path / "db.sqlite3")
+  model = Mock()
+  model.compute_preprocessed_image_features.side_effect = lambda images, **kwargs: np.ones(
+    (len(images), 512), dtype=np.float32
+  )
+  app = _make_rclip(model, database)
+  try:
+    app.ensure_index(str(tmp_path))
+    scandir = os.scandir
+
+    def deny_locked_dir(path):
+      if os.fspath(path) == str(locked_dir):
+        raise PermissionError(13, "Permission denied", str(locked_dir))
+      return scandir(path)
+
+    monkeypatch.setattr(os, "scandir", deny_locked_dir)
+    app.ensure_index(str(tmp_path))
+
+    assert f"cannot read {locked_dir}: Permission denied" in capsys.readouterr().err
+    assert sorted(app.list_images(str(tmp_path), 10).filepaths) == sorted([str(kept), str(locked)])
+  finally:
+    app.close()
+    database.close()
+
+
 def test_index_marks_missing_and_unreadable_images_as_deleted(tmp_path: Path, monkeypatch):
   kept, removed, broken = tmp_path / "kept.jpg", tmp_path / "removed.jpg", tmp_path / "broken.jpg"
   for path in (kept, removed, broken):
