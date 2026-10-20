@@ -252,6 +252,8 @@ def test_load_images_does_not_wait_for_a_slow_image(monkeypatch):
   monkeypatch.setattr(helpers, "read_image", read_image)
   meta = ImageMeta(modified_at=1.0, size=100)
   rclip = _make_rclip(Mock(), Mock())
+  # one worker would be stuck on slow.jpg, e.g. on a single-CPU machine
+  rclip._image_loading_workers = 2
   try:
     loaded = rclip._load_images([("slow.jpg", meta), ("fast.jpg", meta)])
     assert next(loaded)[0] == "fast.jpg"
