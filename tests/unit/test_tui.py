@@ -759,6 +759,22 @@ def test_image_cache_transmit_failure_cleans_up_and_propagates() -> None:
   assert cache._decoded == 0
 
 
+def test_image_cache_transmit_failure_after_forget_keeps_the_newer_image() -> None:
+  cache = media_module._ImageCache(budget=50_000)
+  newer: list[media_module._TransmittedImage] = []
+
+  def failing_transmit(kitty_id: int) -> None:
+    cache.forget()
+    newer.append(cache.acquire("key", None, 100, lambda kitty_id: None))
+    raise RuntimeError("transmit failed")
+
+  with pytest.raises(RuntimeError, match="transmit failed"):
+    cache.acquire("key", None, 100, failing_transmit)
+
+  assert cache._by_key == {"key": newer[0]}
+  assert cache._decoded == 100
+
+
 def test_copy_image_keeps_common_formats_and_converts_others(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

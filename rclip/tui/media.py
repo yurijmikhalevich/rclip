@@ -128,9 +128,11 @@ class _ImageCache:
         transmit(image.kitty_id)
       except BaseException as error:
         with self._lock:
-          self._by_key.pop(key, None)
-          self._lru.pop(image, None)
-          self._decoded -= image.decoded
+          # After `forget`, the key may already belong to a newer image.
+          if self._by_key.get(key) is image:
+            del self._by_key[key]
+            del self._lru[image]
+            self._decoded -= image.decoded
         image.error = error
         image.ready.set()
         raise
