@@ -1703,6 +1703,7 @@ def test_filmstrip_reveals_preloaded_thumbnail_while_next_one_loads(
       try:
         app.action_move_right()
         assert [thumbnail.filepath for thumbnail in screen.thumbnails] == paths[1:6]
+        assert screen.thumbnails[-1].display and screen.thumbnails[-1].result_offset == 2
         for thumbnail in screen.thumbnails:
           previous, image = loaded[thumbnail.filepath]
           assert thumbnail is previous
