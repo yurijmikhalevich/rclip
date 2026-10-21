@@ -186,7 +186,12 @@ class DB:
     self, path: str, after: tuple[float, str] | None = None
   ) -> sqlite3.Cursor:
     start, end = self._get_dirpath_range(path)
-    query = "SELECT filepath, modified_at FROM images WHERE filepath >= ? AND filepath < ? AND deleted IS NULL"
+    # SQLite would otherwise pick the filepath index and sort every image under `path` for each page; walking
+    # the recency index returns a page as soon as it finds enough images under `path`.
+    query = (
+      "SELECT filepath, modified_at FROM images INDEXED BY recent_images"
+      " WHERE filepath >= ? AND filepath < ? AND deleted IS NULL"
+    )
     parameters: list[object] = [start, end]
     if after is not None:
       query += " AND modified_at <= ? AND (modified_at < ? OR filepath > ?)"
