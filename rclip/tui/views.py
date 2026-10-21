@@ -196,6 +196,8 @@ class DetailView(Vertical, can_focus=True):
     self._image.display = False
     self._browse = browse
     self.thumbnails: list[DetailThumbnail] = []
+    # Hidden thumbnails past each edge load the previews that browsing reveals next.
+    self._spare_thumbnails: list[DetailThumbnail] = []
     self._details: dict[str, PILImage.Image | str] = {}
     self._detail_workers: dict[str, Worker[None]] = {}
 
@@ -229,22 +231,28 @@ class DetailView(Vertical, can_focus=True):
     filmstrip = self.query_one("#detail-filmstrip", Horizontal)
     await filmstrip.remove_children()
     self.thumbnails = [DetailThumbnail(offset, self._browse) for offset in range(-neighbors, neighbors + 1)]
-    await filmstrip.mount(*self.thumbnails)
+    self._spare_thumbnails = [DetailThumbnail(-neighbors - 1, self._browse), DetailThumbnail(neighbors + 1, self._browse)]
+    await filmstrip.mount(*self.thumbnails, *self._spare_thumbnails)
     if isinstance(self.app, RclipApp) and self.app.is_running:
       self.app._update_selection()
 
   def show_thumbnails(self, filepaths: list[str | None]) -> None:
+    """Show `filepaths`, whose first and last paths load hidden past the edges."""
+    thumbnails = [*self.thumbnails, *self._spare_thumbnails]
     retained = {
       thumbnail.filepath: thumbnail
-      for thumbnail in self.thumbnails
+      for thumbnail in thumbnails
       if thumbnail.filepath is not None and thumbnail.filepath in filepaths
     }
-    unused = iter(thumbnail for thumbnail in self.thumbnails if thumbnail not in retained.values())
-    self.thumbnails = [retained[filepath] if filepath in retained else next(unused) for filepath in filepaths]
+    unused = iter(thumbnail for thumbnail in thumbnails if thumbnail not in retained.values())
+    thumbnails = [retained[filepath] if filepath in retained else next(unused) for filepath in filepaths]
+    self.thumbnails = thumbnails[1:-1]
+    self._spare_thumbnails = [thumbnails[0], thumbnails[-1]]
     filmstrip = self.query_one("#detail-filmstrip", Horizontal)
-    for index, (thumbnail, filepath) in enumerate(zip(self.thumbnails, filepaths)):
+    for index, (thumbnail, filepath) in enumerate(zip(thumbnails, filepaths)):
       thumbnail.result_offset = index - len(filepaths) // 2
       thumbnail.set_class(thumbnail.result_offset == 0, "selected")
+      thumbnail.display = thumbnail in self.thumbnails
       thumbnail.show_image(filepath)
       filmstrip.move_child(thumbnail, before=index)
 

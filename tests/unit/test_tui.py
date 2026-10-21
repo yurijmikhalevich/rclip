@@ -42,6 +42,7 @@ from rclip.tui.transfer import _probe_kitty
 from rclip.tui.transfer import _supports_query_terminal
 from rclip.tui.transfer import copy_image_to_clipboard
 from rclip.tui.transfer import download_image
+from rclip.tui.views import DetailThumbnail
 from rclip.tui.views import DetailView
 from rclip.tui.views import ImageCard
 from rclip.tui.views import ResultsGrid
@@ -1675,7 +1676,7 @@ def test_detail_loading_and_error_keep_layout_stable(tmp_path: Path, monkeypatch
   asyncio.run(run())
 
 
-def test_filmstrip_reuses_loaded_neighbors_while_new_thumbnail_loads(
+def test_filmstrip_reveals_preloaded_thumbnail_while_next_one_loads(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
   paths = [str(make_image(tmp_path / f"image-{index}.jpg")) for index in range(7)]
@@ -1696,19 +1697,22 @@ def test_filmstrip_reuses_loaded_neighbors_while_new_thumbnail_loads(
       await app.workers.wait_for_complete()
       screen = app.query_one(DetailView)
       assert screen.display
-      loaded = {thumbnail.filepath: (thumbnail, thumbnail._image.image) for thumbnail in screen.thumbnails}
+      loaded = {thumbnail.filepath: (thumbnail, thumbnail._image.image) for thumbnail in app.query(DetailThumbnail)}
+      assert paths[5] in loaded
       monkeypatch.setattr("rclip.tui.views.prepare_image", slow_prepare)
       try:
         app.action_move_right()
         assert [thumbnail.filepath for thumbnail in screen.thumbnails] == paths[1:6]
-        for thumbnail in screen.thumbnails[:-1]:
+        assert screen.thumbnails[-1].display and screen.thumbnails[-1].result_offset == 2
+        for thumbnail in screen.thumbnails:
           previous, image = loaded[thumbnail.filepath]
           assert thumbnail is previous
           assert thumbnail._image.image is image
           assert image is not None
-        assert screen.thumbnails[-1]._image.image is None
-        await pilot.pause()
-        assert previews == [paths[5]]
+        async with asyncio.timeout(1):
+          while not previews:
+            await pilot.pause(0.01)
+        assert previews == [paths[6]]
       finally:
         release.set()
       await app.workers.wait_for_complete()
@@ -2204,7 +2208,7 @@ def test_empty_browse_retries_loading_more_after_failure(
 
       grid = app.query_one(ResultsGrid)
       if detail:
-        await pilot.press("down", "o", *(["right"] * 23))
+        await pilot.press("down", "o", *(["right"] * 22))
       else:
         grid.scroll_end(animate=False)
       async with asyncio.timeout(1):
@@ -2215,7 +2219,7 @@ def test_empty_browse_retries_loading_more_after_failure(
 
       if detail:
         assert app.query_one(DetailView).display
-        assert app.query_one(DetailView).filepath == str(paths[23])
+        assert app.query_one(DetailView).filepath == str(paths[22])
         await pilot.press("right")
       else:
         grid.scroll_home(animate=False)
@@ -2227,7 +2231,7 @@ def test_empty_browse_retries_loading_more_after_failure(
           await asyncio.sleep(0.01)
       if detail:
         assert app.query_one(DetailView).display
-        assert app.query_one(DetailView).filepath == str(paths[24])
+        assert app.query_one(DetailView).filepath == str(paths[23])
 
   asyncio.run(run())
 
