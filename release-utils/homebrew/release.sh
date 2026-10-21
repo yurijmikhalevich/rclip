@@ -24,7 +24,6 @@ if [[ "$GITHUB_ACTIONS" ]]; then
     echo "GH_TOKEN must not be set, gh must use GITHUB_TOKEN"
     exit 1
   fi
-  # credentials embedded in the URL are lost since libcurl stopped reporting them in the effective URL
   gh auth setup-git
   git clone https://github.com/yurijmikhalevich/homebrew-tap.git homebrew-tap
 else
