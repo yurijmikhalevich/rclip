@@ -38,7 +38,7 @@ def test_rebuilds_a_small_page_database_with_large_pages(tmp_path, monkeypatch, 
   database = DB(tmp_path / "db.sqlite3")
   try:
     assert _page_size(database) == DB.PAGE_SIZE
-    assert [row["filepath"] for row in database.get_image_vectors_by_dir_path("/photos")] == ["/photos/cat.jpg"]
+    assert database.get_image_states(["/photos/cat.jpg"]).keys() == {"/photos/cat.jpg"}
     assert "rebuilding the index" in capsys.readouterr().err
   finally:
     database.close()
