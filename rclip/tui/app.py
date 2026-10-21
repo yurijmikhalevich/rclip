@@ -23,6 +23,7 @@ from textual.widgets import Input, Static
 
 from rclip.model import Model
 from rclip.tui.media import ImageWidget
+from rclip.tui.media import resend_images
 from rclip.tui.transfer import _is_remote_session
 from rclip.tui.transfer import _kitten_executable
 from rclip.tui.transfer import _probe_kitty
@@ -65,6 +66,8 @@ def _safe_suspend(app: App[None], message: str) -> Iterator[None]:
     # kitten query_terminal ends DCS with BEL, which leaves iTerm2 parsing the query.
     # Terminate it before Textual sends the escape sequence to re-enter the alternate screen.
     print("\x1b\\", end="", flush=True)
+  # Kitty drops every image when it enters the alternate screen again.
+  resend_images(app)
   if failure is not None:
     raise failure
 

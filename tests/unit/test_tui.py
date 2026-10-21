@@ -759,6 +759,22 @@ def test_image_cache_transmit_failure_cleans_up_and_propagates() -> None:
   assert cache._decoded == 0
 
 
+def test_image_cache_transmit_failure_after_forget_keeps_the_newer_image() -> None:
+  cache = media_module._ImageCache(budget=50_000)
+  newer: list[media_module._TransmittedImage] = []
+
+  def failing_transmit(kitty_id: int) -> None:
+    cache.forget()
+    newer.append(cache.acquire("key", None, 100, lambda kitty_id: None))
+    raise RuntimeError("transmit failed")
+
+  with pytest.raises(RuntimeError, match="transmit failed"):
+    cache.acquire("key", None, 100, failing_transmit)
+
+  assert cache._by_key == {"key": newer[0]}
+  assert cache._decoded == 100
+
+
 def test_copy_image_keeps_common_formats_and_converts_others(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -801,10 +817,40 @@ def test_copy_image_suspends_until_finished(
   monkeypatch.setattr(app, "suspend", suspend)
   monkeypatch.setattr("rclip.tui.app._kitten_executable", lambda: "kitten")
   monkeypatch.setattr("rclip.tui.app.copy_image_to_clipboard", copy)
+  monkeypatch.setattr("rclip.tui.app.resend_images", lambda app: actions.append("resend"))
   monkeypatch.setattr(app, "notify", lambda message, **options: actions.append(message))
   app._copy_image("image.jpg")
-  assert actions == ["suspend", "copy", "resume", "permission denied" if failure else "Image copied"]
+  assert actions == ["suspend", "copy", "resume", "resend", "permission denied" if failure else "Image copied"]
   assert capsys.readouterr().out == "rclip: pausing the TUI to copy the image…\n\x1b\\"
+
+
+def test_copy_image_sends_images_again_after_resuming(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stderr__", output)
+  paths = [make_image(tmp_path / f"image-{index}.jpg") for index in range(6)]
+  app = RclipApp(FakeRclip([RClip.SearchResult(str(path), 1) for path in paths]), str(tmp_path))
+  monkeypatch.setattr(app, "suspend", nullcontext)
+  monkeypatch.setattr("rclip.tui.app._kitten_executable", lambda: "kitten")
+  monkeypatch.setattr("rclip.tui.app.copy_image_to_clipboard", lambda filepath: None)
+
+  async def run() -> None:
+    async with app.run_test(size=(100, 40)) as pilot:
+      await app.workers.wait_for_complete()
+      await pilot.press("down", "o")
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      output.seek(0)
+      output.truncate()
+      await pilot.press("y")
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      # Kitty dropped every image when the TUI resumed, so each placed image must be sent again.
+      placed = set(re.findall(r"\x1b_Ga=p,i=(\d+),", output.getvalue()))
+      sent = set(re.findall(r"\x1b_Gi=(\d+),m=", output.getvalue()))
+      assert len(placed) > 1
+      assert placed <= sent
+
+  asyncio.run(run())
 
 
 @pytest.mark.parametrize("failure", [None, TransferError, KeyboardInterrupt])
@@ -813,6 +859,7 @@ def test_suspend_restores_screen_after_unterminated_query(
 ) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr("rclip.tui.app.resend_images", lambda app: None)
 
   class TerminalDriver(HeadlessDriver):
     @property
@@ -874,9 +921,10 @@ def test_download_suspends_until_finished(
   monkeypatch.setattr("rclip.tui.app._kitten_executable", lambda: "kitten")
   monkeypatch.setattr("rclip.tui.app._is_remote_session", lambda: True)
   monkeypatch.setattr("rclip.tui.app.download_image", download)
+  monkeypatch.setattr("rclip.tui.app.resend_images", lambda app: actions.append("resend"))
   monkeypatch.setattr(app, "notify", lambda message, **options: actions.append(message))
   app.action_download()
-  assert actions == ["suspend", "download", "resume", "permission denied" if failure else "Saved to ~/Downloads"]
+  assert actions == ["suspend", "download", "resume", "resend", "permission denied" if failure else "Saved to ~/Downloads"]
   assert capsys.readouterr().out == "rclip: pausing the TUI to download the image…\n\x1b\\"
 
 

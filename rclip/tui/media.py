@@ -9,7 +9,7 @@ from typing import IO, Callable
 
 from PIL import Image as PILImage
 from PIL import ImageOps
-from textual.app import RenderResult
+from textual.app import App, RenderResult
 from textual.geometry import Size
 from textual_image._geometry import ImageSize
 from textual_image._pixeldata import PixelData
@@ -128,9 +128,11 @@ class _ImageCache:
         transmit(image.kitty_id)
       except BaseException as error:
         with self._lock:
-          self._by_key.pop(key, None)
-          self._lru.pop(image, None)
-          self._decoded -= image.decoded
+          # After `forget`, the key may already belong to a newer image.
+          if self._by_key.get(key) is image:
+            del self._by_key[key]
+            del self._lru[image]
+            self._decoded -= image.decoded
         image.error = error
         image.ready.set()
         raise
@@ -142,6 +144,13 @@ class _ImageCache:
         raise image.error
 
     return image
+
+  def forget(self) -> None:
+    """Forget every image, after the terminal dropped them all."""
+    with self._lock:
+      self._by_key.clear()
+      self._lru.clear()
+      self._decoded = 0
 
   def release(self, image: _TransmittedImage) -> None:
     with self._lock:
@@ -282,6 +291,13 @@ class _CenteredTGPRenderable(_TGPRenderable):
 
 class CenteredTGPImage(StableTGPImage, Renderable=_CenteredTGPRenderable):
   """Center an aspect-preserving image in its full widget area, at pixel precision."""
+
+
+def resend_images(app: App[None]) -> None:
+  """Send every image in `app` again, after the terminal dropped them all."""
+  _IMAGE_CACHE.forget()
+  for image in app.query(StableTGPImage):
+    image.refresh_image()
 
 
 def prewarm_image(widget: StableTGPImage, image: PILImage.Image, max_width: int, max_height: int) -> None:
