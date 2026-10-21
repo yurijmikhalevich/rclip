@@ -51,6 +51,12 @@ class DB:
     # A search reads every vector in the index, and reading them through a memory map skips copying each page
     # into SQLite's page cache. SQLite caps the map at its compile-time maximum, which is 2 GB by default.
     self._con.execute(f"PRAGMA mmap_size={self.MMAP_SIZE}")
+    # Other tools may switch the index to WAL mode, which makes indexing slower and keeps SQLite from changing
+    # the page size. An index another process has open can't leave WAL mode, so it's left for a later run.
+    try:
+      self._con.execute("PRAGMA journal_mode=DELETE")
+    except sqlite3.OperationalError:
+      pass
     self.ensure_tables()
     self.ensure_version(allow_vector_cache_reset=allow_vector_cache_reset)
     self.ensure_page_size()
@@ -151,13 +157,7 @@ class DB:
           print("skipping the index rebuild; rclip will ask again next time", file=sys.stderr)
           return
       print("rebuilding the index once to make it smaller and faster to search", file=sys.stderr)
-    # SQLite keeps the page size of a database in WAL mode, so the rebuild runs with a rollback journal
-    journal_mode = self._con.execute("PRAGMA journal_mode").fetchone()[0]
-    if journal_mode == "wal":
-      self._con.execute("PRAGMA journal_mode=DELETE")
     self._con.execute("VACUUM")
-    if journal_mode == "wal":
-      self._con.execute("PRAGMA journal_mode=WAL")
 
   def _has_cached_vectors(self) -> bool:
     return self._con.execute("SELECT 1 FROM images LIMIT 1").fetchone() is not None

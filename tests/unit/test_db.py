@@ -45,7 +45,7 @@ def test_rebuilds_a_small_page_database_with_large_pages(tmp_path, monkeypatch, 
     database.close()
 
 
-def test_rebuilds_a_small_page_database_in_wal_mode_with_large_pages(tmp_path, monkeypatch):
+def test_switches_a_wal_database_to_a_rollback_journal_and_rebuilds_it_with_large_pages(tmp_path, monkeypatch):
   _small_page_database(tmp_path / "db.sqlite3", monkeypatch)
   connection = sqlite3.connect(tmp_path / "db.sqlite3")
   connection.execute("PRAGMA journal_mode=WAL")
@@ -54,7 +54,7 @@ def test_rebuilds_a_small_page_database_in_wal_mode_with_large_pages(tmp_path, m
   database = DB(tmp_path / "db.sqlite3")
   try:
     assert _page_size(database) == DB.PAGE_SIZE
-    assert database._con.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+    assert database._con.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
   finally:
     database.close()
 
