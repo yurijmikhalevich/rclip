@@ -68,18 +68,20 @@ def test_get_image_vectors_by_dir_path_matches_wildcard_characters_literally():
       database.close()
 
 
-def test_get_image_state_returns_the_stored_state(tmp_path):
+def test_get_image_states_returns_the_stored_states(tmp_path):
   database = DB(tmp_path / "db.sqlite3")
   try:
     database.upsert_image(_new_image("/photos/cat.jpg", modified_at=2.0))
+    database.upsert_image(_new_image("/photos/dog.jpg", modified_at=3.0))
+    database.mark_images_as_deleted(["/photos/dog.jpg"])
 
-    state = database.get_image_state("/photos/cat.jpg")
+    states = database.get_image_states(["/photos/cat.jpg", "/photos/dog.jpg", "/photos/missing.jpg"])
 
-    assert state is not None
-    assert state["modified_at"] == 2.0
-    assert state["size"] == 1
-    assert state["deleted"] is None
-    assert database.get_image_state("/photos/missing.jpg") is None
+    assert states.keys() == {"/photos/cat.jpg", "/photos/dog.jpg"}
+    assert states["/photos/cat.jpg"]["modified_at"] == 2.0
+    assert states["/photos/cat.jpg"]["size"] == 1
+    assert states["/photos/cat.jpg"]["deleted"] is None
+    assert states["/photos/dog.jpg"]["deleted"]
   finally:
     database.close()
 

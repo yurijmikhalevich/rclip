@@ -144,12 +144,13 @@ class DB:
     if commit:
       self._con.commit()
 
-  def get_image_state(self, filepath: str) -> Optional[ImageState]:
-    """Fetches the fields used to detect changes, without reading the image vector."""
+  def get_image_states(self, filepaths: list[str]) -> dict[str, ImageState]:
+    """Fetches the fields used to detect changes by filepath, without reading the image vectors."""
     cur = self._con.execute(
-      "SELECT modified_at, size, deleted FROM images WHERE filepath = ? LIMIT 1", (filepath,)
+      f"SELECT filepath, modified_at, size, deleted FROM images WHERE filepath IN ({','.join('?' * len(filepaths))})",
+      filepaths,
     )
-    return cur.fetchone()
+    return {row["filepath"]: row for row in cur}
 
   def mark_images_as_deleted(self, filepaths: Iterable[str]):
     self._con.executemany(
