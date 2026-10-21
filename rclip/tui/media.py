@@ -15,7 +15,7 @@ from textual_image._geometry import ImageSize
 from textual_image._pixeldata import PixelData
 from textual_image._utils import StrOrBytesPath
 from textual_image.renderable import TGPImage as TGPRenderable
-from textual_image.renderable.tgp import TerminalError, _send_tgp_message, get_cell_size, prepare_terminal_sequence
+from textual_image.renderable.tgp import TerminalError, get_cell_size, prepare_terminal_sequence
 from textual_image.widget import TGPImage
 
 from rclip.utils import helpers
@@ -34,9 +34,18 @@ _PNG_COMPRESS_LEVEL = 6
 _TERMINAL_WRITE_LOCK = Lock()
 
 
-def _safe_send_tgp_message(*, payload: str | None = None, **kwargs: int | str | None) -> None:
+def _write_to_terminal(sequence: str) -> None:
+  # Textual draws through sys.__stderr__ from its own thread. Writing through the same stream keeps each
+  # write whole, so a frame can't land inside an image's escape sequence and corrupt the image.
   with _TERMINAL_WRITE_LOCK:
-    _send_tgp_message(payload=payload, **kwargs)
+    if not sys.__stderr__:
+      raise TerminalError("sys.__stderr__ is None")
+    sys.__stderr__.write(sequence)
+    sys.__stderr__.flush()
+
+
+def _send_tgp_message(**controls: int | str) -> None:
+  _write_to_terminal(prepare_terminal_sequence(f"\x1b_G{','.join(f'{k}={v}' for k, v in controls.items())}\x1b\\"))
 
 
 def prepare_image(filepath: str, size: tuple[int, int]) -> PILImage.Image:
@@ -154,7 +163,7 @@ class _ImageCache:
       del self._lru[image]
       self._decoded -= image.decoded
       del self._by_key[image.key]
-      _safe_send_tgp_message(a="d", d="I", i=image.kitty_id, q=2)
+      _send_tgp_message(a="d", d="I", i=image.kitty_id, q=2)
 
 
 _IMAGE_CACHE = _ImageCache()
@@ -173,12 +182,7 @@ def _transmit_image(kitty_id: int, image_data: PixelData, size: tuple[int, int])
     chunk, payload = payload[:4096], payload[4096:]
     m = 1 if payload else 0
     chunks.append(prepare_terminal_sequence(f"\x1b_Gi={kitty_id},m={m},f=100,q=2;{chunk}\x1b\\"))
-  sequence = "".join(chunks)
-  with _TERMINAL_WRITE_LOCK:
-    if not sys.__stdout__:
-      raise TerminalError("sys.__stdout__ is None")
-    sys.__stdout__.write(sequence)
-    sys.__stdout__.flush()
+  _write_to_terminal("".join(chunks))
 
 
 class _TGPRenderable(TGPRenderable):
@@ -213,14 +217,14 @@ class _TGPRenderable(TGPRenderable):
       decoded = self._size[0] * self._size[1] * 4
       self._transmitted = _IMAGE_CACHE.acquire(key, self._source_obj, decoded, self._transmit)
       self.terminal_image_id = self._transmitted.kitty_id
-    _safe_send_tgp_message(a="p", i=self.terminal_image_id, p=self._placement_id, c=width, r=height, U=1, q=2)
+    _send_tgp_message(a="p", i=self._transmitted.kitty_id, p=self._placement_id, c=width, r=height, U=1, q=2)
 
   def _transmit(self, kitty_id: int) -> None:
     _transmit_image(kitty_id, self._image_data, self._size)
 
   def cleanup(self) -> None:
     if self.terminal_image_id is not None:
-      _safe_send_tgp_message(a="d", d="i", i=self.terminal_image_id, p=self._placement_id, q=2)
+      _send_tgp_message(a="d", d="i", i=self.terminal_image_id, p=self._placement_id, q=2)
       self.terminal_image_id = None
     if self._transmitted is not None:
       _IMAGE_CACHE.release(self._transmitted)

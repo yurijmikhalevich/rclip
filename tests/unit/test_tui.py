@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 from PIL import Image
 from rich.console import Console
 from textual_image.renderable import TGPImage as TGPRenderable
+from textual_image._pixeldata import PixelData
 from textual_image._terminal import CellSize, TerminalCapabilities, probe_terminal
 import pytest
 from textual import events
@@ -257,7 +258,7 @@ def test_strip_preview_pixels_are_centered_and_keep_aspect_ratio(
   monkeypatch: pytest.MonkeyPatch, size: tuple[int, int]
 ) -> None:
   output = StringIO()
-  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr(sys, "__stderr__", output)
   monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(17, 33))
   renderable = CenteredTGPImage._Renderable(Image.new("RGB", size, "red"), 13, 5)
   Console(file=StringIO(), width=13).print(renderable)
@@ -275,7 +276,7 @@ def test_strip_preview_pixels_are_centered_and_keep_aspect_ratio(
 
 def test_kitty_image_cleanup_deletes_only_its_own_placement(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   output = StringIO()
-  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr(sys, "__stderr__", output)
   image = StableTGPImage(make_image(tmp_path / "image.jpg"))
   renderable = image.render()
   assert isinstance(renderable, TGPRenderable)
@@ -297,7 +298,7 @@ def test_kitty_image_reuses_transmitted_data_in_a_new_renderable(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
   output = StringIO()
-  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr(sys, "__stderr__", output)
   console = Console(file=StringIO(), width=20)
 
   async def run() -> None:
@@ -331,7 +332,7 @@ def test_kitty_image_does_not_reuse_data_for_a_different_box_size(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
   output = StringIO()
-  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr(sys, "__stderr__", output)
   monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
   console = Console(file=StringIO(), width=20)
   prepared = prepare_image(str(make_image(tmp_path / "image.jpg")), (80, 60))
@@ -356,7 +357,7 @@ def test_kitty_image_does_not_reuse_between_centered_and_uncentered(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
   output = StringIO()
-  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr(sys, "__stderr__", output)
   monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
   console = Console(file=StringIO(), width=20)
   prepared = prepare_image(str(make_image(tmp_path / "image.jpg")), (80, 60))
@@ -380,7 +381,7 @@ def test_kitty_image_caches_by_filepath_string_and_path(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
   output = StringIO()
-  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr(sys, "__stderr__", output)
   monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
   console = Console(file=StringIO(), width=20)
   image_path = make_image(tmp_path / "image.jpg")
@@ -405,7 +406,7 @@ def test_kitty_image_does_not_reuse_data_prepared_at_another_size(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
   output = StringIO()
-  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr(sys, "__stderr__", output)
   monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
   console = Console(file=StringIO(), width=20)
   source = make_image(tmp_path / "image.jpg")
@@ -427,7 +428,7 @@ def test_kitty_image_does_not_reuse_data_prepared_at_another_size(
 
 def test_kitty_image_cache_frees_evicted_data_in_the_terminal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   output = StringIO()
-  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr(sys, "__stderr__", output)
   monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
   # One 40x60 image decodes to 9,600 bytes: the budget holds one image but not two.
   monkeypatch.setattr(media_module, "_IMAGE_CACHE", media_module._ImageCache(budget=10_000))
@@ -450,7 +451,7 @@ def test_kitty_image_cache_frees_evicted_data_in_the_terminal(tmp_path: Path, mo
 
 def test_kitty_image_cache_evicts_when_a_reference_is_released(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   output = StringIO()
-  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr(sys, "__stderr__", output)
   monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
   monkeypatch.setattr(media_module, "_IMAGE_CACHE", media_module._ImageCache(budget=1))
   console = Console(file=StringIO(), width=20)
@@ -475,7 +476,7 @@ def test_kitty_image_renderable_second_placement_does_not_leak_cache_reference(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
   output = StringIO()
-  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr(sys, "__stderr__", output)
   monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
   cache = media_module._ImageCache(budget=10_000)
   monkeypatch.setattr(media_module, "_IMAGE_CACHE", cache)
@@ -500,7 +501,7 @@ def test_kitty_image_renderable_placement_resize_releases_previous_cache_referen
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
   output = StringIO()
-  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr(sys, "__stderr__", output)
   monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
   cache = media_module._ImageCache(budget=10_000)
   monkeypatch.setattr(media_module, "_IMAGE_CACHE", cache)
@@ -527,7 +528,7 @@ def test_prewarm_image_populates_cache_and_render_avoids_retransmission(
   tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
   output = StringIO()
-  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr(sys, "__stderr__", output)
   monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
   cache = media_module._ImageCache(budget=50_000)
   monkeypatch.setattr(media_module, "_IMAGE_CACHE", cache)
@@ -572,7 +573,7 @@ def test_prewarmed_image_is_reused_when_drawn_in_its_frame(
   widget_type: type[StableTGPImage],
   css: str,
 ) -> None:
-  monkeypatch.setattr(sys, "__stdout__", StringIO())
+  monkeypatch.setattr(sys, "__stderr__", StringIO())
   monkeypatch.setattr(probe_terminal, "_result", TerminalCapabilities(CellSize(10, 20), False, True), raising=False)
   cache = media_module._ImageCache()
   monkeypatch.setattr(media_module, "_IMAGE_CACHE", cache)
@@ -600,7 +601,7 @@ def test_prewarmed_image_is_reused_when_drawn_in_its_frame(
 
 
 def test_tui_draws_images_from_data_sent_in_the_background(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-  monkeypatch.setattr(sys, "__stdout__", StringIO())
+  monkeypatch.setattr(sys, "__stderr__", StringIO())
   monkeypatch.setattr(probe_terminal, "_result", TerminalCapabilities(CellSize(10, 20), False, True), raising=False)
   cache = media_module._ImageCache()
   monkeypatch.setattr(media_module, "_IMAGE_CACHE", cache)
@@ -638,6 +639,24 @@ def test_tui_draws_images_from_data_sent_in_the_background(tmp_path: Path, monke
   grid_and_detail = [sent for renderable_class, sent in drawn if renderable_class is media_module._TGPRenderable]
   assert len(grid_and_detail) >= 5
   assert all(grid_and_detail)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Textual's Linux driver needs termios")
+def test_image_data_goes_through_the_stream_textual_draws_with(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  from textual.drivers.linux_driver import LinuxDriver
+
+  output = StringIO()
+  monkeypatch.setattr(sys, "__stderr__", output)
+  monkeypatch.setattr(sys, "__stdout__", StringIO())
+  image = prepare_image(str(make_image(tmp_path / "image.jpg")), (80, 60))
+
+  # Writes from different file objects can interleave mid-sequence, which corrupts the image.
+  async def textual_output() -> object:
+    return LinuxDriver(App[None]())._file
+
+  assert asyncio.run(textual_output()) is output
+  media_module._transmit_image(1, PixelData(image), (80, 60))
+  assert tgp_payload_bytes(output.getvalue()) > 0
 
 
 def test_prewarm_image_ignores_transmission_failure(
@@ -1395,7 +1414,7 @@ def test_search_in_detail_preserves_view_and_updates_selection(tmp_path: Path) -
 
 def test_gallery_reuses_thumbnails_after_detail_browsing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   output = StringIO()
-  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr(sys, "__stderr__", output)
   console = Console(file=StringIO(), width=100, height=40)
   paths = [make_image(tmp_path / f"image-{index}.jpg") for index in range(6)]
   app = RclipApp(FakeRclip([RClip.SearchResult(str(path), 1) for path in paths]), str(tmp_path))
@@ -1440,7 +1459,7 @@ def test_gallery_reuses_thumbnails_after_detail_browsing(tmp_path: Path, monkeyp
 
 def test_detail_navigation_reuses_transmitted_images(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   output = StringIO()
-  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr(sys, "__stderr__", output)
   paths = [make_image(tmp_path / f"image-{index}.jpg") for index in range(6)]
   app = RclipApp(FakeRclip([RClip.SearchResult(str(path), 1) for path in paths]), str(tmp_path))
 
@@ -1649,7 +1668,7 @@ def test_filmstrip_reuses_loaded_neighbors_while_new_thumbnail_loads(
 
 def test_detail_filmstrip_centers_selection_and_navigates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   output = StringIO()
-  monkeypatch.setattr(sys, "__stdout__", output)
+  monkeypatch.setattr(sys, "__stderr__", output)
   paths = [str(make_image(tmp_path / f"image-{index}.jpg")) for index in range(5)]
   app = RclipApp(FakeRclip([RClip.SearchResult(path, 1) for path in paths]), str(tmp_path))
 
