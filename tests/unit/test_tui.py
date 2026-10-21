@@ -2207,7 +2207,7 @@ def test_empty_browse_retries_loading_more_after_failure(
 
       grid = app.query_one(ResultsGrid)
       if detail:
-        await pilot.press("down", "o", *(["right"] * 23))
+        await pilot.press("down", "o", *(["right"] * 22))
       else:
         grid.scroll_end(animate=False)
       async with asyncio.timeout(1):
@@ -2218,7 +2218,7 @@ def test_empty_browse_retries_loading_more_after_failure(
 
       if detail:
         assert app.query_one(DetailView).display
-        assert app.query_one(DetailView).filepath == str(paths[23])
+        assert app.query_one(DetailView).filepath == str(paths[22])
         await pilot.press("right")
       else:
         grid.scroll_home(animate=False)
@@ -2230,7 +2230,7 @@ def test_empty_browse_retries_loading_more_after_failure(
           await asyncio.sleep(0.01)
       if detail:
         assert app.query_one(DetailView).display
-        assert app.query_one(DetailView).filepath == str(paths[24])
+        assert app.query_one(DetailView).filepath == str(paths[23])
 
   asyncio.run(run())
 

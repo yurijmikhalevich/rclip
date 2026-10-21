@@ -180,7 +180,7 @@ class RclipApp(App[None], inherit_bindings=False):
     if self._loading_more or (
       self._detail.display
       and not self._pending_detail_advance
-      and self._selected_index + len(self._detail.thumbnails) // 2 < len(self._cards())
+      and self._selected_index + len(self._detail.thumbnails) // 2 + 1 < len(self._cards())
     ):
       return
     query = self.query_one("#search", Input).value.strip()
