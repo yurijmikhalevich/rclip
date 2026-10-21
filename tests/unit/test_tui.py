@@ -630,12 +630,15 @@ def test_tui_draws_images_from_data_sent_in_the_background(tmp_path: Path, monke
       await settle(pilot)
       await pilot.press("down", "enter")
       await settle(pilot)
+      thumbnails = [sent for renderable_class, sent in drawn if renderable_class is media_module._CenteredTGPRenderable]
+      assert thumbnails
+      assert all(thumbnails)
       await pilot.press("right")
       await settle(pilot)
 
   asyncio.run(run())
 
-  # The grid previews and the main detail images; filmstrip thumbnails are covered above.
+  # Moving enlarges another filmstrip thumbnail, which needs new data, so only check the grid and main images.
   grid_and_detail = [sent for renderable_class, sent in drawn if renderable_class is media_module._TGPRenderable]
   assert len(grid_and_detail) >= 5
   assert all(grid_and_detail)

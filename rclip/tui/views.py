@@ -157,7 +157,8 @@ class DetailThumbnail(Static):
       return
     self.filepath = filepath
     self._image.image = None
-    self._load_preview()
+    # A new thumbnail is laid out on the next refresh; load after it, so the preview is sent at the drawn size.
+    self.call_after_refresh(self._load_preview)
 
   @work(thread=True, exclusive=True, exit_on_error=False)
   def _load_preview(self) -> None:
