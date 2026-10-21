@@ -59,6 +59,24 @@ def test_switches_a_wal_database_to_a_rollback_journal_and_rebuilds_it_with_larg
     database.close()
 
 
+def test_skips_the_rebuild_while_another_process_keeps_the_database_in_wal_mode(tmp_path, monkeypatch, capsys):
+  _small_page_database(tmp_path / "db.sqlite3", monkeypatch)
+  other = sqlite3.connect(tmp_path / "db.sqlite3")
+  other.execute("PRAGMA journal_mode=WAL")
+  other.execute("SELECT * FROM images").fetchall()
+  connect = sqlite3.connect
+  monkeypatch.setattr(sqlite3, "connect", lambda *args, **kwargs: connect(*args, **kwargs, timeout=0))
+
+  database = DB(tmp_path / "db.sqlite3")
+  try:
+    assert database._con.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+    assert _page_size(database) == 4096
+    assert "rebuilding the index" not in capsys.readouterr().err
+  finally:
+    database.close()
+    other.close()
+
+
 class _Terminal(io.StringIO):
   def isatty(self) -> bool:
     return True

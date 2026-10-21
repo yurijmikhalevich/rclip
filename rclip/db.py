@@ -130,6 +130,9 @@ class DB:
   def ensure_page_size(self):
     if self._con.execute("PRAGMA page_size").fetchone()[0] >= self.PAGE_SIZE:
       return
+    # the rebuild can't change the page size of an index that is still in WAL mode
+    if self._con.execute("PRAGMA journal_mode").fetchone()[0] == "wal":
+      return
     images = self._con.execute("SELECT COUNT(*) FROM images").fetchone()[0]
     if images:
       # SQLite writes the rebuilt database to a temporary file and then copies it back through a journal
