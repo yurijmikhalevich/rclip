@@ -151,6 +151,25 @@ def test_lists_recent_image_filepaths(tmp_path):
     database.close()
 
 
+def test_lists_recent_image_filepaths_without_sorting(tmp_path):
+  database = DB(tmp_path / "db.sqlite3")
+  try:
+    photos = tmp_path / "photos"
+    database.upsert_image(_new_image(str(photos / "cat.jpg")))
+    statements: list[str] = []
+    database._con.set_trace_callback(statements.append)
+    list(database.get_image_filepaths_by_dir_path(str(photos), (2, str(photos / "dog.jpg"))))
+    database._con.set_trace_callback(None)
+
+    query = next(statement for statement in statements if statement.startswith("SELECT filepath, modified_at"))
+    plan = " ".join(row["detail"] for row in database._con.execute(f"EXPLAIN QUERY PLAN {query}"))
+
+    assert "recent_images" in plan
+    assert "TEMP B-TREE" not in plan
+  finally:
+    database.close()
+
+
 def test_mark_images_as_deleted_hides_only_the_given_images(tmp_path):
   database = DB(tmp_path / "db.sqlite3")
   try:
