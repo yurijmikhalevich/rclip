@@ -63,7 +63,7 @@ class ImageCard(Static, can_focus=True):
       try:
         preview = prepare_image(self.result.filepath, PREVIEW_SIZE)
         if frame_size is not None:
-          prewarm_image(ImageWidget, preview, frame_size.width, frame_size.height)
+          prewarm_image(self._image, preview, frame_size.width, frame_size.height)
       except Exception:
         self.app.call_from_thread(self._preview_failed)
       else:
@@ -157,7 +157,8 @@ class DetailThumbnail(Static):
       return
     self.filepath = filepath
     self._image.image = None
-    self._load_preview()
+    # A new thumbnail is laid out on the next refresh; load after it, so the preview is sent at the drawn size.
+    self.call_after_refresh(self._load_preview)
 
   @work(thread=True, exclusive=True, exit_on_error=False)
   def _load_preview(self) -> None:
@@ -171,7 +172,7 @@ class DetailThumbnail(Static):
         preview = prepare_image(filepath, PREVIEW_SIZE)
         parent = self._image.parent
         if isinstance(parent, Widget) and parent.size.width > 0 and parent.size.height > 0:
-          prewarm_image(CenteredTGPImage, preview, parent.size.width, parent.size.height)
+          prewarm_image(self._image, preview, parent.size.width, parent.size.height)
       except Exception:
         return
       self.app.call_from_thread(self._show_preview, filepath, preview)
@@ -278,7 +279,7 @@ class DetailView(Vertical, can_focus=True):
         detail = prepare_image(filepath, DETAIL_SIZE)
         parent = self._image.parent
         if isinstance(parent, Widget) and parent.size.width > 0 and parent.size.height > 0:
-          prewarm_image(ImageWidget, detail, parent.size.width, parent.size.height)
+          prewarm_image(self._image, detail, parent.size.width, parent.size.height)
       except Exception as error:
         detail = str(error)
       if not worker.is_cancelled:
