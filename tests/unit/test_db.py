@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 import io
 import shutil
+import sqlite3
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -40,6 +41,20 @@ def test_rebuilds_a_small_page_database_with_large_pages(tmp_path, monkeypatch, 
     assert _page_size(database) == DB.PAGE_SIZE
     assert database.get_image_states(["/photos/cat.jpg"]).keys() == {"/photos/cat.jpg"}
     assert "rebuilding the index" in capsys.readouterr().err
+  finally:
+    database.close()
+
+
+def test_rebuilds_a_small_page_database_in_wal_mode_with_large_pages(tmp_path, monkeypatch):
+  _small_page_database(tmp_path / "db.sqlite3", monkeypatch)
+  connection = sqlite3.connect(tmp_path / "db.sqlite3")
+  connection.execute("PRAGMA journal_mode=WAL")
+  connection.close()
+
+  database = DB(tmp_path / "db.sqlite3")
+  try:
+    assert _page_size(database) == DB.PAGE_SIZE
+    assert database._con.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
   finally:
     database.close()
 

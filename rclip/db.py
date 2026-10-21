@@ -151,7 +151,13 @@ class DB:
           print("skipping the index rebuild; rclip will ask again next time", file=sys.stderr)
           return
       print("rebuilding the index once to make it smaller and faster to search", file=sys.stderr)
+    # SQLite keeps the page size of a database in WAL mode, so the rebuild runs with a rollback journal
+    journal_mode = self._con.execute("PRAGMA journal_mode").fetchone()[0]
+    if journal_mode == "wal":
+      self._con.execute("PRAGMA journal_mode=DELETE")
     self._con.execute("VACUUM")
+    if journal_mode == "wal":
+      self._con.execute("PRAGMA journal_mode=WAL")
 
   def _has_cached_vectors(self) -> bool:
     return self._con.execute("SELECT 1 FROM images LIMIT 1").fetchone() is not None
