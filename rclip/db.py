@@ -1,5 +1,6 @@
 import os.path
 import pathlib
+import shutil
 import sqlite3
 import sys
 from typing import Iterable, Optional, TypedDict, Union, cast
@@ -30,6 +31,11 @@ class ImageState(TypedDict):
 class DB:
   VERSION = 4
   MMAP_SIZE = 2**31
+  # Each image takes about 2.2 KB, so a 4 KB page holds only one; a 16 KB page holds seven, which makes the index
+  # about 40% smaller and faster to read.
+  PAGE_SIZE = 16384
+  # Rebuilding takes about half a minute per million images on an SSD, so larger indexes ask before it
+  REBUILD_CONFIRMATION_IMAGES = 100_000
 
   def __init__(
     self,
@@ -39,11 +45,15 @@ class DB:
   ):
     self._con = sqlite3.connect(filename, check_same_thread=not allow_cross_thread)
     self._con.row_factory = sqlite3.Row
+    self._filename = filename
+    # applies to a new database right away, and to an existing one once it's rebuilt
+    self._con.execute(f"PRAGMA page_size={self.PAGE_SIZE}")
     # A search reads every vector in the index, and reading them through a memory map skips copying each page
     # into SQLite's page cache. SQLite caps the map at its compile-time maximum, which is 2 GB by default.
     self._con.execute(f"PRAGMA mmap_size={self.MMAP_SIZE}")
     self.ensure_tables()
     self.ensure_version(allow_vector_cache_reset=allow_vector_cache_reset)
+    self.ensure_page_size()
 
   def close(self):
     self._con.commit()
@@ -110,6 +120,38 @@ class DB:
     else:
       self._con.execute("INSERT INTO db_version(version) VALUES (?)", (self.VERSION,))
     self._con.commit()
+
+  def ensure_page_size(self):
+    if self._con.execute("PRAGMA page_size").fetchone()[0] >= self.PAGE_SIZE:
+      return
+    images = self._con.execute("SELECT COUNT(*) FROM images").fetchone()[0]
+    if images:
+      # SQLite writes the rebuilt database to a temporary file and then copies it back through a journal
+      db_size = os.path.getsize(self._filename)
+      needed_space = f"{2 * db_size / 1e9:.1f} GB"
+      if shutil.disk_usage(os.path.dirname(os.path.abspath(self._filename))).free < 2 * db_size:
+        print(
+          f"skipping the index rebuild that makes it smaller and faster to search: it needs {needed_space} of free disk space",
+          file=sys.stderr,
+        )
+        return
+      if images >= self.REBUILD_CONFIRMATION_IMAGES and sys.stdin.isatty() and sys.stderr.isatty():
+        print(
+          f"rclip can rebuild its index of {images:,} images to make it about 40% smaller and faster to search;"
+          f" this runs once, may take a few minutes, and needs {needed_space} of free disk space. Rebuild it now? [Y/n] ",
+          end="",
+          file=sys.stderr,
+          flush=True,
+        )
+        try:
+          answer = input()
+        except EOFError:
+          answer = "n"
+        if answer.strip().lower() not in ("", "y", "yes"):
+          print("skipping the index rebuild; rclip will ask again next time", file=sys.stderr)
+          return
+      print("rebuilding the index once to make it smaller and faster to search", file=sys.stderr)
+    self._con.execute("VACUUM")
 
   def _has_cached_vectors(self) -> bool:
     return self._con.execute("SELECT 1 FROM images LIMIT 1").fetchone() is not None

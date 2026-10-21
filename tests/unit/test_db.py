@@ -1,11 +1,78 @@
 from concurrent.futures import ThreadPoolExecutor
+import io
+import shutil
+import sys
 import tempfile
+from types import SimpleNamespace
 
 from rclip.db import DB, NewImage
 
 
 def _new_image(filepath: str, modified_at: float = 0.0) -> NewImage:
   return NewImage(filepath=filepath, modified_at=modified_at, size=1, vector=b"x", hash=None)
+
+
+def _small_page_database(path, monkeypatch, filepath: str = "/photos/cat.jpg") -> None:
+  with monkeypatch.context() as patch:
+    patch.setattr(DB, "PAGE_SIZE", 4096)
+    database = DB(path)
+    database.upsert_image(_new_image(filepath))
+    database.close()
+
+
+def _page_size(database: DB) -> int:
+  return database._con.execute("PRAGMA page_size").fetchone()[0]
+
+
+def test_new_database_uses_large_pages(tmp_path):
+  database = DB(tmp_path / "db.sqlite3")
+  try:
+    assert _page_size(database) == DB.PAGE_SIZE
+  finally:
+    database.close()
+
+
+def test_rebuilds_a_small_page_database_with_large_pages(tmp_path, monkeypatch, capsys):
+  _small_page_database(tmp_path / "db.sqlite3", monkeypatch)
+
+  database = DB(tmp_path / "db.sqlite3")
+  try:
+    assert _page_size(database) == DB.PAGE_SIZE
+    assert database.get_image_states(["/photos/cat.jpg"]).keys() == {"/photos/cat.jpg"}
+    assert "rebuilding the index" in capsys.readouterr().err
+  finally:
+    database.close()
+
+
+class _Terminal(io.StringIO):
+  def isatty(self) -> bool:
+    return True
+
+
+def test_keeps_small_pages_when_the_rebuild_of_a_large_index_is_declined(tmp_path, monkeypatch):
+  _small_page_database(tmp_path / "db.sqlite3", monkeypatch)
+  monkeypatch.setattr(DB, "REBUILD_CONFIRMATION_IMAGES", 1)
+  monkeypatch.setattr(sys, "stdin", _Terminal("n\n"))
+  stderr = _Terminal()
+  monkeypatch.setattr(sys, "stderr", stderr)
+
+  database = DB(tmp_path / "db.sqlite3")
+  try:
+    assert _page_size(database) == 4096
+    assert "Rebuild it now? [Y/n]" in stderr.getvalue()
+  finally:
+    database.close()
+
+
+def test_keeps_small_pages_without_enough_free_disk_space(tmp_path, monkeypatch):
+  _small_page_database(tmp_path / "db.sqlite3", monkeypatch)
+  monkeypatch.setattr(shutil, "disk_usage", lambda path: SimpleNamespace(free=0))
+
+  database = DB(tmp_path / "db.sqlite3")
+  try:
+    assert _page_size(database) == 4096
+  finally:
+    database.close()
 
 
 def test_get_image_vectors_by_dir_path_matches_windows_drive_root_prefix():
