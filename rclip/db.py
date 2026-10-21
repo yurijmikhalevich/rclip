@@ -51,6 +51,12 @@ class DB:
     # A search reads every vector in the index, and reading them through a memory map skips copying each page
     # into SQLite's page cache. SQLite caps the map at its compile-time maximum, which is 2 GB by default.
     self._con.execute(f"PRAGMA mmap_size={self.MMAP_SIZE}")
+    # Other tools may switch the index to WAL mode, which makes indexing slower and keeps SQLite from changing
+    # the page size. An index another process has open can't leave WAL mode, so it's left for a later run.
+    try:
+      self._con.execute("PRAGMA journal_mode=DELETE")
+    except sqlite3.OperationalError:
+      pass
     self.ensure_tables()
     self.ensure_version(allow_vector_cache_reset=allow_vector_cache_reset)
     self.ensure_page_size()
@@ -123,6 +129,9 @@ class DB:
 
   def ensure_page_size(self):
     if self._con.execute("PRAGMA page_size").fetchone()[0] >= self.PAGE_SIZE:
+      return
+    # the rebuild can't change the page size of an index that is still in WAL mode
+    if self._con.execute("PRAGMA journal_mode").fetchone()[0] == "wal":
       return
     images = self._con.execute("SELECT COUNT(*) FROM images").fetchone()[0]
     if images:
