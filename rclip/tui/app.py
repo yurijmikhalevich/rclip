@@ -391,7 +391,7 @@ class RclipApp(App[None], inherit_bindings=False):
     ])
     if not self._detail.thumbnails:
       return
-    neighbors = len(self._detail.thumbnails) // 2
+    neighbors = len(self._detail.thumbnails) // 2 + 1
     self._detail.show_thumbnails([
       cards[index].result.filepath if 0 <= index < len(cards) else None
       for index in range(self._selected_index - neighbors, self._selected_index + neighbors + 1)
