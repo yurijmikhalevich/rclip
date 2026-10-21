@@ -66,6 +66,9 @@ class RClip:
   MAX_IMAGE_LOADING_WORKERS = 16
   # how many scanned files the walk may get ahead of the database lookups
   SCAN_LOOKAHEAD = 4096
+  # how many scanned files to look up in the database with one query; stays under SQLite's default limit of 999
+  # parameters per query in older versions
+  SCAN_LOOKUP_BATCH_SIZE = 512
   SEARCH_BATCH_SIZE = 4096
 
   class SearchResult(NamedTuple):
@@ -280,25 +283,28 @@ class RClip:
 
     The walk runs on a background thread, so the file system calls overlap with the database lookups."""
     images_processed = 0
-    for filepath, meta in helpers.iter_in_background(self._scan_images(directory, unreadable_dirs), self.SCAN_LOOKAHEAD):
-      if meta is None:
+    scanned = helpers.iter_in_background(self._scan_images(directory, unreadable_dirs), self.SCAN_LOOKAHEAD)
+    while batch := list(itertools.islice(scanned, self.SCAN_LOOKUP_BATCH_SIZE)):
+      images = self._db.get_image_states([filepath for filepath, meta in batch if meta is not None])
+      for filepath, meta in batch:
+        if meta is None:
+          images_processed += 1
+          pbar.update()
+          continue
+
+        if not images_processed % self.DB_IMAGES_BEFORE_COMMIT:
+          self._db.commit()
         images_processed += 1
         pbar.update()
-        continue
 
-      if not images_processed % self.DB_IMAGES_BEFORE_COMMIT:
-        self._db.commit()
-      images_processed += 1
-      pbar.update()
+        image = images.get(filepath)
+        if image and is_image_meta_equal(image, meta):
+          if image["deleted"]:
+            self._db.restore_image(filepath, commit=False)
+          seen.add(filepath)
+          continue
 
-      image = self._db.get_image_state(filepath)
-      if image and is_image_meta_equal(image, meta):
-        if image["deleted"]:
-          self._db.restore_image(filepath, commit=False)
-        seen.add(filepath)
-        continue
-
-      yield filepath, meta
+        yield filepath, meta
 
   def ensure_index(self, directory: str):
     print(
