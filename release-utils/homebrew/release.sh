@@ -19,7 +19,13 @@ function handle_exit() {
 trap handle_exit 0 SIGHUP SIGINT SIGQUIT SIGABRT SIGTERM
 
 if [[ "$GITHUB_ACTIONS" ]]; then
-  git clone "https://$GITHUB_TOKEN@github.com/yurijmikhalevich/homebrew-tap.git" homebrew-tap
+  # gh prefers GH_TOKEN over GITHUB_TOKEN, which holds the bot token with access to the tap
+  if [[ "$GH_TOKEN" ]]; then
+    echo "GH_TOKEN must not be set, gh must use GITHUB_TOKEN"
+    exit 1
+  fi
+  gh auth setup-git
+  git clone https://github.com/yurijmikhalevich/homebrew-tap.git homebrew-tap
 else
   git clone git@github.com:yurijmikhalevich/homebrew-tap.git homebrew-tap
 fi
