@@ -1708,7 +1708,9 @@ def test_filmstrip_reveals_preloaded_thumbnail_while_next_one_loads(
           assert thumbnail is previous
           assert thumbnail._image.image is image
           assert image is not None
-        await pilot.pause()
+        async with asyncio.timeout(1):
+          while not previews:
+            await pilot.pause(0.01)
         assert previews == [paths[6]]
       finally:
         release.set()
