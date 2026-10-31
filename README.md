@@ -275,7 +275,7 @@ Run `rclip --help` (or `rclip -h`) to see this list in your terminal. The positi
 | `--version`, `-v` | Print the **rclip** version and exit. |
 | `--help`, `-h` | Show the help message and exit. |
 
-The output modes `--interactive`, `--force-interactive`, `--preview`, `--force-preview`, `--filepath-only`, `--null`, and `--json` are mutually exclusive.
+The output modes `--interactive`/`--force-interactive`, `--preview`/`--force-preview`, `--filepath-only`, `--null`, and `--json` are mutually exclusive.
 
 ## Get help
 
