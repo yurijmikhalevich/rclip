@@ -165,7 +165,7 @@ def test_null_terminated_output(
   capfd.readouterr()
   execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "-n", "-0", "kitty")
   out, _ = capfd.readouterr()
-  filepaths = out.lstrip("\ufeff").split("\0")
+  filepaths = out.split("\0")
   assert filepaths.pop() == ""
   assert sorted(filepaths) == sorted(result.filepath for result in results)
 
