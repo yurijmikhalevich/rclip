@@ -181,7 +181,7 @@ def test_json_output(
   capfd.readouterr()
   execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "-n", "--json", "kitty")
   out, _ = capfd.readouterr()
-  json_results = [SearchResult(**result) for result in json.loads(out.lstrip("\ufeff"))]
+  json_results = [SearchResult(**result) for result in json.loads(out)]
   assert sorted(json_results, key=lambda r: (-r.score, r.filepath)) == results
 
 

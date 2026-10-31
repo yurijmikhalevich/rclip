@@ -486,9 +486,9 @@ def init_rclip(
 
 def print_results(result: List[RClip.SearchResult], args: helpers.argparse.Namespace):
   # if we are not outputting to console on windows, ensure unicode encoding is correct;
-  # NUL-terminated output is for programs, so it skips the BOM that would corrupt the first path
+  # NUL-terminated and JSON output are for programs, so they skip the BOM we add for text editors
   if not sys.stdout.isatty() and os.name == "nt":
-    sys.stdout.reconfigure(encoding="utf-8" if args.null else "utf-8-sig")
+    sys.stdout.reconfigure(encoding="utf-8" if args.null or args.json else "utf-8-sig")
 
   if args.null:
     for search_result in result:
