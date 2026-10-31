@@ -201,10 +201,10 @@ rclip -p kitty
   If you use another terminal or want to open the results in a viewer of your choice, you can pipe **rclip**'s output into it. For example, on Linux, the command below will open the top 5 results for "kitty" in your default image viewer:
 
   ```bash
-  rclip -f -t 5 kitty | xargs -d '\n' -n 1 xdg-open
+  rclip -0 -t 5 kitty | xargs -0 -n 1 xdg-open
   ```
 
-  The `-f` or `--filepath-only` flag makes **rclip** print only file paths, without scores or the header, which makes it ideal for use with a custom viewer as in the example.
+  The `-0` or `--null` flag makes **rclip** print only file paths, each terminated by a NUL character, which `xargs -0` splits correctly even when paths contain spaces, quotes, or newlines. The `-f` or `--filepath-only` flag prints one path per line instead, which suits tools that read paths line by line, such as **feh**.
   
   I prefer to use **feh**'s thumbnail mode to preview multiple results:
 
@@ -218,7 +218,7 @@ rclip -p kitty
 Yes. You can pipe **rclip**'s output to another tool to copy matching images. For example, to copy the top 3 images matching "search query" to `/path/to/destination` on macOS, Linux, or WSL:
 
 ```sh
-rclip -f -t 3 "search query" | xargs -I {} cp {} /path/to/destination
+rclip -0 -t 3 "search query" | xargs -0 -I {} cp {} /path/to/destination
 ```
 
 ### How does **rclip** update the index?
@@ -249,11 +249,12 @@ Run `rclip --help` (or `rclip -h`) to see this list in your terminal. The positi
 | `--add`, `-a`, `+` `QUERY` | A text query or a path/URL to an image file to add to the "original" query. Can be used multiple times. |
 | `--subtract`, `--sub`, `-s`, `-` `QUERY` | A text query or a path/URL to an image file to subtract from the "original" query. Can be used multiple times. |
 | `--top`, `-t` `N` | Number of top results to display, or search results to load per batch with `--interactive`. Default: `10`, or `100` with `--interactive`; interactive maximum: `100`. |
-| `--interactive`, `-i` | Open the interactive terminal UI and enter text queries there. Does not accept a positional query or `--add`/`--subtract`. Mutually exclusive with `--preview` and `--filepath-only`. |
+| `--interactive`, `-i` | Open the interactive terminal UI and enter text queries there. Does not accept a positional query or `--add`/`--subtract`. Mutually exclusive with `--preview`, `--filepath-only`, and `--null`. |
 | `--force-interactive` | Force interactive mode even if the terminal is not recognized as supporting Kitty graphics with Unicode placeholders. |
-| `--preview`, `-p` | Preview results in the terminal using Kitty graphics (e.g. Kitty, Ghostty, latest iTerm2, Konsole). Mutually exclusive with `--filepath-only`. |
+| `--preview`, `-p` | Preview results in the terminal using Kitty graphics (e.g. Kitty, Ghostty, latest iTerm2, Konsole). Mutually exclusive with `--filepath-only` and `--null`. |
 | `--force-preview` | Force image previews even if the terminal is not recognized as supporting Kitty graphics. |
 | `--filepath-only`, `-f` | Output only filepaths, without scores or the header. Mutually exclusive with `--preview`. |
+| `--null`, `-0` | Output only filepaths, each terminated by a NUL character instead of a newline, for `xargs -0`. Mutually exclusive with `--preview` and `--filepath-only`. |
 | `--preview-height`, `-H` `PX` | Preview height in pixels. Default: `400`. |
 | `--no-indexing`, `--skip-index`, `--skip-indexing`, `-n` | Skip updating the index. Use only when no images were added, changed, or removed since the last run. |
 | `--indexing-batch-size`, `-b` `N` | The size of the image batch used when updating the search index. Larger values may slightly improve indexing speed on some hardware but increase RAM usage. Default: `8`. |

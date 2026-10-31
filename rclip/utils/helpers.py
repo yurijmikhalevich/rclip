@@ -371,6 +371,13 @@ def init_arg_parser() -> argparse.ArgumentParser:
     default=False,
     help="outputs only filepaths",
   )
+  display_mode_group.add_argument(
+    "--null",
+    "-0",
+    action="store_true",
+    default=False,
+    help="outputs only filepaths, each terminated by a NUL character instead of a newline (for xargs -0)",
+  )
   parser.add_argument(
     "--force-interactive",
     action="store_true",
