@@ -254,7 +254,9 @@ class RClip:
       # under snap, the caller explains how to give rclip access to the directory a symlink points to
       if is_snap() and isinstance(error, PermissionError) and os.path.islink(dir):
         raise error
-      print(f"cannot read {dir}: {error.strerror or error}; keeping its images in the index as they are", file=sys.stderr)
+      print(
+        f"cannot read {dir}: {error.strerror or error}; keeping its images in the index as they are", file=sys.stderr
+      )
       unreadable_dirs.append(dir)
 
     for entry in fs.walk(directory, self._exclude_dir_regex, self._image_regex, self._skip_hidden, on_unreadable_dir):
@@ -473,7 +475,7 @@ def init_rclip(
         symlink_path = e.filename
         realpath = os.path.realpath(e.filename)
 
-        print(f"\n{get_snap_permission_error(realpath, symlink_path, is_current_directory=False)}\n")
+        print(f"\n{get_snap_permission_error(realpath, symlink_path, is_current_directory=False)}\n", file=sys.stderr)
         sys.exit(1)
       raise
     model_instance.release_indexing_resources()

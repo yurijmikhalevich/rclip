@@ -62,5 +62,5 @@ def check_snap_permissions(directory: str, is_current_directory: bool = False):
       symlink_path = directory
       realpath = os.path.realpath(directory)
 
-    print(get_snap_permission_error(realpath, symlink_path, is_current_directory))
+    print(get_snap_permission_error(realpath, symlink_path, is_current_directory), file=sys.stderr)
     sys.exit(1)
