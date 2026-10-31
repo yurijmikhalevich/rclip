@@ -258,6 +258,9 @@ class StableTGPImage(TGPImage, Renderable=_TGPRenderable):
   def _set_image(self, value: StrOrBytesPath | IO[bytes] | PILImage.Image | None) -> None:
     self._discard_renderable()
     TGPImage.image.fset(self, value)
+    # Textual skips invalidating the cached box model when a layout refresh is already pending, as one is
+    # until a new widget first goes idle. Without this, an image set before then keeps the 0x0 size of none.
+    self._layout_updates += 1
 
   image = TGPImage.image.setter(_set_image)
 

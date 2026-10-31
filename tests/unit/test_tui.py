@@ -645,6 +645,30 @@ def test_tui_draws_images_from_data_sent_in_the_background(tmp_path: Path, monke
   assert all(grid_and_detail)
 
 
+def test_image_set_before_the_widget_goes_idle_is_laid_out(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(sys, "__stderr__", StringIO())
+  path = make_image(tmp_path / "image.jpg")
+
+  class ImageApp(App[None]):
+    CSS = ".thumbnail { width: auto; height: auto; max-width: 100%; max-height: 100%; }"
+
+    def compose(self) -> ComposeResult:
+      yield Container()
+
+  async def run() -> None:
+    app = ImageApp()
+    async with app.run_test(size=(40, 20)) as pilot:
+      image = StableTGPImage(classes="thumbnail")
+      await app.query_one(Container).mount(image)
+      # A fast preview can arrive after a reflow sized the new, empty widget but before the widget went idle.
+      app.screen._refresh_layout()
+      image.image = str(path)
+      await pilot.pause()
+      assert image.size.area
+
+  asyncio.run(run())
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Textual's Linux driver needs termios")
 def test_image_data_goes_through_the_stream_textual_draws_with(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   from textual.drivers.linux_driver import LinuxDriver
