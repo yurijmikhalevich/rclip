@@ -251,6 +251,7 @@ class RclipApp(App[None], inherit_bindings=False):
     next_cursor: RClip.ImageCursor | None,
     append: bool,
   ) -> None:
+    search_input = self.query_one("#search", Input)
     if not self._is_current_search(generation, query):
       return
     grid = self.query_one(ResultsGrid)
@@ -282,23 +283,19 @@ class RclipApp(App[None], inherit_bindings=False):
     if self._detail.display:
       self._update_selection()
     self.call_after_refresh(grid.update_visible)
-    self.query_one("#search", Input).border_title = None if append or results else "No results"
+    search_input.border_title = None if append or results else "No results"
 
   def _show_search_error(self, generation: int, query: str, message: str, append: bool) -> None:
+    search_input = self.query_one("#search", Input)
     if not self._is_current_search(generation, query):
       return
     self._loading_more = False
     self._pending_detail_advance = False
-    self.query_one("#search", Input).border_title = None
+    search_input.border_title = None
     self.notify(message, title="Unable to load more images" if append else "Search failed", severity="error")
 
   def _is_current_search(self, generation: int, query: str) -> bool:
-    # Results can arrive after the app stops, once its widgets are gone.
-    return (
-      self.is_running
-      and generation == self._search_generation
-      and self.query_one("#search", Input).value.strip() == query
-    )
+    return generation == self._search_generation and self.query_one("#search", Input).value.strip() == query
 
   def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
     if isinstance(self.focused, Input) and action in {

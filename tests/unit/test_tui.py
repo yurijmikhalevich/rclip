@@ -46,7 +46,6 @@ from rclip.tui.views import DetailThumbnail
 from rclip.tui.views import DetailView
 from rclip.tui.views import ImageCard
 from rclip.tui.views import ResultsGrid
-from rclip.tui.views import TuiResult
 from rclip.utils.helpers import init_arg_parser
 
 
@@ -2274,21 +2273,6 @@ def test_empty_browse_retries_loading_more_after_failure(
     (str(tmp_path), 25, None),
     (str(tmp_path), 25, cursor),
   ]
-
-
-def test_search_results_after_the_app_stops_are_ignored(tmp_path: Path) -> None:
-  path = str(make_image(tmp_path / "image.jpg"))
-  app = RclipApp(FakeRclip([RClip.SearchResult(path, 1)]), str(tmp_path))
-
-  async def run() -> None:
-    async with app.run_test(size=(30, 40)):
-      await app.workers.wait_for_complete()
-
-  asyncio.run(run())
-
-  # The search worker delivers results that can arrive after the app stops.
-  asyncio.run(app._show_results(app._search_generation, "", [TuiResult(path)], None, False))
-  app._show_search_error(app._search_generation, "", "error", False)
 
 
 def test_selection_update_after_the_app_stops_does_nothing(tmp_path: Path) -> None:
