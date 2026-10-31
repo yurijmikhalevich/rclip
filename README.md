@@ -205,7 +205,7 @@ rclip -p kitty
   ```
 
   The `-0` or `--null` flag makes **rclip** print only file paths, each terminated by a NUL character, which `xargs -0` splits correctly even when paths contain spaces, quotes, or newlines. The `-f` or `--filepath-only` flag prints one path per line instead, which suits tools that read paths line by line, such as **feh**.
-  
+
   I prefer to use **feh**'s thumbnail mode to preview multiple results:
 
   ```bash
