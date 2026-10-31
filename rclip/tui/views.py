@@ -236,7 +236,7 @@ class DetailView(Vertical, can_focus=True):
       DetailThumbnail(neighbors + 1, self._browse),
     ]
     await filmstrip.mount(*self.thumbnails, *self._spare_thumbnails)
-    if isinstance(self.app, RclipApp) and self.app.is_running:
+    if isinstance(self.app, RclipApp):
       self.app._update_selection()
 
   def show_thumbnails(self, filepaths: list[str | None]) -> None:
