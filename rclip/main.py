@@ -488,7 +488,10 @@ def print_results(result: List[RClip.SearchResult], args: helpers.argparse.Names
   if not sys.stdout.isatty() and os.name == "nt":
     sys.stdout.reconfigure(encoding="utf-8-sig")
 
-  if args.filepath_only:
+  if args.null:
+    for search_result in result:
+      print(search_result.filepath, end="\0")
+  elif args.filepath_only:
     for search_result in result:
       print(search_result.filepath)
   else:
@@ -513,10 +516,10 @@ def main():
     arg_parser.error("--force-preview cannot be used with --interactive")
   if args.force_interactive and args.force_preview:
     arg_parser.error("--force-interactive and --force-preview cannot be used together")
-  if args.force_interactive and args.filepath_only:
-    arg_parser.error("--force-interactive cannot be used with --filepath-only")
-  if args.force_preview and args.filepath_only:
-    arg_parser.error("--force-preview cannot be used with --filepath-only")
+  if args.force_interactive and (args.filepath_only or args.null):
+    arg_parser.error("--force-interactive cannot be used with --filepath-only or --null")
+  if args.force_preview and (args.filepath_only or args.null):
+    arg_parser.error("--force-preview cannot be used with --filepath-only or --null")
 
   if args.query is None and not args.interactive:
     arg_parser.error("query is required unless --interactive is used")

@@ -155,6 +155,21 @@ def test_search(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_m
   execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "kitty")
 
 
+def test_null_terminated_output(
+  test_images_dir: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  shared_model_cache_dir: str,
+  capfd: pytest.CaptureFixture[str],
+):
+  results = execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "kitty")
+  capfd.readouterr()
+  execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "-n", "-0", "kitty")
+  out, _ = capfd.readouterr()
+  filepaths = out.lstrip("\ufeff").split("\0")
+  assert filepaths.pop() == ""
+  assert sorted(filepaths) == sorted(result.filepath for result in results)
+
+
 def test_interactive_starts_and_exits_cleanly(
   test_empty_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
 ) -> None:
