@@ -169,6 +169,8 @@ cd photos && rclip "./racing car.jpg" - "2:sports car" + "2:snow"
 
 If you want to see how these queries perform when executed on the 1.28 million images ImageNet-1k dataset, check out the demo on YouTube: https://www.youtube.com/watch?v=MsTgYdOpgcQ.
 
+## FAQ
+
 ### Which formats does **rclip** support?
 
 **rclip** always indexes the following image formats: `jpg`, `jpeg`, `png`, `webp`, `tiff`, `tif`, `bmp`, `gif`, `jp2`, `pnm`, `pbm`, `pgm`, and `ppm`.
@@ -244,7 +246,7 @@ search even more.
 rclip -n cat
 ```
 
-### How it works
+### How does **rclip** work?
 
 **rclip** currently uses the [OpenCLIP's ViT-B/32 AI model](https://github.com/mlfoundations/open_clip/blob/55794d65a14dfc547a9ed3514145dd68ccc939e9/README.md) to generate embeddings for images and text. This enables natural-language search, similar-image search, and mixed text-and-image queries entirely on your machine. The model builds on the CLIP architecture introduced by OpenAI.
 
