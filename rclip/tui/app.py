@@ -374,6 +374,9 @@ class RclipApp(App[None], inherit_bindings=False):
     self._update_selection()
 
   def _update_selection(self) -> None:
+    # Deferred callers can outlive the app, whose widgets are gone once it stops.
+    if not self.is_running:
+      return
     card = self._selected_card()
     label = ""
     if card is not None:

@@ -2275,27 +2275,17 @@ def test_empty_browse_retries_loading_more_after_failure(
   ]
 
 
-def test_detail_resize_does_not_update_the_app_after_it_stops(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_selection_update_after_the_app_stops_does_nothing(tmp_path: Path) -> None:
   paths = [str(make_image(tmp_path / f"image-{index}.jpg")) for index in range(5)]
   app = RclipApp(FakeRclip([RClip.SearchResult(path, 1) for path in paths]), str(tmp_path))
-  updates_after_stop: list[bool] = []
-  update_selection = RclipApp._update_selection
-
-  def track_update(self: RclipApp) -> None:
-    if not self.is_running:
-      updates_after_stop.append(True)
-    update_selection(self)
-
-  monkeypatch.setattr(RclipApp, "_update_selection", track_update)
 
   async def run() -> None:
     async with app.run_test(size=(30, 40)) as pilot:
       await app.workers.wait_for_complete()
       await pilot.press("down")
-      # Showing the detail view resizes it, which rebuilds its filmstrip asynchronously.
       app.action_open_detail()
-      await app.workers.wait_for_complete()
 
   asyncio.run(run())
 
-  assert updates_after_stop == []
+  # Deferred callers, such as the detail view's resize and toggle, can run after the app stops.
+  app._update_selection()
