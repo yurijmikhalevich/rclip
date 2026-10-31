@@ -1,7 +1,4 @@
 # rclip – grep for images
-<!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-7-orange.svg?style=flat-square)](#contributors-)
-<!-- ALL-CONTRIBUTORS-BADGE:END -->
 
 [[Blog]](https://mikhalevi.ch/rclip-an-ai-powered-command-line-photo-search-tool/) [[Demo on YouTube]](https://www.youtube.com/watch?v=tAJHXOkHidw) [[Paper]](https://www.thinkmind.org/index.php?view=article&articleid=content_2023_1_20_60011)
 
@@ -291,35 +288,9 @@ uv sync
 
 Then use `uv run rclip`, as described in the [Usage](#usage) section above.
 
-## Contributors ✨
+## Contributors
 
-Thanks go to these wonderful people and organizations ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
-
-<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
-<!-- prettier-ignore-start -->
-<!-- markdownlint-disable -->
-<table>
-  <tbody>
-    <tr>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/ramayer"><img src="https://avatars.githubusercontent.com/u/72320?v=4?s=100" width="100px;" alt="ramayer"/><br /><sub><b>ramayer</b></sub></a><br /><a href="https://github.com/yurijmikhalevich/rclip/commits?author=ramayer" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://www.caphyon.com"><img src="https://avatars.githubusercontent.com/u/15829334?v=4?s=100" width="100px;" alt="Caphyon"/><br /><sub><b>Caphyon</b></sub></a><br /><a href="#infra-Caphyon" title="Infrastructure (Hosting, Build-Tools, etc)">🚇</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="http://abidkhan484.github.io"><img src="https://avatars.githubusercontent.com/u/15053047?v=4?s=100" width="100px;" alt="AbId KhAn"/><br /><sub><b>AbId KhAn</b></sub></a><br /><a href="https://github.com/yurijmikhalevich/rclip/commits?author=abidkhan484" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://cl4r1ty.dev"><img src="https://avatars.githubusercontent.com/u/136800640?v=4?s=100" width="100px;" alt="Ben"/><br /><sub><b>Ben</b></sub></a><br /><a href="https://github.com/yurijmikhalevich/rclip/commits?author=Cl4r1ty-1" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://techtracer.pages.dev"><img src="https://avatars.githubusercontent.com/u/48885301?v=4?s=100" width="100px;" alt="Tanmay Chaudhari"/><br /><sub><b>Tanmay Chaudhari</b></sub></a><br /><a href="https://github.com/yurijmikhalevich/rclip/commits?author=tanmayc07" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="http://leoauri.com"><img src="https://avatars.githubusercontent.com/u/10868855?v=4?s=100" width="100px;" alt="Leo Auri"/><br /><sub><b>Leo Auri</b></sub></a><br /><a href="https://github.com/yurijmikhalevich/rclip/commits?author=leoauri" title="Code">💻</a></td>
-      <td align="center" valign="top" width="14.28%"><a href="https://github.com/SergeyKarleev"><img src="https://avatars.githubusercontent.com/u/8651755?v=4?s=100" width="100px;" alt="SergeyKarleev"/><br /><sub><b>SergeyKarleev</b></sub></a><br /><a href="https://github.com/yurijmikhalevich/rclip/commits?author=SergeyKarleev" title="Code">💻</a></td>
-    </tr>
-  </tbody>
-</table>
-
-<!-- markdownlint-restore -->
-<!-- prettier-ignore-end -->
-
-<!-- ALL-CONTRIBUTORS-LIST:END -->
-
-Thanks to [Caphyon](https://github.com/Caphyon) and the Advanced Installer team for generously supplying the **rclip** project with the Professional Advanced Installer license for creating the Windows installer.
-
-This project follows the [all-contributors](https://github.com/all-contributors/all-contributors) specification. Contributions of any kind are welcome!
+Thank you to everyone who has [contributed to rclip](https://github.com/yurijmikhalevich/rclip/graphs/contributors)!
 
 ## Distribution compliance
 
