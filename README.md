@@ -270,6 +270,8 @@ https://github.com/yurijmikhalevich/rclip/discussions/new/choose
 
 ## Contributing
 
+Thank you to everyone who has [contributed to rclip](https://github.com/yurijmikhalevich/rclip/graphs/contributors)!
+
 This repository follows the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) standard.
 
 ### Running locally from the source code
@@ -287,10 +289,6 @@ uv sync
 ```
 
 Then use `uv run rclip`, as described in the [Usage](#usage) section above.
-
-## Contributors
-
-Thank you to everyone who has [contributed to rclip](https://github.com/yurijmikhalevich/rclip/graphs/contributors)!
 
 ## Distribution compliance
 
