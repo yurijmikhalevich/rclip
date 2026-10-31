@@ -233,12 +233,12 @@ rclip --json -t 2 "search query"
 ### How does **rclip** update the index?
 
 When you run **rclip** in a directory that has already been processed, it indexes
-only the new images added since the last run and removes deleted images from its
-index. This makes consecutive runs much faster.
+only the images added or changed since the last run and removes deleted images
+from its index. This makes consecutive runs much faster.
 
-If you know no images have been added or deleted since the last run, you can use
-the `--no-indexing` (or `-n`) flag to skip indexing entirely and speed up the
-search even more.
+If you know no images have been added, changed, or deleted since the last run,
+you can use the `--no-indexing` (or `-n`) flag to skip indexing entirely and
+speed up the search even more.
 
 ```bash
 rclip -n cat
