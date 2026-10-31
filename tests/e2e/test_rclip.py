@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import NamedTuple
+import json
 import os
 import subprocess
 import sys
@@ -168,6 +169,20 @@ def test_null_terminated_output(
   filepaths = out.split("\0")
   assert filepaths.pop() == ""
   assert sorted(filepaths) == sorted(result.filepath for result in results)
+
+
+def test_json_output(
+  test_images_dir: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  shared_model_cache_dir: str,
+  capfd: pytest.CaptureFixture[str],
+):
+  results = execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "kitty")
+  capfd.readouterr()
+  execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "-n", "--json", "kitty")
+  out, _ = capfd.readouterr()
+  json_results = [SearchResult(**result) for result in json.loads(out)]
+  assert sorted(json_results, key=lambda r: (-r.score, r.filepath)) == results
 
 
 def test_interactive_starts_and_exits_cleanly(
