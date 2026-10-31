@@ -4,7 +4,7 @@ authors:
 - family-names: "Mikhalevich"
   given-names: "Yurij"
 title: "rclip"
-version: 4.0.10
+version: 4.0.11
 date-released: 2026-11-01
 license: "MIT"
 url: "https://github.com/yurijmikhalevich/rclip"
