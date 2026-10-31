@@ -61,7 +61,6 @@ def _assert_output_snapshot(
   images_dir: Path,
   request: pytest.FixtureRequest,
   capfd: pytest.CaptureFixture[str],
-  encoding: str | None = None,
 ):
   out, _ = capfd.readouterr()
   snapshot_path = Path(__file__).parent / "output_snapshots" / f"{request.node.name}.txt"
@@ -71,13 +70,10 @@ def _assert_output_snapshot(
     .replace("." + os.path.sep, "<test_images_dir>")
     .replace(os.path.sep, "/")
     .replace("\r\n", "\n")
-    # Stripping the BOM markers we add on Windows systems when the output is being piped to a file.
-    # One is emitted per rclip invocation, so a single test may produce several of them; otherwise,
-    # the output won't be encoded correctly.
-  ).replace("\ufeff", "")
+  )
   if not snapshot_path.exists():
-    snapshot_path.write_text(snapshot)
-  assert snapshot == snapshot_path.read_text(encoding=encoding)
+    snapshot_path.write_text(snapshot, encoding="utf-8")
+  assert snapshot == snapshot_path.read_text(encoding="utf-8")
 
 
 @pytest.fixture
@@ -111,7 +107,7 @@ def assert_output_snapshot_unicode_filepaths(
   test_dir_with_unicode_filenames: Path, request: pytest.FixtureRequest, capfd: pytest.CaptureFixture[str]
 ):
   yield
-  _assert_output_snapshot(test_dir_with_unicode_filenames, request, capfd, "utf-8-sig")
+  _assert_output_snapshot(test_dir_with_unicode_filenames, request, capfd)
 
 
 def execute_query(
@@ -120,7 +116,7 @@ def execute_query(
   """Run the real rclip CLI as a subprocess and return its parsed results.
 
   Running rclip as a separate process is the truest end-to-end test: it exercises rclip's actual
-  stdout encoding (including the utf-8-sig it applies on Windows) and keeps every test isolated --
+  stdout encoding (including the UTF-8 it applies on Windows) and keeps every test isolated --
   the child owns its own stdout and SQLite connection, both released when it exits. We forward the
   child's stdout/stderr bytes verbatim so the snapshot fixtures observe rclip's genuine output
   without the parent's console re-encoding it."""
@@ -140,8 +136,8 @@ def execute_query(
 
   results: list[SearchResult] = []
   for line in completed_run.stdout.decode("utf-8").splitlines():
-    # Strip the BOM rclip emits on Windows, then drop the header and blanks.
-    line = line.strip().lstrip("﻿")
+    # Drop the header and blanks.
+    line = line.strip()
     if not line or line.startswith("score\t"):
       continue
     parts = line.split("\t")
