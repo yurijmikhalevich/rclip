@@ -161,11 +161,12 @@ Check this video out for the image-to-image search demo: https://www.youtube.com
 You can combine and subtract image and text queries; here are a few examples:
 
 ```bash
-cd photos && rclip horse + stripes
-cd photos && rclip apple - fruit
-cd photos && rclip "./new york city.jpg" + night
-cd photos && rclip "2:golden retriever" + "./swimming pool.jpg"
-cd photos && rclip "./racing car.jpg" - "2:sports car" + "2:snow"
+cd photos
+rclip horse + stripes
+rclip apple - fruit
+rclip "./new york city.jpg" + night
+rclip "2:golden retriever" + "./swimming pool.jpg"
+rclip "./racing car.jpg" - "2:sports car" + "2:snow"
 ```
 
 If you want to see how these queries perform when executed on the 1.28 million images ImageNet-1k dataset, check out the demo on YouTube: https://www.youtube.com/watch?v=MsTgYdOpgcQ.
