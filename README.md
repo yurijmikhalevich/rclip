@@ -221,6 +221,15 @@ Yes. You can pipe **rclip**'s output to another tool to copy matching images. Fo
 rclip -0 -t 3 "search query" | xargs -0 -I {} cp {} /path/to/destination
 ```
 
+### Can I use **rclip** from scripts and AI agents?
+
+Yes. Pass `--json` to get results as a JSON array, ordered from the best match. Progress and warnings go to stderr, so stdout contains only the JSON:
+
+```bash
+rclip --json -t 2 "search query"
+# [{"score": 0.297, "filepath": "/photos/sunrise-beach.jpg"}, {"score": 0.286, "filepath": "/photos/dawn-walk.png"}]
+```
+
 ### How does **rclip** update the index?
 
 When you run **rclip** in a directory that has already been processed, it indexes
@@ -249,12 +258,13 @@ Run `rclip --help` (or `rclip -h`) to see this list in your terminal. The positi
 | `--add`, `-a`, `+` `QUERY` | A text query or a path/URL to an image file to add to the "original" query. Can be used multiple times. |
 | `--subtract`, `--sub`, `-s`, `-` `QUERY` | A text query or a path/URL to an image file to subtract from the "original" query. Can be used multiple times. |
 | `--top`, `-t` `N` | Number of top results to display, or search results to load per batch with `--interactive`. Default: `10`, or `100` with `--interactive`; interactive maximum: `100`. |
-| `--interactive`, `-i` | Open the interactive terminal UI and enter text queries there. Does not accept a positional query or `--add`/`--subtract`. Mutually exclusive with `--preview`, `--filepath-only`, and `--null`. |
+| `--interactive`, `-i` | Open the interactive terminal UI and enter text queries there. Does not accept a positional query or `--add`/`--subtract`. Mutually exclusive with `--preview`, `--filepath-only`, `--null`, and `--json`. |
 | `--force-interactive` | Force interactive mode even if the terminal is not recognized as supporting Kitty graphics with Unicode placeholders. |
-| `--preview`, `-p` | Preview results in the terminal using Kitty graphics (e.g. Kitty, Ghostty, latest iTerm2, Konsole). Mutually exclusive with `--filepath-only` and `--null`. |
+| `--preview`, `-p` | Preview results in the terminal using Kitty graphics (e.g. Kitty, Ghostty, latest iTerm2, Konsole). Mutually exclusive with `--filepath-only`, `--null`, and `--json`. |
 | `--force-preview` | Force image previews even if the terminal is not recognized as supporting Kitty graphics. |
 | `--filepath-only`, `-f` | Output only filepaths, without scores or the header. Mutually exclusive with `--preview`. |
-| `--null`, `-0` | Output only filepaths, each terminated by a NUL character instead of a newline, for `xargs -0`. Mutually exclusive with `--preview` and `--filepath-only`. |
+| `--null`, `-0` | Output only filepaths, each terminated by a NUL character instead of a newline, for `xargs -0`. Mutually exclusive with `--preview`, `--filepath-only`, and `--json`. |
+| `--json` | Output results as a JSON array of `{"score": ..., "filepath": ...}` objects, ordered from the best match. Mutually exclusive with `--preview`, `--filepath-only`, and `--null`. |
 | `--preview-height`, `-H` `PX` | Preview height in pixels. Default: `400`. |
 | `--no-indexing`, `--skip-index`, `--skip-indexing`, `-n` | Skip updating the index. Use only when no images were added, changed, or removed since the last run. |
 | `--indexing-batch-size`, `-b` `N` | The size of the image batch used when updating the search index. Larger values may slightly improve indexing speed on some hardware but increase RAM usage. Default: `8`. |
