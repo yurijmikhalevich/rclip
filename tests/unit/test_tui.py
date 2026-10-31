@@ -23,6 +23,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Container
 from textual.drivers.headless_driver import HeadlessDriver
 from textual.geometry import Region, Size
+from textual.widget import Widget
 from textual.widgets import Input, Static
 
 from rclip import main as main_module
@@ -46,6 +47,7 @@ from rclip.tui.views import DetailThumbnail
 from rclip.tui.views import DetailView
 from rclip.tui.views import ImageCard
 from rclip.tui.views import ResultsGrid
+from rclip.tui.views import TuiResult
 from rclip.utils.helpers import init_arg_parser
 
 
@@ -2273,6 +2275,50 @@ def test_empty_browse_retries_loading_more_after_failure(
     (str(tmp_path), 25, None),
     (str(tmp_path), 25, cursor),
   ]
+
+
+def test_search_results_after_the_app_stops_are_ignored(tmp_path: Path) -> None:
+  path = str(make_image(tmp_path / "image.jpg"))
+  app = RclipApp(FakeRclip([RClip.SearchResult(path, 1)]), str(tmp_path))
+
+  async def run() -> None:
+    async with app.run_test(size=(30, 40)):
+      await app.workers.wait_for_complete()
+
+  asyncio.run(run())
+
+  # The search worker delivers results that can arrive after the app stops.
+  asyncio.run(app._show_results(app._search_generation, "", [TuiResult(path)], None, False))
+  app._show_search_error(app._search_generation, "", "error", False)
+
+
+@pytest.mark.parametrize(("stopping_call", "cards"), [("remove_children", 0), ("mount", 1)])
+def test_search_results_stop_rendering_when_the_app_stops_while_rendering(
+  tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stopping_call: str, cards: int
+) -> None:
+  path = str(make_image(tmp_path / "image.jpg"))
+  app = RclipApp(FakeRclip([RClip.SearchResult(path, 1)]), str(tmp_path))
+  stopped = False
+  monkeypatch.setattr(RclipApp, "is_running", property(lambda _self: not stopped))
+  render = getattr(ResultsGrid, stopping_call)
+
+  async def render_then_stop(self: ResultsGrid, *args: Widget) -> None:
+    nonlocal stopped
+    await render(self, *args)
+    stopped = True
+
+  async def run() -> tuple[int, str]:
+    nonlocal stopped
+    async with app.run_test(size=(30, 40)):
+      await app.workers.wait_for_complete()
+      results_order = app.query_one("#results-order", Static)
+      results_order.update("")
+      monkeypatch.setattr(ResultsGrid, stopping_call, render_then_stop)
+      await app._show_results(app._search_generation, "", [TuiResult(path)], None, False)
+      stopped = False
+      return len(app.query(ImageCard)), str(results_order.content)
+
+  assert asyncio.run(run()) == (cards, "")
 
 
 def test_selection_update_after_the_app_stops_does_nothing(tmp_path: Path) -> None:
