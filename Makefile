@@ -42,6 +42,7 @@ release:
 	@test $(VERSION) || (echo "VERSION arg is required (e.g. VERSION=major|minor|patch|alpha|beta|rc)" && exit 1)
 	uv version --no-sync --bump $(VERSION)
 	$(SED) -i "s/version: .*/version: $$(uv version --short)/" snap/snapcraft.yaml
+	$(SED) -i -e "s/^version: .*/version: $$(uv version --short)/" -e "s/^date-released: .*/date-released: $$(date +%F)/" CITATION.cff
 	git commit -am "release: v$$(uv version --short)"
 	git push origin $$(git branch --show-current)
 	git tag v$$(uv version --short)

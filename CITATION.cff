@@ -4,11 +4,11 @@ authors:
 - family-names: "Mikhalevich"
   given-names: "Yurij"
 title: "rclip"
-version: 1.2.5
-date-released: 2023-01-14
+version: 4.0.9
+date-released: 2026-10-31
 license: "MIT"
 url: "https://github.com/yurijmikhalevich/rclip"
-repository-code: "https://github.com/yurijmikhalevich/rclip/commit/0ded434ee826dae2823a897813a21d8012d7ed9b"
+repository-code: "https://github.com/yurijmikhalevich/rclip"
 keywords:
   - machine learning
   - deep learning
