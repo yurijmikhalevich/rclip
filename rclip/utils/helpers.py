@@ -361,8 +361,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
     "-p",
     action="store_true",
     default=False,
-    help="preview results in the terminal using Kitty graphics"
-    " (e.g. Kitty, Ghostty, latest iTerm2, Konsole)",
+    help="preview results in the terminal using Kitty graphics (e.g. Kitty, Ghostty, latest iTerm2, Konsole)",
   )
   display_mode_group.add_argument(
     "--filepath-only",
@@ -426,7 +425,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
     "--exclude-dir",
     action="append",
     help="dir to exclude from search, can be used multiple times;"
-    ' adding this argument overrides the default of'
+    " adding this argument overrides the default of"
     ' ("@eaDir", "node_modules", ".git", "System Volume Information")',
   )
   parser.add_argument(

@@ -80,9 +80,7 @@ def test_search_stops_when_cancelled_during_final_sort(monkeypatch) -> None:
   model = Mock()
   model.compute_features_for_queries.return_value = np.zeros(2, dtype=np.float32)
   database = Mock()
-  database.get_image_vectors_by_dir_path.return_value = [
-    ("a.jpg", np.zeros(2, dtype=np.float32).tobytes())
-  ]
+  database.get_image_vectors_by_dir_path.return_value = [("a.jpg", np.zeros(2, dtype=np.float32).tobytes())]
 
   def sort_results(results, *, key):
     def cancelling_key(result):
@@ -118,10 +116,13 @@ def test_search_continues_after_an_entirely_excluded_batch(monkeypatch, tmp_path
   ]
   rclip = _make_rclip(model, database, ["private"])
 
-  assert rclip.search(str(tmp_path / "query.jpg"), str(tmp_path), top_k=top_k) == [
-    RClip.SearchResult(str(tmp_path / "a.jpg"), 2),
-    RClip.SearchResult(str(tmp_path / "b.jpg"), 1),
-  ][:top_k]
+  assert (
+    rclip.search(str(tmp_path / "query.jpg"), str(tmp_path), top_k=top_k)
+    == [
+      RClip.SearchResult(str(tmp_path / "a.jpg"), 2),
+      RClip.SearchResult(str(tmp_path / "b.jpg"), 1),
+    ][:top_k]
+  )
 
 
 def test_search_keeps_only_global_top_results_across_vector_batches(monkeypatch) -> None:
@@ -204,8 +205,7 @@ def test_search_can_return_every_ranked_result(monkeypatch) -> None:
   monkeypatch.setattr(RClip, "SEARCH_BATCH_SIZE", 2)
   database = Mock()
   database.get_image_vectors_by_dir_path.return_value = [
-    (f"{index}.jpg", np.array([index, 0], dtype=np.float32).tobytes())
-    for index in range(12)
+    (f"{index}.jpg", np.array([index, 0], dtype=np.float32).tobytes()) for index in range(12)
   ]
   model = Mock()
   model.compute_features_for_queries.side_effect = [

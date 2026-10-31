@@ -234,9 +234,7 @@ class DB:
       "SELECT filepath FROM images WHERE filepath >= ? AND filepath < ? AND deleted IS NULL", (start, end)
     )
 
-  def get_image_filepaths_by_dir_path(
-    self, path: str, after: tuple[float, str] | None = None
-  ) -> sqlite3.Cursor:
+  def get_image_filepaths_by_dir_path(self, path: str, after: tuple[float, str] | None = None) -> sqlite3.Cursor:
     start, end = self._get_dirpath_range(path)
     # SQLite would otherwise pick the filepath index and sort every image under `path` for each page; walking
     # the recency index returns a page as soon as it finds enough images under `path`.

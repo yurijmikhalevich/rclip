@@ -64,9 +64,7 @@ def _metadata_records(root: Path, excluded_root: Path | None = None) -> list[dic
       "declared_license_files": metadata.get_all("License-File", []),
       "declared_license_expression": metadata.get("License-Expression", ""),
       "legacy_license": metadata.get("License", ""),
-      "license_classifiers": [
-        value for value in metadata.get_all("Classifier", []) if value.startswith("License ::")
-      ],
+      "license_classifiers": [value for value in metadata.get_all("Classifier", []) if value.startswith("License ::")],
     }
   return [records[key] for key in sorted(records)]
 
