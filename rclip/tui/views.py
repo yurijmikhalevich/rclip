@@ -231,7 +231,10 @@ class DetailView(Vertical, can_focus=True):
     filmstrip = self.query_one("#detail-filmstrip", Horizontal)
     await filmstrip.remove_children()
     self.thumbnails = [DetailThumbnail(offset, self._browse) for offset in range(-neighbors, neighbors + 1)]
-    self._spare_thumbnails = [DetailThumbnail(-neighbors - 1, self._browse), DetailThumbnail(neighbors + 1, self._browse)]
+    self._spare_thumbnails = [
+      DetailThumbnail(-neighbors - 1, self._browse),
+      DetailThumbnail(neighbors + 1, self._browse),
+    ]
     await filmstrip.mount(*self.thumbnails, *self._spare_thumbnails)
     if isinstance(self.app, RclipApp) and self.app.is_running:
       self.app._update_selection()

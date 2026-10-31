@@ -384,18 +384,23 @@ class RclipApp(App[None], inherit_bindings=False):
     if not self._detail.display:
       return
     cards = self._cards()
-    self._detail.show_image(card.result.filepath if card else None, [
-      cards[index].result.filepath
-      for index in (self._selected_index - 1, self._selected_index + 1)
-      if 0 <= index < len(cards)
-    ])
+    self._detail.show_image(
+      card.result.filepath if card else None,
+      [
+        cards[index].result.filepath
+        for index in (self._selected_index - 1, self._selected_index + 1)
+        if 0 <= index < len(cards)
+      ],
+    )
     if not self._detail.thumbnails:
       return
     neighbors = len(self._detail.thumbnails) // 2 + 1
-    self._detail.show_thumbnails([
-      cards[index].result.filepath if 0 <= index < len(cards) else None
-      for index in range(self._selected_index - neighbors, self._selected_index + neighbors + 1)
-    ])
+    self._detail.show_thumbnails(
+      [
+        cards[index].result.filepath if 0 <= index < len(cards) else None
+        for index in range(self._selected_index - neighbors, self._selected_index + neighbors + 1)
+      ]
+    )
     self._load_more()
 
   def action_move_left(self) -> None:
@@ -516,9 +521,9 @@ class RclipApp(App[None], inherit_bindings=False):
         for key, label in [("y", "Copy"), ("p", "Copy path"), ("s", "Download")]
       )
     keys.append(("^C", "Quit"))
-    self.query_one(".hotkeys", Static).update(Content("   ").join(
-      Content.assemble(self._highlight(f" {key} "), f" {label}") for key, label in keys
-    ))
+    self.query_one(".hotkeys", Static).update(
+      Content("   ").join(Content.assemble(self._highlight(f" {key} "), f" {label}") for key, label in keys)
+    )
 
   def _copy_image(self, filepath: str) -> None:
     try:

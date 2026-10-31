@@ -84,8 +84,10 @@ class FakeRclip(RClip):
     cancel_event: Event | None = None,
   ) -> RClip.ImagePage:
     self.browses.append((directory, limit, after))
-    start = 0 if after is None else next(
-      index + 1 for index, result in enumerate(self.results) if result.filepath == after.filepath
+    start = (
+      0
+      if after is None
+      else next(index + 1 for index, result in enumerate(self.results) if result.filepath == after.filepath)
     )
     results = self.results[start : start + limit]
     next_cursor = None
@@ -378,9 +380,7 @@ def test_kitty_image_does_not_reuse_between_centered_and_uncentered(
   assert tgp_payload_bytes(output.getvalue()) > 0
 
 
-def test_kitty_image_caches_by_filepath_string_and_path(
-  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_kitty_image_caches_by_filepath_string_and_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stderr__", output)
   monkeypatch.setattr("textual_image.renderable.tgp.get_cell_size", lambda: CellSize(10, 20))
@@ -687,9 +687,7 @@ def test_image_data_goes_through_the_stream_textual_draws_with(tmp_path: Path, m
   assert tgp_payload_bytes(output.getvalue()) > 0
 
 
-def test_prewarm_image_ignores_transmission_failure(
-  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_prewarm_image_ignores_transmission_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   prepared = prepare_image(str(make_image(tmp_path / "image.jpg")), (80, 60))
   cache = media_module._ImageCache(budget=50_000)
   monkeypatch.setattr(media_module, "_IMAGE_CACHE", cache)
@@ -800,9 +798,7 @@ def test_image_cache_transmit_failure_after_forget_keeps_the_newer_image() -> No
   assert cache._decoded == 100
 
 
-def test_copy_image_keeps_common_formats_and_converts_others(
-  tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_copy_image_keeps_common_formats_and_converts_others(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   copied: list[tuple[str, str]] = []
 
   def fake_copy(path: Path) -> None:
@@ -916,8 +912,14 @@ def test_suspend_restores_screen_after_unterminated_query(
   # Model iTerm2's DCS consumption and check screen switches visible to the terminal.
   visible = re.sub(r"\x1bP.*?\x1b\\", "", output.getvalue(), flags=re.S)
   assert re.findall(r"\x1b\[\?1049[hl]|TUI", visible) == [
-    "\x1b[?1049h", "\x1b[?1049l", "\x1b[?1049h", "TUI",
-    "\x1b[?1049l", "\x1b[?1049h", "TUI", "\x1b[?1049l",
+    "\x1b[?1049h",
+    "\x1b[?1049l",
+    "\x1b[?1049h",
+    "TUI",
+    "\x1b[?1049l",
+    "\x1b[?1049h",
+    "TUI",
+    "\x1b[?1049l",
   ]
 
 
@@ -949,7 +951,13 @@ def test_download_suspends_until_finished(
   monkeypatch.setattr("rclip.tui.app.resend_images", lambda app: actions.append("resend"))
   monkeypatch.setattr(app, "notify", lambda message, **options: actions.append(message))
   app.action_download()
-  assert actions == ["suspend", "download", "resume", "resend", "permission denied" if failure else "Saved to ~/Downloads"]
+  assert actions == [
+    "suspend",
+    "download",
+    "resume",
+    "resend",
+    "permission denied" if failure else "Saved to ~/Downloads",
+  ]
   assert capsys.readouterr().out == "rclip: pausing the TUI to download the image…\n\x1b\\"
 
 
@@ -1101,7 +1109,8 @@ def test_transfer_probes_before_sending(
   if response == "name: kitty\n":
     operation(str(source))
     expected = (
-      (["kitten", "clipboard", str(source)], 30) if operation is copy_image_to_clipboard
+      (["kitten", "clipboard", str(source)], 30)
+      if operation is copy_image_to_clipboard
       else (["kitten", "transfer", str(source), "Downloads/"], None)
     )
     assert commands[1:] == [expected]
@@ -1176,7 +1185,8 @@ def test_kitten_timeout_terminates_and_reaps(monkeypatch: pytest.MonkeyPatch, fo
   with pytest.raises(TransferError, match="did not respond"):
     _run_kitten(["kitten"], timeout=2)
   assert [call[0] for call in process.method_calls] == (
-    ["communicate", "terminate", "communicate", "kill", "communicate"] if force_kill
+    ["communicate", "terminate", "communicate", "kill", "communicate"]
+    if force_kill
     else ["communicate", "terminate", "communicate"]
   )
   assert process.communicate.call_args_list[0].kwargs == {"timeout": 2}
@@ -1800,8 +1810,7 @@ def test_detail_filmstrip_centers_selection_and_navigates(tmp_path: Path, monkey
         await pilot.pause()
         assert len(screen.thumbnails) == count
         assert [thumbnail.filepath for thumbnail in screen.thumbnails] == [
-          paths[index] if 0 <= index < len(paths) else None
-          for index in range(4 - count // 2, 5 + count // 2)
+          paths[index] if 0 <= index < len(paths) else None for index in range(4 - count // 2, 5 + count // 2)
         ]
         center = screen.thumbnails[count // 2].region
         assert abs(center.x * 2 + center.width - width) <= 1
