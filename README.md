@@ -17,7 +17,7 @@ rclip "an orange cat"
 
 <img alt="rclip interactive UI showing a grid of orange cat photos ranked by similarity to the query &quot;an orange cat&quot;" src="https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/resources/rclip-tui.webp" />
 
-<sub>`rclip -i`. The interactive UI and previews need a terminal with Kitty graphics, such as Kitty, Ghostty, latest iTerm2, or Konsole. Search and scripting work in any terminal.</sub>
+<sub>`rclip -i`. The interactive UI needs Kitty, Ghostty, or latest iTerm2; previews (`-p`) also work in Konsole. Search and scripting work in any terminal.</sub>
 
 ## Features
 
