@@ -1557,6 +1557,37 @@ def test_gallery_reuses_thumbnails_after_detail_browsing(tmp_path: Path, monkeyp
   asyncio.run(run())
 
 
+def test_filmstrip_reuses_the_previews_the_grid_loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(sys, "__stderr__", StringIO())
+  paths = [str(make_image(tmp_path / f"image-{index}.jpg")) for index in range(5)]
+  app = RclipApp(FakeRclip([RClip.SearchResult(path, 1) for path in paths]), str(tmp_path))
+  previews: list[str] = []
+
+  def track_prepare(filepath: str, size: tuple[int, int]) -> Image.Image:
+    if size == (640, 480):
+      previews.append(filepath)
+    return prepare_image(filepath, size)
+
+  monkeypatch.setattr("rclip.tui.views.prepare_image", track_prepare)
+
+  async def run() -> None:
+    async with app.run_test(size=(100, 40)) as pilot:
+      await app.workers.wait_for_complete()
+      await pilot.pause()
+      assert sorted(previews) == paths
+      previews.clear()
+      await pilot.press("down", "o")
+      for _ in range(3):
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+      thumbnails = [thumbnail for thumbnail in app.query_one(DetailView).thumbnails if thumbnail.filepath]
+      assert thumbnails
+      assert all(thumbnail._image.image is not None for thumbnail in thumbnails)
+      assert previews == []
+
+  asyncio.run(run())
+
+
 def test_detail_navigation_reuses_transmitted_images(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stderr__", output)

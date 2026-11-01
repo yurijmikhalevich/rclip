@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from threading import Semaphore
 from typing import Callable, Sequence, cast
+from weakref import WeakValueDictionary
 
 from PIL import Image as PILImage
 from textual import events, work
@@ -22,6 +23,16 @@ from rclip.tui.media import prewarm_image
 PREVIEW_SIZE = (640, 480)
 DETAIL_SIZE = (1920, 1920)
 _IMAGE_DECODES = Semaphore(4)
+# Grid cards and filmstrip thumbnails show the same previews, so they share each one while any of them shows it.
+_PREVIEWS: WeakValueDictionary[str, PILImage.Image] = WeakValueDictionary()
+
+
+def _prepare_preview(filepath: str) -> PILImage.Image:
+  preview = _PREVIEWS.get(filepath)
+  if preview is None:
+    preview = prepare_image(filepath, PREVIEW_SIZE)
+    _PREVIEWS[filepath] = preview
+  return preview
 
 
 @dataclass(frozen=True)
@@ -61,7 +72,7 @@ class ImageCard(Static, can_focus=True):
       if get_current_worker().is_cancelled:
         return
       try:
-        preview = prepare_image(self.result.filepath, PREVIEW_SIZE)
+        preview = _prepare_preview(self.result.filepath)
         if frame_size is not None:
           prewarm_image(self._image, preview, frame_size.width, frame_size.height)
       except Exception:
@@ -176,7 +187,7 @@ class DetailThumbnail(Static):
       if get_current_worker().is_cancelled:
         return
       try:
-        preview = prepare_image(filepath, PREVIEW_SIZE)
+        preview = _prepare_preview(filepath)
         parent = self._image.parent
         if isinstance(parent, Widget) and parent.size.width > 0 and parent.size.height > 0:
           prewarm_image(self._image, preview, parent.size.width, parent.size.height)
