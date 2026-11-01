@@ -440,7 +440,7 @@ def init_arg_parser() -> argparse.ArgumentParser:
     "--experimental-raw-support",
     action="store_true",
     default=False,
-    help="enables support for RAW images (ARW, CR2, and DNG are supported)",
+    help="enables support for RAW images (3FR, ARW, CR2, CR3, DNG, ERF, IIQ, MOS, MRW, NEF, NRW, ORF, PEF, RAF, RW2, and SRW)",
   )
   parser.add_argument(
     "--max-image-megapixels",
