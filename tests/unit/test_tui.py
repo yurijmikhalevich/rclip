@@ -1557,6 +1557,40 @@ def test_gallery_reuses_thumbnails_after_detail_browsing(tmp_path: Path, monkeyp
   asyncio.run(run())
 
 
+def test_filmstrip_reuses_the_previews_the_grid_loaded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+  monkeypatch.setattr(sys, "__stderr__", StringIO())
+  paths = [str(make_image(tmp_path / f"image-{index}.jpg")) for index in range(5)]
+  app = RclipApp(FakeRclip([RClip.SearchResult(path, 1) for path in paths]), str(tmp_path))
+  previews: list[str] = []
+
+  def track_prepare(filepath: str, size: tuple[int, int]) -> Image.Image:
+    if size == (640, 480):
+      previews.append(filepath)
+    return prepare_image(filepath, size)
+
+  monkeypatch.setattr("rclip.tui.views.prepare_image", track_prepare)
+
+  async def run() -> None:
+    async with app.run_test(size=(100, 40)) as pilot:
+      # Previews start loading once the cards are laid out, so wait for them to show instead of for the workers.
+      cards = app.query_one(ResultsGrid).cards
+      async with asyncio.timeout(5):
+        while len(cards) < len(paths) or any(card._image.image is None for card in cards):
+          await asyncio.sleep(0.01)
+      assert sorted(previews) == paths
+      previews.clear()
+      await pilot.press("down", "o")
+      detail = app.query_one(DetailView)
+      async with asyncio.timeout(5):
+        while not (thumbnails := [thumbnail for thumbnail in detail.thumbnails if thumbnail.filepath]) or any(
+          thumbnail._image.image is None for thumbnail in thumbnails
+        ):
+          await asyncio.sleep(0.01)
+      assert previews == []
+
+  asyncio.run(run())
+
+
 def test_detail_navigation_reuses_transmitted_images(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
   output = StringIO()
   monkeypatch.setattr(sys, "__stderr__", output)
