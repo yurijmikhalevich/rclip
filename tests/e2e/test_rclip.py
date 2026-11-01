@@ -451,6 +451,74 @@ def test_can_read_dng_images(
   assert results[0].filepath.endswith("DSC03671.dng")
 
 
+@pytest.mark.usefixtures("assert_output_snapshot_raw_images")
+def test_can_read_cr3_images(
+  test_dir_with_raw_images: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  shared_model_cache_dir: str,
+):
+  results = execute_query(
+    test_dir_with_raw_images,
+    monkeypatch,
+    shared_model_cache_dir,
+    "--experimental-raw-support",
+    "a bowl of tomatoes, potatoes, and a lemon",
+  )
+  assert results[0].filepath.endswith("RAW_CANON_EOS_R5.CR3")
+
+
+@pytest.mark.usefixtures("assert_output_snapshot_raw_images")
+def test_can_read_nef_images(
+  test_dir_with_raw_images: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  shared_model_cache_dir: str,
+):
+  results = execute_query(
+    test_dir_with_raw_images,
+    monkeypatch,
+    shared_model_cache_dir,
+    "--experimental-raw-support",
+    "a lake in a mountain valley",
+  )
+  assert results[0].filepath.endswith("RAW_NIKON_D1X.NEF")
+
+
+@pytest.mark.usefixtures("assert_output_snapshot_raw_images")
+def test_can_read_orf_images(
+  test_dir_with_raw_images: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  shared_model_cache_dir: str,
+):
+  results = execute_query(
+    test_dir_with_raw_images, monkeypatch, shared_model_cache_dir, "--experimental-raw-support", "green leaves"
+  )
+  assert results[0].filepath.endswith("RAW_OLYMPUS_E-10.ORF")
+
+
+@pytest.mark.usefixtures("assert_output_snapshot_raw_images")
+def test_can_read_raf_images(
+  test_dir_with_raw_images: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  shared_model_cache_dir: str,
+):
+  results = execute_query(
+    test_dir_with_raw_images, monkeypatch, shared_model_cache_dir, "--experimental-raw-support", "a red wooden house"
+  )
+  assert results[0].filepath.endswith("RAW_FUJIFILM_FINEPIX_S5000.RAF")
+
+
+@pytest.mark.usefixtures("assert_output_snapshot_raw_images")
+def test_can_read_rw2_images(
+  test_dir_with_raw_images: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  shared_model_cache_dir: str,
+):
+  results = execute_query(
+    test_dir_with_raw_images, monkeypatch, shared_model_cache_dir, "--experimental-raw-support", "yellow autumn bushes"
+  )
+  assert results[0].filepath.endswith("RAW_PANASONIC_DMC-LX7.RW2")
+
+
 @pytest.mark.usefixtures("assert_output_snapshot_unicode_filepaths")
 def test_unicode_filepaths(
   test_dir_with_unicode_filenames: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str

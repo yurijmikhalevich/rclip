@@ -1,6 +1,11 @@
 score	filepath
 0.283	"<test_images_dir>DSC08882.ARW"
 0.158	"<test_images_dir>RAW_LEICA_M8.DNG"
+0.140	"<test_images_dir>RAW_NIKON_D1X.NEF"
 0.129	"<test_images_dir>boats on a lake.png"
+0.128	"<test_images_dir>RAW_OLYMPUS_E-10.ORF"
+0.126	"<test_images_dir>RAW_PANASONIC_DMC-LX7.RW2"
+0.125	"<test_images_dir>RAW_FUJIFILM_FINEPIX_S5000.RAF"
+0.101	"<test_images_dir>RAW_CANON_EOS_R5.CR3"
 0.083	"<test_images_dir>DSC03671.dng"
 0.063	"<test_images_dir>RAW_CANON_400D_ARGB.CR2"

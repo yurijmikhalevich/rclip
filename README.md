@@ -181,7 +181,7 @@ HEIC images are supported on macOS through Image I/O and on Windows through Wind
 Component (WIC), when the operating system has an HEIF/HEVC codec installed. rclip does not bundle
 an HEVC codec. HEIC is currently unavailable in Linux distributions of rclip.
 
-RAW formats (`arw`, `cr2`, and `dng`) are supported when you pass the `--experimental-raw-support` flag:
+RAW formats (`3fr`, `arw`, `cr2`, `cr3`, `dng`, `erf`, `iiq`, `mos`, `mrw`, `nef`, `nrw`, `orf`, `pef`, `raf`, `rw2`, and `srw`) are supported when you pass the `--experimental-raw-support` flag:
 
 ```bash
 rclip --experimental-raw-support cat
@@ -274,7 +274,7 @@ Run `rclip --help` (or `rclip -h`) to see this list in your terminal. The positi
 | `--indexing-batch-size`, `-b` `N` | The size of the image batch used when updating the search index. Larger values may slightly improve indexing speed on some hardware but increase RAM usage. Default: `8`. |
 | `--exclude-dir` `DIR` | Directory to exclude from search. Can be used multiple times. Specifying this overrides the default of `@eaDir`, `node_modules`, `.git`, and `System Volume Information`. |
 | `--include-hidden` | Index dot-prefixed hidden files and directories (e.g. `.DS_Store`, `._IMG_1234.JPG`, `.Spotlight-V100`). Skipped by default since they are usually OS metadata rather than user files. |
-| `--experimental-raw-support` | Enable support for RAW images (`arw`, `cr2`, and `dng` are supported). |
+| `--experimental-raw-support` | Enable support for RAW images (`3fr`, `arw`, `cr2`, `cr3`, `dng`, `erf`, `iiq`, `mos`, `mrw`, `nef`, `nrw`, `orf`, `pef`, `raf`, `rw2`, and `srw` are supported). |
 | `--max-image-megapixels` `MP` | Maximum size, in megapixels, an image may have to be indexed. Larger images are skipped to avoid running out of memory on huge or maliciously crafted images. Pass `none` to disable the limit. Default: chosen automatically based on the available memory. |
 | `--version`, `-v` | Print the **rclip** version and exit. |
 | `--help`, `-h` | Show the help message and exit. |

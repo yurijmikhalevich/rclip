@@ -1,0 +1,11 @@
+score	filepath
+0.300	"<test_images_dir>RAW_PANASONIC_DMC-LX7.RW2"
+0.172	"<test_images_dir>RAW_OLYMPUS_E-10.ORF"
+0.112	"<test_images_dir>RAW_FUJIFILM_FINEPIX_S5000.RAF"
+0.108	"<test_images_dir>RAW_CANON_EOS_R5.CR3"
+0.094	"<test_images_dir>DSC08882.ARW"
+0.072	"<test_images_dir>DSC03671.dng"
+0.063	"<test_images_dir>RAW_LEICA_M8.DNG"
+0.061	"<test_images_dir>RAW_NIKON_D1X.NEF"
+0.053	"<test_images_dir>boats on a lake.png"
+0.042	"<test_images_dir>RAW_CANON_400D_ARGB.CR2"
