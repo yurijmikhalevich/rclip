@@ -2,18 +2,22 @@
 
 [[Blog]](https://mikhalevi.ch/rclip-an-ai-powered-command-line-photo-search-tool/) [[Demo on YouTube]](https://www.youtube.com/watch?v=tAJHXOkHidw) [[Paper]](https://www.thinkmind.org/index.php?view=article&articleid=content_2023_1_20_60011)
 
-<div align="center">
-  <img alt="rclip logo" src="https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/resources/logo-transparent.png" width="600px" />
-</div>
-
 Search any folder by what its images contain. Use natural language, an example image, or both – without tagging, uploading, or importing your files into a photo library.
 
 **Local. Terminal-native. Works over SSH. Plays well with Unix tools.**
 
 ```bash
-cd ~/Photos
-rclip "two parrots on a branch"
+cd ~/images
+rclip "an orange cat"
+# score  filepath
+# 0.307  "/Users/me/images/DSC06415.JPG"
+# 0.306  "/Users/me/images/DSC03514.JPG"
+# 0.287  "/Users/me/images/DSC05871.JPG"
 ```
+
+<img alt="rclip interactive UI showing a grid of orange cat photos ranked by similarity to the query &quot;an orange cat&quot;" src="https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/resources/rclip-tui.webp" />
+
+<sub>`rclip -i`. The interactive UI and previews need a terminal with Kitty graphics, such as Kitty, Ghostty, latest iTerm2, or Konsole. Search and scripting work in any terminal.</sub>
 
 ## Features
 
