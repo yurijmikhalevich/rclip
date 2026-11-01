@@ -51,6 +51,9 @@ def _send_tgp_message(**controls: int | str) -> None:
 def prepare_image(filepath: str, size: tuple[int, int]) -> PILImage.Image:
   """Return an orientation-corrected RGB image no larger than ``size``."""
   with helpers.read_image(filepath) as opened:
+    # Decode JPEGs at a reduced scale, at least twice ``size`` as `thumbnail` would on its own, which it
+    # can't once transposing has decoded the full image.
+    opened.draft(None, (size[0] * 2, size[1] * 2))
     image = ImageOps.exif_transpose(opened)
     image.thumbnail(size, PILImage.Resampling.LANCZOS)
     if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):

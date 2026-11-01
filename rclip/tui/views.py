@@ -145,6 +145,7 @@ class DetailThumbnail(Static):
     self.result_offset = offset
     self.browse = browse
     self.filepath: str | None = None
+    self._preview_pending = False
     self._image = CenteredTGPImage(classes="thumbnail")
 
   def compose(self) -> ComposeResult:
@@ -157,6 +158,12 @@ class DetailThumbnail(Static):
       return
     self.filepath = filepath
     self._image.image = None
+    self._preview_pending = True
+
+  def load_preview(self) -> None:
+    if not self._preview_pending:
+      return
+    self._preview_pending = False
     # A new thumbnail is laid out on the next refresh; load after it, so the preview is sent at the drawn size.
     self.call_after_refresh(self._load_preview)
 
@@ -200,6 +207,7 @@ class DetailView(Vertical, can_focus=True):
     self._spare_thumbnails: list[DetailThumbnail] = []
     self._details: dict[str, PILImage.Image | str] = {}
     self._detail_workers: dict[str, Worker[None]] = {}
+    self._wanted: list[str] = []
 
   def compose(self) -> ComposeResult:
     with CenterMiddle(id="detail-frame"):
@@ -258,16 +266,15 @@ class DetailView(Vertical, can_focus=True):
       thumbnail.display = thumbnail in self.thumbnails
       thumbnail.show_image(filepath)
       filmstrip.move_child(thumbnail, before=index)
+    self._load_wanted()
 
   def show_image(self, filepath: str | None, neighbors: Sequence[str] = ()) -> None:
-    wanted = [filepath, *neighbors] if filepath is not None else []
-    self._details = {path: detail for path, detail in self._details.items() if path in wanted}
+    self._wanted = [filepath, *neighbors] if filepath is not None else []
+    self._details = {path: detail for path, detail in self._details.items() if path in self._wanted}
     for path in list(self._detail_workers):
-      if path not in wanted:
+      if path not in self._wanted:
         self._detail_workers.pop(path).cancel()
-    for path in wanted:
-      if path not in self._details and path not in self._detail_workers:
-        self._detail_workers[path] = self._load_detail(path)
+    self._load_wanted()
     if filepath == self.filepath:
       return
     self.filepath = filepath
@@ -278,6 +285,18 @@ class DetailView(Vertical, can_focus=True):
     status.display = True
     if filepath in self._details:
       self._show_detail(filepath, self._details[filepath])
+
+  def _load_wanted(self) -> None:
+    # Load the neighbors and the filmstrip only once the shown image is loaded, so they don't compete with it
+    # for the CPU.
+    shown_loaded = not self._wanted or self._wanted[0] in self._details
+    for path in self._wanted if shown_loaded else self._wanted[:1]:
+      if path not in self._details and path not in self._detail_workers:
+        self._detail_workers[path] = self._load_detail(path)
+    if not shown_loaded:
+      return
+    for thumbnail in [*self.thumbnails, *self._spare_thumbnails]:
+      thumbnail.load_preview()
 
   @work(thread=True, group="detail", exit_on_error=False)
   def _load_detail(self, filepath: str) -> None:
@@ -302,6 +321,7 @@ class DetailView(Vertical, can_focus=True):
     del self._detail_workers[filepath]
     self._details[filepath] = detail
     self._show_detail(filepath, detail)
+    self._load_wanted()
 
   def _show_detail(self, filepath: str, detail: PILImage.Image | str) -> None:
     if not self.is_attached or filepath != self.filepath:

@@ -208,6 +208,18 @@ def test_prepare_image_returns_a_small_image_in_memory(tmp_path: Path) -> None:
   assert prepared.mode == "RGB"
 
 
+def test_prepare_image_fills_its_size_when_a_jpeg_decodes_at_reduced_scale(tmp_path: Path) -> None:
+  # A landscape photo that its EXIF orientation turns into a portrait one.
+  exif = Image.Exif()
+  exif[0x0112] = 6
+  source = tmp_path / "source.jpg"
+  Image.new("RGB", (4000, 2000), "red").save(source, exif=exif)
+
+  prepared = prepare_image(str(source), (640, 480))
+
+  assert prepared.size == (240, 480)
+
+
 def test_kitty_image_reuses_its_renderable_until_its_size_changes(
   monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -1580,10 +1592,17 @@ def test_detail_preloads_only_adjacent_images_and_navigates_immediately(
   paths = [str(make_image(tmp_path / f"image-{index}.jpg")) for index in range(5)]
   app = RclipApp(FakeRclip([RClip.SearchResult(path, 1) for path in paths]), str(tmp_path))
   loaded: list[str] = []
+  decoded: list[tuple[str, tuple[int, int]]] = []
+  shown_started = Event()
+  release_shown = Event()
 
   def track_prepare(filepath: str, size: tuple[int, int]):
+    decoded.append((filepath, size))
     if size == (1920, 1920):
       loaded.append(filepath)
+      if filepath == paths[2]:
+        shown_started.set()
+        assert release_shown.wait(5)
     return prepare_image(filepath, size)
 
   monkeypatch.setattr("rclip.tui.views.prepare_image", track_prepare)
@@ -1592,14 +1611,22 @@ def test_detail_preloads_only_adjacent_images_and_navigates_immediately(
     async with app.run_test(size=(width, 40)) as pilot:
       await app.workers.wait_for_complete()
       await pilot.press("down")
+      decoded.clear()
       app.select_card(app.query_one(ResultsGrid).cards[2])
       app.action_open_detail()
       # Opening the detail view starts loading after the next refresh.
       refreshed = asyncio.Event()
       app.call_after_refresh(refreshed.set)
       await refreshed.wait()
-      await app.workers.wait_for_complete()
+      assert await asyncio.to_thread(shown_started.wait, 1)
+      # Neither the neighbors nor the filmstrip start loading while the shown image does.
+      await asyncio.sleep(0.05)
+      assert decoded == [(paths[2], (1920, 1920))]
+      release_shown.set()
       screen = app.query_one(DetailView)
+      async with asyncio.timeout(1):
+        while set(screen._details) != set(paths[1:4]):
+          await asyncio.sleep(0.001)
       assert sorted(loaded) == paths[1:4]
       prepared = dict(screen._details)
       for move, index in [(app.action_move_left, 1), (app.action_move_right, 2)]:
@@ -1636,7 +1663,7 @@ def test_detail_reuses_inflight_preload_and_ignores_evicted_completion(
   def slow_prepare(filepath: str, size: tuple[int, int]):
     if size == (1920, 1920):
       loaded.append(filepath)
-      if filepath in paths[:2]:
+      if filepath == paths[1]:
         started.set()
         assert release.wait(5)
     return prepare_image(filepath, size)
