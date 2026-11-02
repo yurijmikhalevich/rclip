@@ -7,7 +7,7 @@ Search any folder by what its images contain. Use natural language, an example i
 **Local. Terminal-native. Works over SSH. Plays well with Unix tools.**
 
 ```bash
-cd ~/images
+cd ~/images  # rclip searches the current directory and its subdirectories
 rclip "an orange cat"
 # score  filepath
 # 0.307  "/Users/me/images/DSC06415.JPG"
