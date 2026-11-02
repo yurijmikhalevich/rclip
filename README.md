@@ -29,7 +29,7 @@ rclip "an orange cat"
   macOS/Windows and experimental RAW (`arw`, `cr2`, `dng`).
 - **Fast incremental indexing** – only new and changed images are reprocessed on subsequent runs.
 - **Interactive terminal UI** – search a responsive thumbnail grid without leaving the terminal.
-- **Terminal previews** – view images inline in terminals supporting Kitty graphics, such as Kitty, Ghostty, latest iTerm2, and Konsole.
+- **Terminal previews** – view results inline in terminals supporting Kitty graphics.
 - **Scriptable** – pipe filepaths to other tools with `-f` or `-0`, or get JSON results for scripts and AI agents with `--json`.
 - **Cross-platform** – Linux, macOS (Apple Silicon), and Windows.
 
@@ -103,49 +103,11 @@ Search the current directory with a natural-language query:
 cd photos && rclip "search query"
 ```
 
-<details>
-  <summary>Example output</summary>
-
-  ```text
-  score  filepath
-  0.297  "/photos/sunrise-beach.jpg"
-  0.286  "/photos/dawn-walk.png"
-  0.274  "/photos/morning-hike.heic"
-  ```
-</details>
-
 <img alt="rclip usage demo" src="https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/resources/rclip-usage.gif" width="640px" />
 
 The first time you run **rclip** in a directory, it extracts features from your images to build the search index. How long this takes depends on your CPU and the number of images you search. On my hardware, it took 15 hours to process 84,725 photos on a NAS with an old Intel Celeron J3455, 7 minutes to index 50,000 images on a MacBook with an M1 Max, and 3 hours to process 1.28 million images on the same MacBook.
 
 For a detailed demonstration, watch the video: https://www.youtube.com/watch?v=tAJHXOkHidw.
-
-### Interactive terminal UI
-
-Open the interactive UI and enter a query in its search input:
-
-```bash
-rclip --interactive
-```
-
-**The UI requires Kitty graphics with Unicode-placeholder support.** It uses the terminal's default colors and ANSI palette. With an empty query it browses recently modified images, loading more as you scroll. Searches are ranked once and loaded in batches of up to 100 results as you scroll; pass `--top N` to use a smaller search batch. Enter text queries in the UI; image queries remain available in the non-interactive CLI. Cached previews load as they become visible, and Detail view loads a higher-resolution display image.
-
-| Action | Shortcut | Browse alias |
-| --- | --- | --- |
-| Focus search | Ctrl+F | / |
-| Toggle grid/detail | Ctrl+O | o |
-| Copy image | Ctrl+Y | y |
-| Copy image path | Ctrl+P | p |
-| Download image | Ctrl+S | s |
-| Quit | Ctrl+C | |
-
-In search, Enter runs the query immediately and Down or Esc focuses the results. In the grid, arrows or hjkl navigate and Enter opens detail; in detail, Left/Right or h/l browse images. Esc returns from detail to the grid. Use Ctrl+F or / to return from browsing to search. Double-click a grid image to open detail and the main detail image to return; click a filmstrip thumbnail to select it.
-
-Copy and download act on the focused grid result or the displayed detail image. They are unavailable while search is focused in the grid. In detail, their modifier shortcuts work while typing, and Ctrl+O preserves search focus and cursor position in either view. Download transfers remote images to your computer through a supported terminal.
-
-Image copying requires Kitty 0.27 or newer and a discoverable `kitten` executable.
-
-Over SSH, `Ctrl+S` or `s` downloads the original file to `~/Downloads` on the terminal host. This requires Kitty 0.30+ and a remote `kitten` executable (`kitten ssh` provides it), and Kitty asks for confirmation. Locally, the same shortcuts only show the file path.
 
 ### Similar image search (image-to-image search)
 
@@ -175,27 +137,7 @@ rclip "./racing car.jpg" - "2:sports car" + "2:snow"
 
 If you want to see how these queries perform when executed on the 1.28 million images ImageNet-1k dataset, check out the demo on YouTube: https://www.youtube.com/watch?v=MsTgYdOpgcQ.
 
-## FAQ
-
-### Which formats does **rclip** support?
-
-**rclip** always indexes the following image formats: `jpg`, `jpeg`, `png`, `webp`, `tiff`, `tif`, `bmp`, `gif`, `jp2`, `pnm`, `pbm`, `pgm`, and `ppm`.
-
-HEIC images are supported on macOS through Image I/O and on Windows through Windows Imaging
-Component (WIC), when the operating system has an HEIF/HEVC codec installed. rclip does not bundle
-an HEVC codec. HEIC is currently unavailable in Linux distributions of rclip.
-
-RAW formats (`3fr`, `arw`, `cr2`, `cr3`, `dng`, `erf`, `iiq`, `mos`, `mrw`, `nef`, `nrw`, `orf`, `pef`, `raf`, `rw2`, and `srw`) are supported when you pass the `--experimental-raw-support` flag:
-
-```bash
-rclip --experimental-raw-support cat
-```
-
-When this flag is enabled, a RAW file is skipped if a processed image (e.g., a
-JPEG) with the same name sits alongside it, so previews and exported variants
-are indexed instead of the RAW original.
-
-### How do I preview the results?
+### Previewing results
 
 In a terminal supporting Kitty graphics, such as [Kitty](https://sw.kovidgoyal.net/kitty/), [Ghostty](https://ghostty.org/), latest [iTerm2](https://iterm2.com/), or [Konsole](https://konsole.kde.org/), pass the `--preview` (or `-p`) flag to **rclip**:
 
@@ -203,58 +145,61 @@ In a terminal supporting Kitty graphics, such as [Kitty](https://sw.kovidgoyal.n
 rclip -p kitty
 ```
 
-<details>
-  <summary>Using a different terminal or viewer</summary>
+### Piping results to other tools
 
-  If you use another terminal or want to open the results in a viewer of your choice, you can pipe **rclip**'s output into it. For example, on Linux, the command below will open the top 5 results for "kitty" in your default image viewer:
+To open the results in a viewer of your choice, pipe **rclip**'s output into it. For example, on Linux, the command below will open the top 5 results for "kitty" in your default image viewer:
 
-  ```bash
-  rclip -0 -t 5 kitty | xargs -0 -n 1 xdg-open
-  ```
+```bash
+rclip -0 -t 5 kitty | xargs -0 -n 1 xdg-open
+```
 
-  The `-0` or `--null` flag makes **rclip** print only file paths, each terminated by a NUL character, which `xargs -0` splits correctly even when paths contain spaces, quotes, or newlines. The `-f` or `--filepath-only` flag prints one path per line instead, which suits tools that read paths line by line, such as **feh**.
+The `-0` or `--null` flag makes **rclip** print only file paths, each terminated by a NUL character, which `xargs -0` splits correctly even when paths contain spaces, quotes, or newlines. The `-f` or `--filepath-only` flag prints one path per line instead, which suits tools that read paths line by line, such as **feh**.
 
-  I prefer to use **feh**'s thumbnail mode to preview multiple results:
+I prefer to use **feh**'s thumbnail mode to preview multiple results:
 
-  ```bash
-  rclip -f -t 5 kitty | feh -f - -t
-  ```
-</details>
+```bash
+rclip -f -t 5 kitty | feh -f - -t
+```
 
-### Can I use **rclip** to copy images matching a certain query?
-
-Yes. You can pipe **rclip**'s output to another tool to copy matching images. For example, to copy the top 3 images matching "search query" to `/path/to/destination` on macOS, Linux, or WSL:
+To copy the top 3 images matching "search query" to `/path/to/destination` on macOS, Linux, or WSL:
 
 ```sh
 rclip -0 -t 3 "search query" | xargs -0 -I {} cp {} /path/to/destination
 ```
 
-### Can I use **rclip** from scripts and AI agents?
-
-Yes. Pass `--json` to get results as a JSON array, ordered from the best match. Progress and warnings go to stderr, so stdout contains only the JSON:
+For scripts and AI agents, pass `--json` to get results as a JSON array, ordered from the best match. Progress and warnings go to stderr, so stdout contains only the JSON:
 
 ```bash
 rclip --json -t 2 "search query"
 # [{"score": 0.297, "filepath": "/photos/sunrise-beach.jpg"}, {"score": 0.286, "filepath": "/photos/dawn-walk.png"}]
 ```
 
-### How does **rclip** update the index?
+### Interactive terminal UI
 
-When you run **rclip** in a directory that has already been processed, it indexes
-only the images added or changed since the last run and removes deleted images
-from its index. This makes consecutive runs much faster.
-
-If you know no images have been added, changed, or deleted since the last run,
-you can use the `--no-indexing` (or `-n`) flag to skip indexing entirely and
-speed up the search even more.
+Open the interactive UI and enter a query in its search input:
 
 ```bash
-rclip -n cat
+rclip --interactive
 ```
 
-### How does **rclip** work?
+**The UI requires Kitty graphics with Unicode-placeholder support.** It uses the terminal's default colors and ANSI palette. With an empty query it browses recently modified images, loading more as you scroll. Searches are ranked once and loaded in batches of up to 100 results as you scroll; pass `--top N` to use a smaller search batch. Enter text queries in the UI; image queries remain available in the non-interactive CLI. Cached previews load as they become visible, and Detail view loads a higher-resolution display image.
 
-**rclip** currently uses the [OpenCLIP's ViT-B/32 AI model](https://github.com/mlfoundations/open_clip/blob/55794d65a14dfc547a9ed3514145dd68ccc939e9/README.md) to generate embeddings for images and text. This enables natural-language search, similar-image search, and mixed text-and-image queries entirely on your machine. The model builds on the CLIP architecture introduced by OpenAI.
+| Action | Shortcut | Browse alias |
+| --- | --- | --- |
+| Focus search | Ctrl+F | / |
+| Toggle grid/detail | Ctrl+O | o |
+| Copy image | Ctrl+Y | y |
+| Copy image path | Ctrl+P | p |
+| Download image | Ctrl+S | s |
+| Quit | Ctrl+C | |
+
+In search, Enter runs the query immediately and Down or Esc focuses the results. In the grid, arrows or hjkl navigate and Enter opens detail; in detail, Left/Right or h/l browse images. Esc returns from detail to the grid. Use Ctrl+F or / to return from browsing to search. Double-click a grid image to open detail and the main detail image to return; click a filmstrip thumbnail to select it.
+
+Copy and download act on the focused grid result or the displayed detail image. They are unavailable while search is focused in the grid. In detail, their modifier shortcuts work while typing, and Ctrl+O preserves search focus and cursor position in either view. Download transfers remote images to your computer through a supported terminal.
+
+Image copying requires Kitty 0.27 or newer and a discoverable `kitten` executable.
+
+Over SSH, `Ctrl+S` or `s` downloads the original file to `~/Downloads` on the terminal host. This requires Kitty 0.30+ and a remote `kitten` executable (`kitten ssh` provides it), and Kitty asks for confirmation. Locally, the same shortcuts only show the file path.
 
 ## Command-line options
 
@@ -284,6 +229,44 @@ Run `rclip --help` (or `rclip -h`) to see this list in your terminal. The positi
 | `--help`, `-h` | Show the help message and exit. |
 
 The output modes `--interactive`/`--force-interactive`, `--preview`/`--force-preview`, `--filepath-only`, `--null`, and `--json` are mutually exclusive.
+
+## FAQ
+
+### Which formats does **rclip** support?
+
+**rclip** always indexes the following image formats: `jpg`, `jpeg`, `png`, `webp`, `tiff`, `tif`, `bmp`, `gif`, `jp2`, `pnm`, `pbm`, `pgm`, and `ppm`.
+
+HEIC images are supported on macOS through Image I/O and on Windows through Windows Imaging
+Component (WIC), when the operating system has an HEIF/HEVC codec installed. rclip does not bundle
+an HEVC codec. HEIC is currently unavailable in Linux distributions of rclip.
+
+RAW formats (`3fr`, `arw`, `cr2`, `cr3`, `dng`, `erf`, `iiq`, `mos`, `mrw`, `nef`, `nrw`, `orf`, `pef`, `raf`, `rw2`, and `srw`) are supported when you pass the `--experimental-raw-support` flag:
+
+```bash
+rclip --experimental-raw-support cat
+```
+
+When this flag is enabled, a RAW file is skipped if a processed image (e.g., a
+JPEG) with the same name sits alongside it, so previews and exported variants
+are indexed instead of the RAW original.
+
+### How does **rclip** update the index?
+
+When you run **rclip** in a directory that has already been processed, it indexes
+only the images added or changed since the last run and removes deleted images
+from its index. This makes consecutive runs much faster.
+
+If you know no images have been added, changed, or deleted since the last run,
+you can use the `--no-indexing` (or `-n`) flag to skip indexing entirely and
+speed up the search even more.
+
+```bash
+rclip -n cat
+```
+
+### How does **rclip** work?
+
+**rclip** currently uses the [OpenCLIP's ViT-B/32 AI model](https://github.com/mlfoundations/open_clip/blob/55794d65a14dfc547a9ed3514145dd68ccc939e9/README.md) to generate embeddings for images and text. This enables natural-language search, similar-image search, and mixed text-and-image queries entirely on your machine. The model builds on the CLIP architecture introduced by OpenAI.
 
 ## Get help
 
