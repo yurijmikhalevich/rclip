@@ -1832,7 +1832,10 @@ def test_detail_filmstrip_centers_selection_and_navigates(tmp_path: Path, monkey
       screen = app.query_one(DetailView)
       assert screen.display
       assert [thumbnail.filepath for thumbnail in screen.thumbnails] == [None, None, *paths[:3]]
-      assert all(thumbnail._image.image is not None for thumbnail in screen.thumbnails[2:])
+      # The filmstrip starts loading previews after the next refresh, so wait for them to show instead of for the workers.
+      async with asyncio.timeout(5):
+        while any(thumbnail._image.image is None for thumbnail in screen.thumbnails[2:]):
+          await asyncio.sleep(0.01)
       assert all(not thumbnail.visible for thumbnail in screen.thumbnails[:2])
       assert all(thumbnail.visible for thumbnail in screen.thumbnails[2:])
       shown = {}
