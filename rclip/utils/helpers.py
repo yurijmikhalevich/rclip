@@ -389,8 +389,8 @@ def init_arg_parser() -> argparse.ArgumentParser:
     "--json",
     action="store_true",
     default=False,
-    help='outputs results as a JSON array of {"score": ..., "filepath": ...} objects, ordered from the best match,'
-    " for scripts and AI agents; progress and warnings go to stderr",
+    help='outputs results as a JSON array of {"score": ..., "filepath": ...} objects, ordered from the best match;'
+    " progress and warnings go to stderr",
   )
   parser.add_argument(
     "--force-interactive",
