@@ -167,7 +167,7 @@ rclip -0 -t 3 "search query" | xargs -0 -I {} cp {} /path/to/destination
 `--json` prints a JSON array ordered from the best match. Each result has a `score` (higher is better) and an absolute `filepath`:
 
 ```bash
-cd photos && rclip --json -t 2 "search query"
+rclip --json -t 2 "search query"
 # [{"score": 0.297, "filepath": "/photos/sunrise-beach.jpg"}, {"score": 0.286, "filepath": "/photos/dawn-walk.png"}]
 ```
 
