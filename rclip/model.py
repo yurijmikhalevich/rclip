@@ -1,5 +1,6 @@
 import logging
 import re
+import sys
 from typing import Any, List, Optional, Tuple
 
 import numpy as np
@@ -162,24 +163,18 @@ class Model:
         image_multipliers = np.array(url_multipliers + file_multipliers)
         image_features = np.add.reduce(self.compute_image_features(images) * image_multipliers.reshape(-1, 1))
       except FileNotFoundError as error:
-        print(f'File "{error.filename}" not found. Check if you have typos in the filename.')
-        import sys
-
+        print(f'File "{error.filename}" not found. Check if you have typos in the filename.', file=sys.stderr)
         sys.exit(1)
       except UnidentifiedImageError as error:
-        print(f'File "{error.filename}" is not an image. You can only use image files or text as queries.')
-        import sys
-
+        print(
+          f'File "{error.filename}" is not an image. You can only use image files or text as queries.', file=sys.stderr
+        )
         sys.exit(1)
       except (Image.DecompressionBombError, Image.DecompressionBombWarning):
-        print("A query image is too large to process.")
-        import sys
-
+        print("A query image is too large to process.", file=sys.stderr)
         sys.exit(1)
       except MemoryError:
-        print("Ran out of memory while decoding a query image.")
-        import sys
-
+        print("Ran out of memory while decoding a query image.", file=sys.stderr)
         sys.exit(1)
 
     if phrases:

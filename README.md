@@ -162,12 +162,20 @@ To copy the top 3 matches to a directory on macOS, Linux, or WSL:
 rclip -0 -t 3 "search query" | xargs -0 -I {} cp {} /path/to/destination
 ```
 
-For scripts and AI agents, pass `--json` to get results as a JSON array, ordered from the best match. Progress and warnings go to stderr, so stdout contains only the JSON:
+### Scripts and AI agents
+
+`--json` prints a JSON array ordered from the best match. Each result has a `score` (higher is better) and an absolute `filepath`:
 
 ```bash
 rclip --json -t 2 "search query"
 # [{"score": 0.297, "filepath": "/photos/sunrise-beach.jpg"}, {"score": 0.286, "filepath": "/photos/dawn-walk.png"}]
 ```
+
+- **rclip** searches the current directory and its subdirectories.
+- stdout contains only the results; progress, warnings, and errors go to stderr.
+- If the directory has no images, the array is empty.
+- The exit code is `0` on success, `2` for invalid arguments, and `1` for other errors.
+- Each run first checks the index for changes; for several queries in a row with no image changes, pass `-n` to skip the check.
 
 ### Interactive terminal UI
 
