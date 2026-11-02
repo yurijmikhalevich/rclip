@@ -29,7 +29,7 @@ rclip "an orange cat"
   macOS/Windows and experimental RAW (`arw`, `cr2`, `dng`).
 - **Fast incremental indexing** – only new and changed images are reprocessed on subsequent runs.
 - **Interactive terminal UI** – search a responsive thumbnail grid without leaving the terminal.
-- **Terminal previews** – view images inline in terminals supporting Kitty graphics, such as Kitty, Ghostty, latest iTerm2, and Konsole.
+- **Terminal previews** – view results inline in terminals supporting Kitty graphics.
 - **Scriptable** – pipe filepaths to other tools with `-f` or `-0`, or get JSON results for scripts and AI agents with `--json`.
 - **Cross-platform** – Linux, macOS (Apple Silicon), and Windows.
 
@@ -44,15 +44,13 @@ sudo snap install rclip
 <details>
   <summary>Alternative options (AppImage and <code>pip</code>)</summary>
 
-  If your Linux distribution doesn't support [snap](https://snapcraft.io/rclip), you can use one of the alternative installation options:
+  If your distribution doesn't support [snap](https://snapcraft.io/rclip):
 
   #### AppImage (self-contained x86_64 executable)
 
-  On Linux x86_64, you can install **rclip** as a self-contained executable.
-
   1. Download the AppImage from the [latest release](https://github.com/yurijmikhalevich/rclip/releases/latest).
 
-  2. Execute the following commands:
+  2. Install it:
 
   ```bash
   chmod +x <downloaded AppImage filename>
@@ -72,7 +70,7 @@ sudo snap install rclip
 brew install yurijmikhalevich/tap/rclip
 ```
 
-**Note:** We only support Apple Silicon (arm64) on macOS.
+**Note:** only Apple Silicon (arm64) Macs are supported.
 
 <details>
   <summary>Alternative option (<code>pip</code>)</summary>
@@ -84,8 +82,7 @@ brew install yurijmikhalevich/tap/rclip
 
 ### Windows
 
-1. Download the "*.msi" from the [latest release](https://github.com/yurijmikhalevich/rclip/releases/latest).
-2. Install **rclip** by running the installer.
+Download and run the `*.msi` installer from the [latest release](https://github.com/yurijmikhalevich/rclip/releases/latest).
 
 <details>
   <summary>Alternative option (<code>pip</code>)</summary>
@@ -103,22 +100,74 @@ Search the current directory with a natural-language query:
 cd photos && rclip "search query"
 ```
 
-<details>
-  <summary>Example output</summary>
-
-  ```text
-  score  filepath
-  0.297  "/photos/sunrise-beach.jpg"
-  0.286  "/photos/dawn-walk.png"
-  0.274  "/photos/morning-hike.heic"
-  ```
-</details>
-
 <img alt="rclip usage demo" src="https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/resources/rclip-usage.gif" width="640px" />
 
-The first time you run **rclip** in a directory, it extracts features from your images to build the search index. How long this takes depends on your CPU and the number of images you search. On my hardware, it took 15 hours to process 84,725 photos on a NAS with an old Intel Celeron J3455, 7 minutes to index 50,000 images on a MacBook with an M1 Max, and 3 hours to process 1.28 million images on the same MacBook.
+The first run in a directory indexes its images. How long it takes depends on their number and your CPU: 7 minutes for 50,000 images and 3 hours for 1.28 million on an M1 Max MacBook, or 15 hours for 84,725 photos on a NAS with an Intel Celeron J3455. Later runs only index added or changed images and drop deleted ones; if nothing changed, pass `--no-indexing` (`-n`) to skip the check.
 
-For a detailed demonstration, watch the video: https://www.youtube.com/watch?v=tAJHXOkHidw.
+Video demo: https://www.youtube.com/watch?v=tAJHXOkHidw.
+
+### Similar image search (image-to-image search)
+
+Pass an image path or URL as the query to find similar images. Relative paths **must** start with `./`:
+
+```bash
+cd photos && rclip ./cat.jpg
+
+# or a URL
+cd photos && rclip https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/tests/e2e/images/cat.jpg
+```
+
+Video demo: https://www.youtube.com/watch?v=1YQZKeCBxWM.
+
+### Combining multiple queries
+
+Add and subtract text and image queries, and weight any of them with a multiplier prefix such as `2:`:
+
+```bash
+cd photos
+rclip horse + stripes
+rclip apple - fruit
+rclip "./new york city.jpg" + night
+rclip "2:golden retriever" + "./swimming pool.jpg"
+rclip "./racing car.jpg" - "2:sports car" + "2:snow"
+```
+
+Video demo on the 1.28 million images of ImageNet-1k: https://www.youtube.com/watch?v=MsTgYdOpgcQ.
+
+### Previewing results
+
+In a terminal supporting Kitty graphics, such as [Kitty](https://sw.kovidgoyal.net/kitty/), [Ghostty](https://ghostty.org/), latest [iTerm2](https://iterm2.com/), or [Konsole](https://konsole.kde.org/), pass `--preview` (`-p`):
+
+```bash
+rclip -p kitty
+```
+
+### Piping results to other tools
+
+`-0` (`--null`) prints only paths, each terminated by a NUL character, so `xargs -0` handles spaces, quotes, and newlines. For example, to open the top 5 results in your default image viewer on Linux:
+
+```bash
+rclip -0 -t 5 kitty | xargs -0 -n 1 xdg-open
+```
+
+`-f` (`--filepath-only`) prints one path per line instead, for tools that read lines, such as **feh**'s thumbnail mode:
+
+```bash
+rclip -f -t 5 kitty | feh -f - -t
+```
+
+To copy the top 3 matches to a directory on macOS, Linux, or WSL:
+
+```sh
+rclip -0 -t 3 "search query" | xargs -0 -I {} cp {} /path/to/destination
+```
+
+For scripts and AI agents, pass `--json` to get results as a JSON array, ordered from the best match. Progress and warnings go to stderr, so stdout contains only the JSON:
+
+```bash
+rclip --json -t 2 "search query"
+# [{"score": 0.297, "filepath": "/photos/sunrise-beach.jpg"}, {"score": 0.286, "filepath": "/photos/dawn-walk.png"}]
+```
 
 ### Interactive terminal UI
 
@@ -147,124 +196,15 @@ Image copying requires Kitty 0.27 or newer and a discoverable `kitten` executabl
 
 Over SSH, `Ctrl+S` or `s` downloads the original file to `~/Downloads` on the terminal host. This requires Kitty 0.30+ and a remote `kitten` executable (`kitten ssh` provides it), and Kitty asks for confirmation. Locally, the same shortcuts only show the file path.
 
-### Similar image search (image-to-image search)
-
-You can also use an image as the query by passing a file path or image URL. **rclip** will return the images most similar to that query image. If you use a relative path to a local image, you **must** prefix it with `./`. For example:
-
-```bash
-cd photos && rclip ./cat.jpg
-
-# or use URL
-cd photos && rclip https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/tests/e2e/images/cat.jpg
-```
-
-Check this video out for the image-to-image search demo: https://www.youtube.com/watch?v=1YQZKeCBxWM.
-
-### Combining multiple queries
-
-You can combine and subtract image and text queries; here are a few examples:
-
-```bash
-cd photos
-rclip horse + stripes
-rclip apple - fruit
-rclip "./new york city.jpg" + night
-rclip "2:golden retriever" + "./swimming pool.jpg"
-rclip "./racing car.jpg" - "2:sports car" + "2:snow"
-```
-
-If you want to see how these queries perform when executed on the 1.28 million images ImageNet-1k dataset, check out the demo on YouTube: https://www.youtube.com/watch?v=MsTgYdOpgcQ.
-
-## FAQ
-
-### Which formats does **rclip** support?
-
-**rclip** always indexes the following image formats: `jpg`, `jpeg`, `png`, `webp`, `tiff`, `tif`, `bmp`, `gif`, `jp2`, `pnm`, `pbm`, `pgm`, and `ppm`.
-
-HEIC images are supported on macOS through Image I/O and on Windows through Windows Imaging
-Component (WIC), when the operating system has an HEIF/HEVC codec installed. rclip does not bundle
-an HEVC codec. HEIC is currently unavailable in Linux distributions of rclip.
-
-RAW formats (`3fr`, `arw`, `cr2`, `cr3`, `dng`, `erf`, `iiq`, `mos`, `mrw`, `nef`, `nrw`, `orf`, `pef`, `raf`, `rw2`, and `srw`) are supported when you pass the `--experimental-raw-support` flag:
-
-```bash
-rclip --experimental-raw-support cat
-```
-
-When this flag is enabled, a RAW file is skipped if a processed image (e.g., a
-JPEG) with the same name sits alongside it, so previews and exported variants
-are indexed instead of the RAW original.
-
-### How do I preview the results?
-
-In a terminal supporting Kitty graphics, such as [Kitty](https://sw.kovidgoyal.net/kitty/), [Ghostty](https://ghostty.org/), latest [iTerm2](https://iterm2.com/), or [Konsole](https://konsole.kde.org/), pass the `--preview` (or `-p`) flag to **rclip**:
-
-```bash
-rclip -p kitty
-```
-
-<details>
-  <summary>Using a different terminal or viewer</summary>
-
-  If you use another terminal or want to open the results in a viewer of your choice, you can pipe **rclip**'s output into it. For example, on Linux, the command below will open the top 5 results for "kitty" in your default image viewer:
-
-  ```bash
-  rclip -0 -t 5 kitty | xargs -0 -n 1 xdg-open
-  ```
-
-  The `-0` or `--null` flag makes **rclip** print only file paths, each terminated by a NUL character, which `xargs -0` splits correctly even when paths contain spaces, quotes, or newlines. The `-f` or `--filepath-only` flag prints one path per line instead, which suits tools that read paths line by line, such as **feh**.
-
-  I prefer to use **feh**'s thumbnail mode to preview multiple results:
-
-  ```bash
-  rclip -f -t 5 kitty | feh -f - -t
-  ```
-</details>
-
-### Can I use **rclip** to copy images matching a certain query?
-
-Yes. You can pipe **rclip**'s output to another tool to copy matching images. For example, to copy the top 3 images matching "search query" to `/path/to/destination` on macOS, Linux, or WSL:
-
-```sh
-rclip -0 -t 3 "search query" | xargs -0 -I {} cp {} /path/to/destination
-```
-
-### Can I use **rclip** from scripts and AI agents?
-
-Yes. Pass `--json` to get results as a JSON array, ordered from the best match. Progress and warnings go to stderr, so stdout contains only the JSON:
-
-```bash
-rclip --json -t 2 "search query"
-# [{"score": 0.297, "filepath": "/photos/sunrise-beach.jpg"}, {"score": 0.286, "filepath": "/photos/dawn-walk.png"}]
-```
-
-### How does **rclip** update the index?
-
-When you run **rclip** in a directory that has already been processed, it indexes
-only the images added or changed since the last run and removes deleted images
-from its index. This makes consecutive runs much faster.
-
-If you know no images have been added, changed, or deleted since the last run,
-you can use the `--no-indexing` (or `-n`) flag to skip indexing entirely and
-speed up the search even more.
-
-```bash
-rclip -n cat
-```
-
-### How does **rclip** work?
-
-**rclip** currently uses the [OpenCLIP's ViT-B/32 AI model](https://github.com/mlfoundations/open_clip/blob/55794d65a14dfc547a9ed3514145dd68ccc939e9/README.md) to generate embeddings for images and text. This enables natural-language search, similar-image search, and mixed text-and-image queries entirely on your machine. The model builds on the CLIP architecture introduced by OpenAI.
-
 ## Command-line options
 
-Run `rclip --help` (or `rclip -h`) to see this list in your terminal. The positional `query` and all options are summarized below:
+Run `rclip --help` (`-h`) to see this list in your terminal.
 
 | Option | Description |
 | --- | --- |
 | `query` | A text query or a path/URL to an image file. Cannot be used with `--interactive`. A relative path must be prefixed with `./` (e.g. `./cat.jpg`). Any query can be prefixed with a multiplier, e.g. `2:cat` or `0.5:./cat.jpg`. |
-| `--add`, `-a`, `+` `QUERY` | A text query or a path/URL to an image file to add to the "original" query. Can be used multiple times. |
-| `--subtract`, `--sub`, `-s`, `-` `QUERY` | A text query or a path/URL to an image file to subtract from the "original" query. Can be used multiple times. |
+| `--add`, `-a`, `+` `QUERY` | A query to add to the main query. Can be used multiple times. |
+| `--subtract`, `--sub`, `-s`, `-` `QUERY` | A query to subtract from the main query. Can be used multiple times. |
 | `--top`, `-t` `N` | Number of top results to display, or search results to load per batch with `--interactive`. Default: `10`, or `100` with `--interactive`; interactive maximum: `100`. |
 | `--interactive`, `-i` | Open the interactive terminal UI and enter text queries there. Does not accept a positional query or `--add`/`--subtract`. |
 | `--force-interactive` | Force interactive mode even if the terminal is not recognized as supporting Kitty graphics with Unicode placeholders. |
@@ -275,15 +215,35 @@ Run `rclip --help` (or `rclip -h`) to see this list in your terminal. The positi
 | `--json` | Output results as a JSON array of `{"score": ..., "filepath": ...}` objects, ordered from the best match. |
 | `--preview-height`, `-H` `PX` | Preview height in pixels. Default: `400`. |
 | `--no-indexing`, `--skip-index`, `--skip-indexing`, `-n` | Skip updating the index. Use only when no images were added, changed, or removed since the last run. |
-| `--indexing-batch-size`, `-b` `N` | The size of the image batch used when updating the search index. Larger values may slightly improve indexing speed on some hardware but increase RAM usage. Default: `8`. |
+| `--indexing-batch-size`, `-b` `N` | Image batch size for indexing. Larger values may slightly speed up indexing on some hardware but use more RAM. Default: `8`. |
 | `--exclude-dir` `DIR` | Directory to exclude from search. Can be used multiple times. Specifying this overrides the default of `@eaDir`, `node_modules`, `.git`, and `System Volume Information`. |
 | `--include-hidden` | Index dot-prefixed hidden files and directories (e.g. `.DS_Store`, `._IMG_1234.JPG`, `.Spotlight-V100`). Skipped by default since they are usually OS metadata rather than user files. |
-| `--experimental-raw-support` | Enable support for RAW images (`3fr`, `arw`, `cr2`, `cr3`, `dng`, `erf`, `iiq`, `mos`, `mrw`, `nef`, `nrw`, `orf`, `pef`, `raf`, `rw2`, and `srw` are supported). |
+| `--experimental-raw-support` | Index [RAW images](#which-formats-does-rclip-support). |
 | `--max-image-megapixels` `MP` | Maximum size, in megapixels, an image may have to be indexed. Larger images are skipped to avoid running out of memory on huge or maliciously crafted images. Pass `none` to disable the limit. Default: chosen automatically based on the available memory. |
 | `--version`, `-v` | Print the **rclip** version and exit. |
 | `--help`, `-h` | Show the help message and exit. |
 
 The output modes `--interactive`/`--force-interactive`, `--preview`/`--force-preview`, `--filepath-only`, `--null`, and `--json` are mutually exclusive.
+
+## FAQ
+
+### Which formats does **rclip** support?
+
+**rclip** always indexes the following image formats: `jpg`, `jpeg`, `png`, `webp`, `tiff`, `tif`, `bmp`, `gif`, `jp2`, `pnm`, `pbm`, `pgm`, and `ppm`.
+
+HEIC is supported on macOS (Image I/O) and Windows (WIC) when an HEIF/HEVC codec is installed; rclip doesn't bundle one. HEIC isn't available on Linux yet.
+
+RAW formats (`3fr`, `arw`, `cr2`, `cr3`, `dng`, `erf`, `iiq`, `mos`, `mrw`, `nef`, `nrw`, `orf`, `pef`, `raf`, `rw2`, and `srw`) are supported when you pass the `--experimental-raw-support` flag:
+
+```bash
+rclip --experimental-raw-support cat
+```
+
+With this flag, a RAW file is skipped if an image with the same name (e.g., a JPEG export) sits next to it.
+
+### How does **rclip** work?
+
+**rclip** currently uses [OpenCLIP's ViT-B/32 model](https://github.com/mlfoundations/open_clip/blob/55794d65a14dfc547a9ed3514145dd68ccc939e9/README.md), based on OpenAI's CLIP architecture, to embed images and text in a shared space, and ranks images by similarity to the query embedding, all on your machine.
 
 ## Get help
 
@@ -297,19 +257,15 @@ This repository follows the [Conventional Commits](https://www.conventionalcommi
 
 ### Running locally from the source code
 
-To run **rclip** locally from source, you must have [Python](https://www.python.org/downloads/) and [uv](https://docs.astral.sh/uv/) installed.
+With [Python](https://www.python.org/downloads/) and [uv](https://docs.astral.sh/uv/) installed, run:
 
-Then run:
 ```bash
-# clone the source code repository
 git clone git@github.com:yurijmikhalevich/rclip.git
-
-# install dependencies and rclip
 cd rclip
 uv sync
 ```
 
-Then use `uv run rclip`, as described in the [Usage](#usage) section above.
+Then use `uv run rclip` in place of `rclip`.
 
 ## Distribution compliance
 
