@@ -197,8 +197,6 @@ Copy and download act on the focused grid result or the detail image, and are un
 
 Over SSH, download saves the original file to `~/Downloads` on your local machine after Kitty asks for confirmation. It requires Kitty 0.30+ and a remote `kitten` executable (`kitten ssh` provides it). Locally, download only shows the file path.
 
-The UI uses the terminal's default colors and ANSI palette. Results load in batches of up to 100 as you scroll; `--top N` sets a smaller batch. Detail view shows a higher-resolution image than the grid.
-
 </details>
 
 ## Command-line options
