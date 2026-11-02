@@ -293,7 +293,8 @@ def init_arg_parser() -> argparse.ArgumentParser:
   parser = argparse.ArgumentParser(
     formatter_class=HelpFormatter,
     prefix_chars="-+",
-    description="rclip is a semantic photo search tool for the command line",
+    description="rclip is a semantic photo search tool for the command line;\n"
+    "it searches images in the current directory and its subdirectories",
     epilog="hints:\n"
     + textwrap.fill(
       '- relative file path should be prefixed with ./, e.g. "./cat.jpg", not "cat.jpg"',
@@ -306,6 +307,13 @@ def init_arg_parser() -> argparse.ArgumentParser:
       '- any query can be prefixed with a multiplier, e.g. "2:cat", "0.5:./cat-sleeps-on-a-chair.jpg";'
       " adding a multiplier is especially useful when combining image and text queries because"
       " image queries are usually weighted more than text ones",
+      initial_indent="  ",
+      subsequent_indent="    ",
+      width=text_width,
+    )
+    + "\n"
+    + textwrap.fill(
+      "- higher scores mean better matches; compare scores only within the results of one query",
       initial_indent="  ",
       subsequent_indent="    ",
       width=text_width,
@@ -381,7 +389,8 @@ def init_arg_parser() -> argparse.ArgumentParser:
     "--json",
     action="store_true",
     default=False,
-    help='outputs results as a JSON array of {"score": ..., "filepath": ...} objects',
+    help='outputs results as a JSON array of {"score": ..., "filepath": ...} objects, ordered from the best match;'
+    " progress and warnings go to stderr",
   )
   parser.add_argument(
     "--force-interactive",
