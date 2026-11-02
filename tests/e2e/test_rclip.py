@@ -280,18 +280,32 @@ def test_search_by_image_from_url(test_images_dir: Path, monkeypatch: pytest.Mon
   )
 
 
-@pytest.mark.usefixtures("assert_output_snapshot")
 def test_search_by_non_existing_file(
-  test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str
+  test_images_dir: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  shared_model_cache_dir: str,
+  capfd: pytest.CaptureFixture[str],
 ):
   with pytest.raises(SystemExit):
-    execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "./non-existing-file.jpg")
+    execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, "--json", "./non-existing-file.jpg")
+  out, err = capfd.readouterr()
+  assert out == ""
+  assert 'non-existing-file.jpg" not found.' in err
 
 
-@pytest.mark.usefixtures("assert_output_snapshot")
-def test_search_by_not_an_image(test_images_dir: Path, monkeypatch: pytest.MonkeyPatch, shared_model_cache_dir: str):
+def test_search_by_not_an_image(
+  test_images_dir: Path,
+  monkeypatch: pytest.MonkeyPatch,
+  shared_model_cache_dir: str,
+  capfd: pytest.CaptureFixture[str],
+):
   with pytest.raises(SystemExit):
-    execute_query(test_images_dir, monkeypatch, shared_model_cache_dir, str(test_images_dir / "not-an-image.txt"))
+    execute_query(
+      test_images_dir, monkeypatch, shared_model_cache_dir, "--json", str(test_images_dir / "not-an-image.txt")
+    )
+  out, err = capfd.readouterr()
+  assert out == ""
+  assert 'not-an-image.txt" is not an image.' in err
 
 
 @pytest.mark.usefixtures("assert_output_snapshot")
