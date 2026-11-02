@@ -19,19 +19,12 @@ rclip "an orange cat"
 
 <sub>`rclip -i`. The interactive UI needs Kitty, Ghostty, or latest iTerm2; previews (`-p`) also work in Konsole. Search and scripting work in any terminal.</sub>
 
-## Features
+## Why rclip
 
-- **Natural-language search** – find photos by describing them, e.g. `rclip "two parrots on a branch"`.
-- **Reverse / image-to-image search** – search by an example image from a local path or a URL.
-- **Combined & arithmetic queries** – mix and weight text and image queries, e.g. `rclip "2:golden retriever" + "./pool.jpg" - fruit`.
-- **Local & private** – works fully offline; your photos never leave your computer.
-- **Wide format support** – `jpg`, `png`, `webp`, `tiff`, `gif`, and more, plus native HEIC on
-  macOS/Windows and experimental RAW (`arw`, `cr2`, `dng`).
-- **Fast incremental indexing** – only new and changed images are reprocessed on subsequent runs.
-- **Interactive terminal UI** – search a responsive thumbnail grid without leaving the terminal.
-- **Terminal previews** – view results inline in terminals supporting Kitty graphics.
-- **Scriptable** – pipe filepaths to other tools with `-f` or `-0`, or get JSON results for scripts and AI agents with `--json`.
-- **Cross-platform** – Linux, macOS (Apple Silicon), and Windows.
+- **No import.** Photo apps make you import your photos or run a server. rclip searches your folders where they already are: a local disk, an external drive, or a NAS.
+- **Nothing leaves your machine.** Unlike cloud photo search, the model runs locally and the index stays on your computer.
+- **Built for the terminal.** Use it over SSH on a headless server, pipe results into `xargs` or `feh`, or call it from scripts and AI agents with `--json`.
+- **Search by meaning.** Describe what you're looking for, give an example image, or combine both, e.g. `"./beach.jpg" + sunset - people`.
 
 ## Installation
 
