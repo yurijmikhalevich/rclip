@@ -198,8 +198,10 @@ def test_import_onnxruntime_disables_telemetry(monkeypatch: pytest.MonkeyPatch):
   monkeypatch.setattr(model_download_module.importlib, "import_module", fake_import_module)
 
   import_onnxruntime()
+  monkeypatch.setenv("ORT_DISABLE_TELEMETRY", "0")
+  import_onnxruntime()
 
-  assert telemetry_env_at_import == ["1"]
+  assert telemetry_env_at_import == ["1", "0"]
 
 
 def test_ensure_downloaded_compiles_existing_coreml_packages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
