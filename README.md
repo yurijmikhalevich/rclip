@@ -178,7 +178,7 @@ Open the interactive UI and type a query:
 rclip --interactive
 ```
 
-<img alt="rclip interactive UI recording: browsing recent images, searching for &quot;a cat sleeping&quot;, opening a result in the detail view, and returning to the grid, with each key press shown" src="https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/resources/rclip-tui-demo.webp" />
+<img alt="rclip interactive UI recording: launching with rclip -i, searching for &quot;a cat sleeping&quot; and then &quot;celebration&quot;, and browsing results in the grid and detail views, with each key press shown" src="https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/resources/rclip-tui-demo.webp" />
 
 **The UI requires Kitty graphics with Unicode-placeholder support.** With an empty query it browses recently modified images, loading more as you scroll. It supports text queries; use the CLI for image queries.
 
