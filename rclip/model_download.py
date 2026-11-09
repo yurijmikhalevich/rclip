@@ -45,6 +45,8 @@ def _flush_stderr() -> None:
 
 
 def _import_onnxruntime():
+  # onnxruntime 1.31 started sending usage telemetry to Microsoft by default; rclip opts out.
+  os.environ.setdefault("ORT_DISABLE_TELEMETRY", "1")
   if sys.platform != "linux" or "onnxruntime" in sys.modules:
     return importlib.import_module("onnxruntime")
 

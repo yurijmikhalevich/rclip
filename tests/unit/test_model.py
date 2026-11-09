@@ -185,6 +185,23 @@ def test_import_onnxruntime_flushes_stderr_around_fd_swap(monkeypatch: pytest.Mo
   assert flush_calls == ["flush", "flush", "flush"]
 
 
+def test_import_onnxruntime_disables_telemetry(monkeypatch: pytest.MonkeyPatch):
+  telemetry_env_at_import: list[str | None] = []
+  import_onnxruntime = cast(Callable[[], object], getattr(model_download_module, "_import_onnxruntime"))
+
+  def fake_import_module(name: str) -> object:
+    telemetry_env_at_import.append(model_download_module.os.environ.get("ORT_DISABLE_TELEMETRY"))
+    return object()
+
+  monkeypatch.delenv("ORT_DISABLE_TELEMETRY", raising=False)
+  monkeypatch.setattr(model_download_module.sys, "platform", "darwin")
+  monkeypatch.setattr(model_download_module.importlib, "import_module", fake_import_module)
+
+  import_onnxruntime()
+
+  assert telemetry_env_at_import == ["1"]
+
+
 def test_ensure_downloaded_compiles_existing_coreml_packages(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
   data_dir = tmp_path / "rclip-datadir"
   model_dir = data_dir / "ViT-B-32-256-datacomp_s34b_b86k"
