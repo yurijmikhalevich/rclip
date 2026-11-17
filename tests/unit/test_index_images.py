@@ -82,21 +82,23 @@ def test_search_stops_when_cancelled_during_final_sort(monkeypatch) -> None:
   database = Mock()
   database.get_image_vectors_by_dir_path.return_value = [("a.jpg", np.zeros(2, dtype=np.float32).tobytes())]
 
-  def sort_results(results, *, key):
+  nsmallest = main_module.heapq.nsmallest
+
+  def rank_results(n, results, *, key):
     def cancelling_key(result):
       cancel_event.set()
       return key(result)
 
-    return sorted(results, key=cancelling_key)
+    return nsmallest(n, results, key=cancelling_key)
 
-  monkeypatch.setattr(main_module, "sorted", sort_results, raising=False)
+  monkeypatch.setattr(main_module.heapq, "nsmallest", rank_results)
   rclip = _make_rclip(model, database)
 
   with pytest.raises(InterruptedError):
-    rclip.search("cat", ".", top_k=None, cancel_event=cancel_event)
+    rclip.search("cat", ".", cancel_event=cancel_event)
 
 
-@pytest.mark.parametrize("top_k", [1, None])
+@pytest.mark.parametrize("top_k", [1, 2])
 def test_search_continues_after_an_entirely_excluded_batch(monkeypatch, tmp_path: Path, top_k) -> None:
   monkeypatch.setattr(RClip, "SEARCH_BATCH_SIZE", 2)
   model = Mock()
@@ -201,7 +203,7 @@ def test_search_checks_only_the_best_candidates_for_exclusion(monkeypatch) -> No
   assert checked == ["999.jpg", "998.jpg", "997.jpg"]
 
 
-def test_search_can_return_every_ranked_result(monkeypatch) -> None:
+def test_search_keeps_the_best_results_across_batches(monkeypatch) -> None:
   monkeypatch.setattr(RClip, "SEARCH_BATCH_SIZE", 2)
   database = Mock()
   database.get_image_vectors_by_dir_path.return_value = [
@@ -214,9 +216,35 @@ def test_search_can_return_every_ranked_result(monkeypatch) -> None:
   ]
   rclip = _make_rclip(model, database)
 
-  assert rclip.search("cat", ".", top_k=None) == [
-    RClip.SearchResult(f"{index}.jpg", float(index)) for index in reversed(range(12))
+  assert rclip.search("cat", ".", top_k=3) == [
+    RClip.SearchResult(f"{index}.jpg", float(index)) for index in (11, 10, 9)
   ]
+
+
+def test_search_skips_images_worse_than_the_best_results_so_far(monkeypatch) -> None:
+  monkeypatch.setattr(RClip, "SEARCH_BATCH_SIZE", 2)
+  database = Mock()
+  database.get_image_vectors_by_dir_path.return_value = [
+    (f"{index}.jpg", np.array([index, 0], dtype=np.float32).tobytes()) for index in reversed(range(12))
+  ]
+  model = Mock()
+  model.compute_features_for_queries.side_effect = [
+    np.array([1, 0], dtype=np.float32),
+    np.array([0, 0], dtype=np.float32),
+  ]
+  rclip = _make_rclip(model, database)
+  checked: list[str] = []
+  is_excluded = rclip._is_excluded
+
+  def record_is_excluded(filepath: str, directory: str) -> bool:
+    checked.append(filepath)
+    return is_excluded(filepath, directory)
+
+  monkeypatch.setattr(rclip, "_is_excluded", record_is_excluded)
+
+  assert rclip.search("cat", ".", top_k=1) == [RClip.SearchResult("11.jpg", 11.0)]
+  # once the candidates are pruned, later batches score below the best result and aren't checked
+  assert checked == ["11.jpg", "9.jpg", "7.jpg"]
 
 
 def test_load_images_skips_failures(monkeypatch):

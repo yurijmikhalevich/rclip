@@ -83,6 +83,8 @@ class RclipApp(App[None], inherit_bindings=False):
   ENABLE_COMMAND_PALETTE = False
   CSS_PATH = "app.tcss"
   BROWSE_BATCH_SIZE = 25
+  # More than anyone scrolls through, while keeping search as fast and memory-flat as the CLI's on large libraries
+  MAX_SEARCH_RESULTS = 1000
 
   BINDINGS: ClassVar[list[Binding]] = [
     Binding("ctrl+f,/", "focus_search", "Search", show=False),
@@ -221,7 +223,7 @@ class RclipApp(App[None], inherit_bindings=False):
           search_results = self.rclip.search(
             query,
             self.working_directory,
-            top_k=None,
+            top_k=self.MAX_SEARCH_RESULTS,
             cancel_event=worker.cancelled_event,
           )
           results = [TuiResult(result.filepath, result.score) for result in search_results]

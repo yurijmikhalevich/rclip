@@ -180,7 +180,7 @@ rclip --interactive
 
 <img alt="rclip interactive UI recording: launching with rclip -i, searching for &quot;a cat sleeping&quot; and then &quot;celebration&quot;, and browsing results in the grid and detail views, and downloading one, with each key press shown" src="https://raw.githubusercontent.com/yurijmikhalevich/rclip/main/resources/rclip-tui-demo.webp" />
 
-**The UI requires Kitty graphics with Unicode-placeholder support.** With an empty query it browses recently modified images, loading more as you scroll. It supports text queries; use the CLI for image queries.
+**The UI requires Kitty graphics with Unicode-placeholder support.** With an empty query it browses recently modified images, loading more as you scroll. It supports text queries and shows up to the 1,000 best matches; use the CLI for image queries.
 
 <details>
   <summary>Keyboard shortcuts and details</summary>
