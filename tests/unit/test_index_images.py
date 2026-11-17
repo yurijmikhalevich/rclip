@@ -75,29 +75,6 @@ def test_search_stops_between_query_groups_when_cancelled() -> None:
   database.get_image_vectors_by_dir_path.assert_not_called()
 
 
-def test_search_stops_when_cancelled_during_final_sort(monkeypatch) -> None:
-  cancel_event = Event()
-  model = Mock()
-  model.compute_features_for_queries.return_value = np.zeros(2, dtype=np.float32)
-  database = Mock()
-  database.get_image_vectors_by_dir_path.return_value = [("a.jpg", np.zeros(2, dtype=np.float32).tobytes())]
-
-  nsmallest = main_module.heapq.nsmallest
-
-  def rank_results(n, results, *, key):
-    def cancelling_key(result):
-      cancel_event.set()
-      return key(result)
-
-    return nsmallest(n, results, key=cancelling_key)
-
-  monkeypatch.setattr(main_module.heapq, "nsmallest", rank_results)
-  rclip = _make_rclip(model, database)
-
-  with pytest.raises(InterruptedError):
-    rclip.search("cat", ".", cancel_event=cancel_event)
-
-
 @pytest.mark.parametrize("top_k", [1, 2])
 def test_search_continues_after_an_entirely_excluded_batch(monkeypatch, tmp_path: Path, top_k) -> None:
   monkeypatch.setattr(RClip, "SEARCH_BATCH_SIZE", 2)

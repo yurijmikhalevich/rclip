@@ -399,9 +399,7 @@ class RClip:
         min_score = candidates[-1].score
       helpers.raise_if_cancelled(cancel_event)
 
-    results = heapq.nsmallest(top_k, candidates, key=rank)
-    helpers.raise_if_cancelled(cancel_event)
-    return results
+    return heapq.nsmallest(top_k, candidates, key=rank)
 
   @staticmethod
   def _best_results(
