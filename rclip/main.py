@@ -358,7 +358,7 @@ class RClip:
     self,
     query: str,
     directory: str,
-    top_k: int | None = 10,
+    top_k: int = 10,
     positive_queries: List[str] = [],
     negative_queries: List[str] = [],
     *,
@@ -380,37 +380,42 @@ class RClip:
     def is_excluded(filepath: str) -> bool:
       return filepath in exclude_files or self._is_excluded(filepath, directory)
 
+    def rank(result: RClip.SearchResult) -> tuple[float, str]:
+      return -result.score, result.filepath
+
     candidates: List[RClip.SearchResult] = []
+    # the score of the worst result among the best found so far; worse images can't make it into the results
+    min_score = -np.inf
     rows = iter(self._db.get_image_vectors_by_dir_path(directory))
     while batch := list(itertools.islice(rows, self.SEARCH_BATCH_SIZE)):
       helpers.raise_if_cancelled(cancel_event)
       filepaths = [row[0] for row in batch]
       vectors = np.frombuffer(b"".join(row[1] for row in batch), np.float32).reshape(len(batch), -1)
       similarities = query_features @ vectors.T
-      candidates.extend(self._best_results(filepaths, similarities, top_k, is_excluded))
+      candidates.extend(self._best_results(filepaths, similarities, top_k, min_score, is_excluded))
+      # pruning only once the candidates double keeps its cost proportional to the number of candidates
+      if len(candidates) > 2 * top_k:
+        candidates = heapq.nsmallest(top_k, candidates, key=rank)
+        min_score = candidates[-1].score
       helpers.raise_if_cancelled(cancel_event)
 
-    if top_k is None:
-      results = sorted(candidates, key=lambda result: (-result.score, result.filepath))
-    else:
-      results = heapq.nsmallest(top_k, candidates, key=lambda result: (-result.score, result.filepath))
-    helpers.raise_if_cancelled(cancel_event)
-    return results
+    return heapq.nsmallest(top_k, candidates, key=rank)
 
   @staticmethod
   def _best_results(
     filepaths: List[str],
     similarities: npt.NDArray[np.floating],
-    top_k: int | None,
+    top_k: int,
+    min_score: float,
     is_excluded: Callable[[str], bool],
   ) -> List[SearchResult]:
-    """Returns the `top_k` best results that aren't excluded, along with the ones tied with the worst of them,
-    so that the final ranking can break ties by filepath. Walking the results from the best one down means only
-    those few candidates are checked for exclusion, rather than every indexed image."""
+    """Returns the `top_k` best results scoring at least `min_score` that aren't excluded, along with the ones
+    tied with the worst of them, so that the final ranking can break ties by filepath. Walking the results from
+    the best one down means only those few candidates are checked for exclusion, rather than every indexed image."""
     results: List[RClip.SearchResult] = []
     for index in np.argsort(-similarities, kind="stable"):
       score = float(similarities[index])
-      if top_k is not None and len(results) >= top_k and (not results or score < results[-1].score):
+      if score < min_score or (len(results) >= top_k and score < results[-1].score):
         break
       if not is_excluded(filepaths[index]):
         results.append(RClip.SearchResult(filepaths[index], score))

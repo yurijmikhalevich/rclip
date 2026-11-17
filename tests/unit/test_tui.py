@@ -61,14 +61,14 @@ def clear_kitty_probe_cache() -> Iterator[None]:
 class FakeRclip(RClip):
   def __init__(self, results: list[RClip.SearchResult]) -> None:
     self.results = results
-    self.searches: list[tuple[str, str, int | None, list[str], list[str]]] = []
+    self.searches: list[tuple[str, str, int, list[str], list[str]]] = []
     self.browses: list[tuple[str, int, RClip.ImageCursor | None]] = []
 
   def search(
     self,
     query: str,
     directory: str,
-    top_k: int | None = 10,
+    top_k: int = 10,
     positive_queries: list[str] = [],
     negative_queries: list[str] = [],
     *,
@@ -1252,7 +1252,7 @@ def test_tui_search_navigation_detail_and_copy_path(tmp_path: Path, monkeypatch:
       cards = list(app.query(ImageCard))
       assert len(cards) == 2
       assert isinstance(app.focused, Input)
-      assert rclip.searches == [("cat", str(tmp_path), None, [], [])]
+      assert rclip.searches == [("cat", str(tmp_path), RclipApp.MAX_SEARCH_RESULTS, [], [])]
       gallery_path = app.query_one("#gallery-path", Static)
       assert str(gallery_path.content) == ""
       assert gallery_path.region.bottom == app.query_one(".hotkeys").region.y
@@ -1941,7 +1941,7 @@ def test_detail_navigation_loads_more_results(tmp_path: Path, query: str, width:
 
   asyncio.run(run())
   assert len(rclip.browses) == (1 if query else 3)
-  assert rclip.searches == ([(query, str(tmp_path), None, [], [])] if query else [])
+  assert rclip.searches == ([(query, str(tmp_path), RclipApp.MAX_SEARCH_RESULTS, [], [])] if query else [])
 
 
 @pytest.mark.parametrize("result_count", [0, 1])
@@ -2040,7 +2040,7 @@ def test_new_search_interrupts_the_running_search_and_keeps_one_active(tmp_path:
       self,
       query: str,
       directory: str,
-      top_k: int | None = 10,
+      top_k: int = 10,
       positive_queries: list[str] = [],
       negative_queries: list[str] = [],
       *,
@@ -2129,7 +2129,7 @@ def test_new_search_interrupts_loading_more(tmp_path: Path, monkeypatch: pytest.
       await pilot.pause()
 
       assert page_cancelled.is_set()
-      assert rclip.searches == [("cat", str(tmp_path), None, [], [])]
+      assert rclip.searches == [("cat", str(tmp_path), RclipApp.MAX_SEARCH_RESULTS, [], [])]
       assert [card.result.filepath for card in app.query(ImageCard)] == [str(path) for path in paths[:25]]
 
   asyncio.run(run())
@@ -2265,7 +2265,7 @@ def test_search_loads_more_on_scroll(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
   asyncio.run(run())
 
-  assert rclip.searches == [("cat", str(tmp_path), None, [], [])]
+  assert rclip.searches == [("cat", str(tmp_path), RclipApp.MAX_SEARCH_RESULTS, [], [])]
 
 
 @pytest.mark.parametrize("detail", [False, True])
