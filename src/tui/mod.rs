@@ -283,8 +283,10 @@ impl Screen {
       restore_terminal();
       previous_hook(info);
     }));
+    // An active screen restores the terminal when dropped, which also undoes a setup that failed halfway.
+    let screen = Screen { terminal: Terminal::new(CrosstermBackend::new(std::io::stdout()))?, active: true };
     setup_terminal()?;
-    Ok(Screen { terminal: Terminal::new(CrosstermBackend::new(std::io::stdout()))?, active: true })
+    Ok(screen)
   }
 
   fn leave(&mut self) {
@@ -295,8 +297,8 @@ impl Screen {
   }
 
   fn reenter(&mut self) -> Result<()> {
-    setup_terminal()?;
     self.active = true;
+    setup_terminal()?;
     // Fresh buffers match the freshly cleared screen, so the next frame redraws everything.
     self.terminal = Terminal::new(CrosstermBackend::new(std::io::stdout()))?;
     Ok(())
