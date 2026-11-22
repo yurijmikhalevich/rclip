@@ -61,8 +61,7 @@ impl Run {
       .replace(&directory, "<test_images_dir>")
       .replace("./", "<test_images_dir>")
       .replace(std::path::MAIN_SEPARATOR, "/")
-      .replace("\r\n", "\n")
-      .replace('\u{feff}', "");
+      .replace("\r\n", "\n");
     (output.status.success(), normalized)
   }
 }
@@ -198,18 +197,20 @@ fn search_by_image_from_url() {
 #[test]
 fn search_by_non_existing_file() {
   let run = Run::new();
-  let (success, output) = run.output(&images(), &["./non-existing-file.jpg"]);
-  assert!(!success);
-  assert_matches_snapshot(&output, "test_search_by_non_existing_file");
+  let output = run.rclip(&images(), &["--json", "./non-existing-file.jpg"]);
+  assert!(!output.status.success());
+  assert!(output.stdout.is_empty());
+  assert!(String::from_utf8_lossy(&output.stderr).contains("non-existing-file.jpg\" not found."));
 }
 
 #[test]
 fn search_by_not_an_image() {
   let run = Run::new();
   let query = images().join("not-an-image.txt");
-  let (success, output) = run.output(&images(), &[query.to_str().unwrap()]);
-  assert!(!success);
-  assert_matches_snapshot(&output, "test_search_by_not_an_image");
+  let output = run.rclip(&images(), &["--json", query.to_str().unwrap()]);
+  assert!(!output.status.success());
+  assert!(output.stdout.is_empty());
+  assert!(String::from_utf8_lossy(&output.stderr).contains("not-an-image.txt\" is not an image."));
 }
 
 #[test]
@@ -310,6 +311,11 @@ fn can_read_raw_images() {
     ("green ears of rye", "DSC08882.ARW", "test_can_read_arw_images"),
     ("dragon in a cave", "RAW_CANON_400D_ARGB.CR2", "test_can_read_cr2_images"),
     ("two parrots on a tree branch", "DSC03671.dng", "test_can_read_dng_images"),
+    ("a bowl of tomatoes, potatoes, and a lemon", "RAW_CANON_EOS_R5.CR3", "test_can_read_cr3_images"),
+    ("a lake in a mountain valley", "RAW_NIKON_D1X.NEF", "test_can_read_nef_images"),
+    ("green leaves", "RAW_OLYMPUS_E-10.ORF", "test_can_read_orf_images"),
+    ("a red wooden house", "RAW_FUJIFILM_FINEPIX_S5000.RAF", "test_can_read_raf_images"),
+    ("yellow autumn bushes", "RAW_PANASONIC_DMC-LX7.RW2", "test_can_read_rw2_images"),
   ] {
     let output = snapshot_test(&raw(), &["--experimental-raw-support", query], snapshot);
     assert!(results(&output)[0].0.ends_with(file), "{output}");
@@ -330,6 +336,30 @@ fn filepath_only_prints_paths() {
     output,
     "<test_images_dir>black kitty.jpeg\n<test_images_dir>cat.jpg\n<test_images_dir>black cat at night.jpg\n"
   );
+}
+
+#[test]
+fn null_terminates_paths() {
+  let run = Run::new();
+  let (success, output) = run.output(&images(), &["kitty", "-0", "-t", "3"]);
+  assert!(success);
+  assert_eq!(
+    output,
+    "<test_images_dir>black kitty.jpeg\0<test_images_dir>cat.jpg\0<test_images_dir>black cat at night.jpg\0"
+  );
+}
+
+#[test]
+fn json_output_matches_the_table() {
+  let run = Run::new();
+  let (_, table) = run.output(&images(), &["kitty"]);
+  let (success, json) = run.output(&images(), &["kitty", "--json", "--no-indexing"]);
+  assert!(success);
+  let expected: Vec<String> = results(&table)
+    .iter()
+    .map(|(filepath, score)| format!("{{\"score\": {score}, \"filepath\": \"{filepath}\"}}"))
+    .collect();
+  assert_eq!(json, format!("[{}]\n", expected.join(", ")));
 }
 
 #[test]

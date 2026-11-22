@@ -12,10 +12,12 @@ use crate::walk::PathFilter;
 
 /// Images listed per page when browsing.
 pub const BROWSE_PAGE_SIZE: usize = 25;
+/// More than anyone scrolls through, while keeping search as fast and memory-flat as the CLI's on large libraries.
+const MAX_SEARCH_RESULTS: usize = 1000;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Request {
-  /// Rank every image against a text query.
+  /// Rank the images against a text query.
   Search(String),
   /// List images, most recently modified first, after the cursor.
   Browse(Option<ImageCursor>),
@@ -109,7 +111,7 @@ fn handle(
       if !is_text_query(query) {
         return Err(SearchError::Other(anyhow::anyhow!("interactive mode supports text queries only")));
       }
-      let results = search.search(&Query { query, add: &[], subtract: &[] }, None, Some(cancel))?;
+      let results = search.search(&Query { query, add: &[], subtract: &[] }, MAX_SEARCH_RESULTS, Some(cancel))?;
       Ok((
         results.into_iter().map(|result| TuiResult { filepath: result.filepath, score: Some(result.score) }).collect(),
         None,

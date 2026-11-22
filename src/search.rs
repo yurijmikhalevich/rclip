@@ -68,11 +68,11 @@ fn check(cancel: Option<&AtomicBool>) -> Result<(), Cancelled> {
 }
 
 impl Search<'_> {
-  /// Returns the `top_k` best matches (all of them when `None`), best first.
+  /// Returns the `top_k` best matches, best first.
   pub fn search(
     &self,
     query: &Query<'_>,
-    top_k: Option<usize>,
+    top_k: usize,
     cancel: Option<&AtomicBool>,
   ) -> Result<Vec<SearchResult>, SearchError> {
     let positive: Vec<String> = std::iter::once(query.query.to_string()).chain(query.add.iter().cloned()).collect();
@@ -156,28 +156,23 @@ impl Search<'_> {
   }
 }
 
-/// Keeps the best `limit` results seen so far (or all of them).
+/// Keeps the best `limit` results seen so far.
 struct Ranking {
-  limit: Option<usize>,
+  limit: usize,
   // A max-heap under `SearchResult`'s ordering keeps the worst retained result on top.
   heap: BinaryHeap<SearchResult>,
-  all: Vec<SearchResult>,
 }
 
 impl Ranking {
-  fn new(limit: Option<usize>) -> Self {
-    Ranking { limit, heap: BinaryHeap::new(), all: Vec::new() }
+  fn new(limit: usize) -> Self {
+    Ranking { limit, heap: BinaryHeap::new() }
   }
 
   fn push(&mut self, score: f64, filepath: &str) {
-    let Some(limit) = self.limit else {
-      self.all.push(SearchResult { filepath: filepath.to_string(), score });
-      return;
-    };
-    if limit == 0 {
+    if self.limit == 0 {
       return;
     }
-    if self.heap.len() == limit {
+    if self.heap.len() == self.limit {
       let worst = self.heap.peek().expect("the heap is full");
       let better = score > worst.score || (score == worst.score && filepath < worst.filepath.as_str());
       if !better {
@@ -189,9 +184,7 @@ impl Ranking {
   }
 
   fn into_sorted(self) -> Vec<SearchResult> {
-    let mut results = if self.limit.is_some() { self.heap.into_vec() } else { self.all };
-    results.sort();
-    results
+    self.heap.into_sorted_vec()
   }
 }
 
@@ -243,22 +236,12 @@ mod tests {
 
   #[test]
   fn ranking_keeps_the_global_top_results_with_path_tiebreaks() {
-    let mut ranking = Ranking::new(Some(3));
+    let mut ranking = Ranking::new(3);
     for (score, path) in [(0.1, "e"), (0.9, "b"), (0.5, "c"), (0.9, "a"), (0.2, "d"), (0.5, "a2")] {
       ranking.push(score, path);
     }
     let results: Vec<_> = ranking.into_sorted().into_iter().map(|result| result.filepath).collect();
     assert_eq!(results, ["a", "b", "a2"]);
-  }
-
-  #[test]
-  fn ranking_without_a_limit_returns_everything() {
-    let mut ranking = Ranking::new(None);
-    for (score, path) in [(0.1, "a"), (0.3, "b"), (0.2, "c")] {
-      ranking.push(score, path);
-    }
-    let results: Vec<_> = ranking.into_sorted().into_iter().map(|result| result.filepath).collect();
-    assert_eq!(results, ["b", "c", "a"]);
   }
 
   #[cfg(unix)]

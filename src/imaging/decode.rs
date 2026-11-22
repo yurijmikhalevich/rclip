@@ -9,22 +9,37 @@ use super::{IMAGE_RAW_EXT, ImageError, RgbImage, check_pixel_limit, heif, jp2, j
 /// Like Pillow, the format is detected from the file contents, with two exceptions inherited from
 /// the Python version: RAW files are selected by `extension` and decoded with LibRaw, and `.heic`
 /// files are decoded with the operating system's codec.
-pub fn decode(data: &[u8], extension: &str, max_pixels: Option<u64>) -> Result<RgbImage, ImageError> {
+///
+/// `max_pixels` of `None` disables the decompression-bomb cap. `min_side` lets the JPEG and HEIF
+/// decoders downscale while decoding, which skips most of the work for camera-sized photos, as long
+/// as the shortest side stays at least that long; leave it unset when the image is displayed.
+pub fn decode(
+  data: &[u8],
+  extension: &str,
+  max_pixels: Option<u64>,
+  min_side: Option<u32>,
+) -> Result<RgbImage, ImageError> {
   match generic_format(data, extension) {
     Some(format) => Ok(to_rgb(decode_generic(data, format, max_pixels)?)),
-    None => decode_special(data, extension, max_pixels),
+    None => decode_special(data, extension, max_pixels, min_side.map(|side| (side, side)), min_side),
   }
 }
 
 /// Decodes an image for display, flattening transparency onto `background` the way the Python
-/// version's interactive UI does instead of dropping the alpha channel.
-pub fn decode_flattened(data: &[u8], extension: &str, background: u8) -> Result<RgbImage, ImageError> {
+/// version's interactive UI does instead of dropping the alpha channel. `draft` lets JPEGs decode
+/// at a reduced scale that keeps the image at least that large; HEIF images keep their full frame.
+pub fn decode_flattened(
+  data: &[u8],
+  extension: &str,
+  background: u8,
+  draft: Option<(u32, u32)>,
+) -> Result<RgbImage, ImageError> {
   match generic_format(data, extension) {
     Some(format) => {
       let image = decode_generic(data, format, None)?;
       if image.color().has_alpha() { Ok(flatten(&image.into_rgba8(), background)) } else { Ok(to_rgb(image)) }
     }
-    None => decode_special(data, extension, None),
+    None => decode_special(data, extension, None, draft, None),
   }
 }
 
@@ -37,15 +52,21 @@ fn generic_format(data: &[u8], extension: &str) -> Option<ImageFormat> {
   image::guess_format(data).ok().filter(|format| *format != ImageFormat::Jpeg)
 }
 
-fn decode_special(data: &[u8], extension: &str, max_pixels: Option<u64>) -> Result<RgbImage, ImageError> {
+fn decode_special(
+  data: &[u8],
+  extension: &str,
+  max_pixels: Option<u64>,
+  jpeg_draft: Option<(u32, u32)>,
+  heif_min_side: Option<u32>,
+) -> Result<RgbImage, ImageError> {
   if IMAGE_RAW_EXT.contains(&extension) {
-    raw::decode(data, max_pixels)
+    raw::decode(data, max_pixels, jpeg_draft)
   } else if extension == "heic" && heif::is_supported() {
-    heif::decode(data, max_pixels)
+    heif::decode(data, max_pixels, heif_min_side)
   } else if jp2::is_jp2(data) {
     jp2::decode(data, max_pixels)
   } else if image::guess_format(data).is_ok_and(|format| format == ImageFormat::Jpeg) {
-    jpeg::decode(data, max_pixels)
+    jpeg::decode(data, max_pixels, jpeg_draft)
   } else {
     Err(ImageError::Unidentified)
   }
@@ -114,6 +135,6 @@ mod tests {
 
   #[test]
   fn unknown_data_is_unidentified() {
-    assert!(matches!(decode(b"definitely not an image", "jpg", None), Err(ImageError::Unidentified)));
+    assert!(matches!(decode(b"definitely not an image", "jpg", None, None), Err(ImageError::Unidentified)));
   }
 }

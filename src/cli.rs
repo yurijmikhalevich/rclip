@@ -11,6 +11,7 @@ hints:
   - any query can be prefixed with a multiplier, e.g. \"2:cat\", \"0.5:./cat-sleeps-on-a-chair.jpg\"; adding a \
 multiplier is especially useful when combining image and text queries because image queries are usually weighted \
 more than text ones
+  - higher scores mean better matches; compare scores only within the results of one query
 
 get help:
   https://github.com/yurijmikhalevich/rclip/discussions/new/choose";
@@ -29,7 +30,8 @@ pub enum MaxImagePixels {
 #[command(
   name = "rclip",
   version,
-  about = "rclip is a semantic photo search tool for the command line",
+  about = "rclip is a semantic photo search tool for the command line;\n\
+           it searches images in the current directory and its subdirectories",
   after_help = HINTS,
   disable_version_flag = true,
   max_term_width = 100
@@ -57,16 +59,25 @@ pub struct Args {
   pub top: Option<usize>,
 
   /// opens the interactive terminal UI; enter text queries in the UI
-  #[arg(long, short = 'i', conflicts_with_all = ["preview", "filepath_only"])]
+  #[arg(long, short = 'i', group = "display_mode")]
   pub interactive: bool,
 
   /// preview results in the terminal using Kitty graphics (e.g. Kitty, Ghostty, latest iTerm2, Konsole)
-  #[arg(long, short = 'p', conflicts_with = "filepath_only")]
+  #[arg(long, short = 'p', group = "display_mode")]
   pub preview: bool,
 
   /// outputs only filepaths
-  #[arg(long, short = 'f')]
+  #[arg(long, short = 'f', group = "display_mode")]
   pub filepath_only: bool,
+
+  /// outputs only filepaths, each terminated by a NUL character instead of a newline (for xargs -0)
+  #[arg(long, short = '0', group = "display_mode")]
+  pub null: bool,
+
+  /// outputs results as a JSON array of {"score": ..., "filepath": ...} objects, ordered from the best match;
+  /// progress and warnings go to stderr
+  #[arg(long, group = "display_mode")]
+  pub json: bool,
 
   /// forces interactive mode even if the terminal is not recognized as supporting Kitty graphics
   #[arg(long)]
@@ -99,7 +110,8 @@ pub struct Args {
   #[arg(long)]
   pub include_hidden: bool,
 
-  /// enables support for RAW images (ARW, CR2, and DNG are supported)
+  /// enables support for RAW images (3FR, ARW, CR2, CR3, DNG, ERF, IIQ, MOS, MRW, NEF, NRW, ORF, PEF, RAF, RW2,
+  /// and SRW)
   #[arg(long)]
   pub experimental_raw_support: bool,
 
@@ -180,11 +192,12 @@ pub fn parse_from(args: impl IntoIterator<Item = OsString>) -> Options {
   if args.force_interactive && args.force_preview {
     error("--force-interactive and --force-preview cannot be used together");
   }
-  if args.force_interactive && args.filepath_only {
-    error("--force-interactive cannot be used with --filepath-only");
+  let paths_or_json = args.filepath_only || args.null || args.json;
+  if args.force_interactive && paths_or_json {
+    error("--force-interactive cannot be used with --filepath-only, --null, or --json");
   }
-  if args.force_preview && args.filepath_only {
-    error("--force-preview cannot be used with --filepath-only");
+  if args.force_preview && paths_or_json {
+    error("--force-preview cannot be used with --filepath-only, --null, or --json");
   }
   args.interactive |= args.force_interactive;
   args.preview |= args.force_preview;
@@ -268,7 +281,9 @@ mod tests {
 
   #[test]
   fn display_modes_are_mutually_exclusive() {
-    for line in [["cat", "-i", "-p"], ["cat", "-p", "-f"], ["cat", "-i", "-f"]] {
+    for line in
+      [["cat", "-i", "-p"], ["cat", "-p", "-f"], ["cat", "-i", "-f"], ["cat", "-f", "-0"], ["cat", "-0", "--json"]]
+    {
       let full = std::iter::once("rclip").chain(line).map(OsString::from);
       assert!(Args::try_parse_from(full).is_err());
     }

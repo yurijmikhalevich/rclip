@@ -292,8 +292,10 @@ fn run_loader(loader: &LoaderShared) {
 /// An upright, flattened image no larger than the variant's size, like the Python version's
 /// `prepare_image`.
 pub fn prepare(path: &str, variant: Variant) -> Result<RgbImage, String> {
-  let image = imaging::read_display_image(path).map_err(|error| error.to_string())?;
   let (max_width, max_height) = variant.max_size();
+  // Twice the shown size leaves the resampling below enough pixels to keep the image sharp.
+  let image =
+    imaging::read_display_image(path, Some((max_width * 2, max_height * 2))).map_err(|error| error.to_string())?;
   if image.width <= max_width && image.height <= max_height {
     return Ok(image);
   }

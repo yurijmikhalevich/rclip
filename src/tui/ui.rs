@@ -295,38 +295,41 @@ fn draw_detail(buffer: &mut Buffer, app: &mut App, context: &mut Context<'_>, ar
 
   let strip = Rect::new(area.x, frame.bottom(), area.width, filmstrip_height);
   let slots = 2 * neighbors + 1;
+  let slot_width = |slot: usize| strip.width / slots as u16 + u16::from(slot < usize::from(strip.width) % slots);
+  let thumbnail_frame = |slot_area: Rect, selected: bool| {
+    if selected {
+      return slot_area;
+    }
+    let frame_width = (slot_area.width * 9 / 10).max(1);
+    let frame_height = 7.min(slot_area.height);
+    Rect::new(
+      slot_area.x + (slot_area.width - frame_width) / 2,
+      slot_area.y + (slot_area.height - frame_height) / 2,
+      frame_width,
+      frame_height,
+    )
+  };
+  let thumbnail_key = |path: &str, frame: Rect| ImageKey {
+    path: path.to_string(),
+    variant: Variant::Preview,
+    fit: Fit::Fill,
+    cells: (frame.width.saturating_sub(4), frame.height.saturating_sub(2)),
+    cell_pixels: context.cell_pixels,
+  };
   let mut x = strip.x;
   for slot in 0..slots {
-    let width = strip.width / slots as u16 + u16::from(slot < usize::from(strip.width) % slots);
     let offset = slot as isize - neighbors as isize;
-    let slot_area = Rect::new(x, strip.y, width, strip.height);
-    x += width;
+    let slot_area = Rect::new(x, strip.y, slot_width(slot), strip.height);
+    x += slot_area.width;
     let Some(result) = app.selected.checked_add_signed(offset).and_then(|index| app.results.get(index)) else {
       continue;
     };
     let selected = offset == 0;
-    let frame = if selected {
-      slot_area
-    } else {
-      let frame_width = (slot_area.width * 9 / 10).max(1);
-      let frame_height = 7.min(slot_area.height);
-      Rect::new(
-        slot_area.x + (slot_area.width - frame_width) / 2,
-        slot_area.y + (slot_area.height - frame_height) / 2,
-        frame_width,
-        frame_height,
-      )
-    };
+    let frame = thumbnail_frame(slot_area, selected);
     let (border_type, border_style) = border(selected);
     Block::default().borders(Borders::ALL).border_type(border_type).border_style(border_style).render(frame, buffer);
-    let image_area = Rect::new(frame.x + 2, frame.y + 1, frame.width.saturating_sub(4), frame.height.saturating_sub(2));
-    let key = ImageKey {
-      path: result.filepath.clone(),
-      variant: Variant::Preview,
-      fit: Fit::Fill,
-      cells: (image_area.width, image_area.height),
-      cell_pixels: context.cell_pixels,
-    };
+    let key = thumbnail_key(&result.filepath, frame);
+    let image_area = Rect::new(frame.x + 2, frame.y + 1, key.cells.0, key.cells.1);
     if image_area.width > 0
       && image_area.height > 0
       && let ImageState::Ready { id, cells, offset } = context.images.get(&key)
@@ -335,6 +338,18 @@ fn draw_detail(buffer: &mut Buffer, app: &mut App, context: &mut Context<'_>, ar
       kitty::draw(buffer, id, origin, cells, image_area);
     }
     hits.filmstrip.push((slot_area, offset));
+  }
+  // Load the previews hidden past each edge at the size of the slot browsing moves them into, so that it
+  // reveals them without a flicker.
+  for (hidden, slot) in [(app.selected.checked_sub(neighbors + 1), 0), (Some(app.selected + neighbors + 1), slots - 1)]
+  {
+    let frame = thumbnail_frame(Rect::new(strip.x, strip.y, slot_width(slot), strip.height), neighbors == 0);
+    if let Some(result) = hidden.and_then(|index| app.results.get(index))
+      && frame.width > 4
+      && frame.height > 2
+    {
+      let _ = context.images.get(&thumbnail_key(&result.filepath, frame));
+    }
   }
 }
 

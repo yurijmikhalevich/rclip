@@ -14,7 +14,7 @@ const CHUNK_SIZE: usize = 4096;
 pub fn preview(output: &mut impl Write, filepath: &str, height: u32) -> Result<()> {
   // Previews are shown one at a time for images the user asked to see, so the indexing pixel cap
   // does not apply.
-  let image = imaging::read_image(filepath, None)?;
+  let image = imaging::read_image(filepath, None, None)?;
   let image = if height < image.height {
     let width = (f64::from(height) * f64::from(image.width) / f64::from(image.height)) as u32;
     resize(&image, width.max(1), height, Filter::Lanczos)

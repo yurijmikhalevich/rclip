@@ -12,7 +12,9 @@ use ort::value::Tensor;
 fn environment() -> Result<&'static Environment> {
   static ENVIRONMENT: OnceLock<Environment> = OnceLock::new();
   if ENVIRONMENT.get().is_none() {
-    let environment = ort::init().with_name("rclip").build().context("cannot initialize ONNX Runtime")?;
+    // Microsoft's builds of ONNX Runtime send usage telemetry by default; rclip opts out.
+    let environment =
+      ort::init().with_name("rclip").with_telemetry(false).build().context("cannot initialize ONNX Runtime")?;
     let _ = ENVIRONMENT.set(environment);
   }
   Ok(ENVIRONMENT.get().expect("the environment was just initialized"))

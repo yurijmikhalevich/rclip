@@ -88,7 +88,8 @@ struct Indexer<'a> {
   progress: &'a ProgressBar,
   /// Paths whose index entries are confirmed up to date in this run.
   seen: HashSet<String>,
-  /// Directories that could not be listed; their images are left as they are.
+  /// Directories that could not be listed and entries that could not be inspected; their images are left as
+  /// they are.
   unreadable_dirs: Vec<String>,
   scanned: u64,
 }
@@ -301,25 +302,22 @@ impl Indexer<'_> {
   }
 
   /// Marks indexed images under `directory` that were not found during this run as deleted.
-  /// Excluded paths and unreadable directories were not inspected, so their state is kept.
+  /// Excluded paths and unreadable directories and entries were not inspected, so their state is kept.
   fn mark_missing_images_as_deleted(&self, filter: &PathFilter, directory: &str) -> Result<()> {
     let unreadable: Vec<String> = self
       .unreadable_dirs
       .iter()
       .map(|dir| format!("{}{MAIN_SEPARATOR}", dir.trim_end_matches(MAIN_SEPARATOR)))
       .collect();
-    let mut missing = Vec::new();
-    self.db.for_each_filepath(directory, None, |filepath, _| {
-      if !self.seen.contains(filepath)
-        && !filter.is_excluded(filepath, directory)
+    for filepath in self.db.filepaths(directory)? {
+      if !self.seen.contains(&filepath)
+        && !filter.is_excluded(&filepath, directory)
+        // an unreadable entry may be a symlink to a file, too
+        && !self.unreadable_dirs.contains(&filepath)
         && !unreadable.iter().any(|dir| filepath.starts_with(dir.as_str()))
       {
-        missing.push(filepath.to_string());
+        self.db.mark_deleted(&filepath)?;
       }
-      Ok(true)
-    })?;
-    for filepath in &missing {
-      self.db.mark_deleted(filepath)?;
     }
     self.db.commit()
   }
@@ -369,7 +367,8 @@ impl Drop for Inference {
 fn load_image(entry: &FileEntry, max_pixels: Option<u64>) -> Result<LoadedImage, ImageError> {
   let data = std::fs::read(&entry.path)?;
   let hash = file_hash(&data);
-  let image = imaging::decode(&data, &imaging::file_extension(&entry.path), max_pixels)?;
+  let extension = imaging::file_extension(&entry.path);
+  let image = imaging::decode(&data, &extension, max_pixels, Some(preprocess::IMAGE_SIZE))?;
   drop(data);
   Ok(LoadedImage { entry: entry.clone(), hash, tensor: preprocess::preprocess(&image) })
 }

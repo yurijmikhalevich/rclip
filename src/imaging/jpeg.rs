@@ -50,7 +50,9 @@ impl Decompressor {
   }
 }
 
-pub fn decode(data: &[u8], max_pixels: Option<u64>) -> Result<RgbImage, ImageError> {
+/// Decodes a JPEG. Like Pillow's `draft`, `draft` picks the largest DCT reduction (down to 1/8) that
+/// keeps the image at least that large, which skips most of the decoding work.
+pub fn decode(data: &[u8], max_pixels: Option<u64>, draft: Option<(u32, u32)>) -> Result<RgbImage, ImageError> {
   let decompressor = Decompressor::new()?;
   // SAFETY: the handle is valid and `data` is a readable buffer of the given length.
   if unsafe { tj::tj3DecompressHeader(decompressor.0, data.as_ptr(), data.len() as tj::size_t) } != 0 {
@@ -62,6 +64,20 @@ pub fn decode(data: &[u8], max_pixels: Option<u64>) -> Result<RgbImage, ImageErr
     return Err(ImageError::Unidentified);
   }
   check_pixel_limit(width, height, max_pixels)?;
+  // Lossless JPEGs have no DCT to reduce.
+  let reduction = match draft {
+    Some((min_width, min_height)) if decompressor.get(tj::TJPARAM_TJPARAM_LOSSLESS) != 1 => {
+      let scale = (width / min_width).min(height / min_height);
+      [8, 4, 2].into_iter().find(|&reduction| scale >= reduction).unwrap_or(1)
+    }
+    _ => 1,
+  };
+  let factor = tj::tjscalingfactor { num: 1, denom: reduction as libc::c_int };
+  // SAFETY: the handle is valid.
+  if unsafe { tj::tj3SetScalingFactor(decompressor.0, factor) } != 0 {
+    return Err(ImageError::decode(decompressor.error()));
+  }
+  let (width, height) = (width.div_ceil(reduction), height.div_ceil(reduction));
   let pixel_count = width as usize * height as usize;
   match decompressor.get(tj::TJPARAM_TJPARAM_COLORSPACE) as tj::TJCS {
     tj::TJCS_TJCS_CMYK | tj::TJCS_TJCS_YCCK => {
@@ -134,14 +150,29 @@ mod tests {
 
   #[test]
   fn rejects_non_jpeg_data() {
-    assert!(matches!(decode(b"not a jpeg", None), Err(ImageError::Unidentified)));
+    assert!(matches!(decode(b"not a jpeg", None, None), Err(ImageError::Unidentified)));
   }
 
   #[test]
   fn decodes_truncated_files_like_pillow() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/e2e/images/cat.jpg");
     let data = std::fs::read(path).unwrap();
-    let image = decode(&data[..data.len() / 2], None).unwrap();
+    let image = decode(&data[..data.len() / 2], None, None).unwrap();
     assert_eq!((image.width, image.height), (384, 256));
+  }
+
+  #[test]
+  fn drafts_the_largest_reduction_that_covers_the_requested_size() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/e2e/images/cat.jpg");
+    let data = std::fs::read(path).unwrap();
+    let size = |draft| {
+      let image = decode(&data, None, Some(draft)).unwrap();
+      assert_eq!(image.pixels.len(), (image.width * image.height * 3) as usize);
+      (image.width, image.height)
+    };
+    assert_eq!(size((256, 256)), (384, 256));
+    assert_eq!(size((128, 128)), (192, 128));
+    assert_eq!(size((90, 60)), (96, 64));
+    assert_eq!(size((1, 1)), (48, 32));
   }
 }
