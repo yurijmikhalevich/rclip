@@ -289,6 +289,9 @@ mod tests {
     assert_eq!(split_multiplier("2:"), (1.0, "2:"));
     assert_eq!(split_multiplier("a:cat"), (1.0, "a:cat"));
     assert_eq!(split_multiplier("1:2:cat"), (1.0, "2:cat"));
+    assert_eq!(split_multiplier("1..:cat"), (1.0, "1..:cat"));
+    assert_eq!(split_multiplier("..:cat"), (1.0, "..:cat"));
+    assert_eq!(split_multiplier("1.5:complex and long query"), (1.5, "complex and long query"));
   }
 
   #[test]
@@ -327,6 +330,13 @@ mod tests {
     });
     let image = download_image(&url).unwrap();
     assert_eq!((image.width, image.height), (3, 2));
+  }
+
+  #[test]
+  fn missing_query_images_are_reported_as_not_found_whatever_their_format() {
+    for (query, path) in [("./missing.heic", "./missing.heic"), ("file:///missing/cat.jpg", "/missing/cat.jpg")] {
+      assert!(matches!(read_query_image(query), Err(QueryError::NotFound(missing)) if missing == path));
+    }
   }
 
   #[test]
