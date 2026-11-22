@@ -85,17 +85,20 @@ fn draw_input(frame: &mut Frame<'_>, app: &App, area: Rect) {
   let inner = block.inner(area);
   block.render(area, frame.buffer_mut());
   let width = usize::from(inner.width.saturating_sub(1)).max(1);
-  if app.input.text.is_empty() {
+  // Scroll horizontally to keep the cursor visible, measuring in terminal columns as wide characters take two.
+  let chars: Vec<char> = app.input.text.chars().collect();
+  let columns = |chars: &[char]| Span::raw(chars.iter().collect::<String>()).width();
+  let mut start = 0;
+  while columns(&chars[start..app.input.cursor]) > width {
+    start += 1;
+  }
+  if chars.is_empty() {
     Paragraph::new(format!("Search images in {}…", app.directory)).style(muted()).render(inner, frame.buffer_mut());
   } else {
-    // Scroll horizontally to keep the cursor visible.
-    let chars: Vec<char> = app.input.text.chars().collect();
-    let start = app.input.cursor.saturating_sub(width);
-    let visible: String = chars[start..].iter().take(width + 1).collect();
-    Paragraph::new(visible).render(inner, frame.buffer_mut());
+    Paragraph::new(chars[start..].iter().collect::<String>()).render(inner, frame.buffer_mut());
   }
   if focused {
-    let column = app.input.cursor.min(width) as u16;
+    let column = columns(&chars[start..app.input.cursor]) as u16;
     frame.set_cursor_position((inner.x + column, inner.y));
   }
 }
@@ -422,5 +425,20 @@ mod tests {
   fn ellipsizes_long_text() {
     assert_eq!(ellipsize("abcdef", 4), "abc…");
     assert_eq!(ellipsize("abc", 4), "abc");
+  }
+
+  #[test]
+  fn places_the_cursor_after_wide_characters() {
+    let (mut app, _) = App::new("~/p".into(), 100);
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(20, 3)).unwrap();
+    let mut cursor_after = |text: &str| {
+      app.input.text = text.into();
+      app.input.cursor = text.chars().count();
+      terminal.draw(|frame| draw_input(frame, &app, frame.area())).unwrap();
+      (terminal.get_cursor_position().unwrap().x, terminal.backend().buffer()[(1, 1)].symbol().to_string())
+    };
+    assert_eq!(cursor_after("猫"), (3, "猫".into()));
+    // Ten characters take 20 columns, so the field scrolls past the first two to fit the cursor in its 17.
+    assert_eq!(cursor_after("一二三四五六七八九十"), (17, "三".into()));
   }
 }
