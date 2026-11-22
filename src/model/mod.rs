@@ -184,7 +184,7 @@ fn read_query_image(query: &str) -> Result<RgbImage, QueryError> {
   let path = query.strip_prefix("file://").unwrap_or(query);
   // Query images are chosen explicitly and decoded one at a time, so the indexing pixel cap does
   // not apply to them.
-  imaging::read_image(path, None).map_err(|error| match error {
+  imaging::read_image(path, None, Some(preprocess::IMAGE_SIZE)).map_err(|error| match error {
     ImageError::Io(error) if error.kind() == std::io::ErrorKind::NotFound => QueryError::NotFound(path.to_string()),
     ImageError::Unidentified => QueryError::NotAnImage(path.to_string()),
     ImageError::TooLarge { .. } => QueryError::TooLarge,
@@ -227,7 +227,7 @@ fn download_image(url: &str) -> Result<RgbImage, QueryError> {
   if content_type == "image/heic" || content_type == "image/heif" {
     extension = "heic".into();
   }
-  imaging::decode(&data, &extension, None).map_err(|error| match error {
+  imaging::decode(&data, &extension, None, None).map_err(|error| match error {
     ImageError::Unidentified => QueryError::NotAnImage(url.to_string()),
     ImageError::TooLarge { .. } => QueryError::TooLarge,
     error => QueryError::Other(anyhow::anyhow!("cannot decode {url}: {error}")),

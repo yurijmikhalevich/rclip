@@ -8,12 +8,12 @@ use super::{ImageError, RgbImage};
 // LibRaw decodes deflate-compressed DNGs with zlib; referencing the crate makes sure it is linked.
 use libz_sys as _;
 
-pub fn decode(data: &[u8], max_pixels: Option<u64>) -> Result<RgbImage, ImageError> {
+pub fn decode(data: &[u8], max_pixels: Option<u64>, jpeg_draft: Option<(u32, u32)>) -> Result<RgbImage, ImageError> {
   let raw = LibRaw::open(data)?;
   // The embedded JPEG preview is usually large enough for the model input and far cheaper to
   // decode than demosaicing the whole sensor, so prefer it and fall back to processing otherwise.
   if let Some(jpeg) = raw.jpeg_thumbnail() {
-    let preview = super::decode(&jpeg, "jpg", max_pixels)?;
+    let preview = super::jpeg::decode(&jpeg, max_pixels, jpeg_draft)?;
     if preview.width.min(preview.height) >= IMAGE_SIZE {
       return Ok(preview);
     }

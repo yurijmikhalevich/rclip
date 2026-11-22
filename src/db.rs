@@ -4,12 +4,21 @@
 //! transaction, and nothing becomes durable until [`Db::commit`]. Callers rely on this to batch
 //! thousands of updates into one transaction while indexing.
 
+use std::io::IsTerminal;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use rusqlite::{Connection, OptionalExtension, params};
 
 pub const VERSION: i64 = 4;
+/// Each image takes about 2.2 KB, so a 4 KB page holds only one; a 16 KB page holds seven, which makes the
+/// index about 40% smaller and faster to read.
+const PAGE_SIZE: i64 = 16384;
+/// A search reads every vector in the index, and reading them through a memory map skips copying each page
+/// into SQLite's page cache. SQLite caps the map at its compile-time maximum, which is 2 GB by default.
+const MMAP_SIZE: i64 = 1 << 31;
+/// Rebuilding takes about half a minute per million images on an SSD, so larger indexes ask before it.
+const REBUILD_CONFIRMATION_IMAGES: i64 = 100_000;
 
 /// Fields used to detect whether a file changed since it was indexed.
 #[derive(Clone, Debug, PartialEq)]
@@ -55,9 +64,16 @@ pub enum VectorCacheReset {
 impl Db {
   pub fn open(path: &Path, reset: VectorCacheReset) -> Result<Self> {
     let connection = Connection::open(path).with_context(|| format!("cannot open the index at {}", path.display()))?;
+    // The page size applies to a new database right away, and to an existing one once it's rebuilt.
+    connection.pragma_update(None, "page_size", PAGE_SIZE)?;
+    connection.pragma_update(None, "mmap_size", MMAP_SIZE)?;
+    // Other tools may switch the index to WAL mode, which makes indexing slower and keeps SQLite from changing
+    // the page size. An index another process has open can't leave WAL mode, so it's left for a later run.
+    connection.pragma_update(None, "journal_mode", "DELETE").ok();
     let db = Db { connection, path: Some(path.to_path_buf()) };
     db.ensure_tables()?;
     db.ensure_version(reset)?;
+    db.ensure_page_size(path)?;
     Ok(db)
   }
 
@@ -134,6 +150,46 @@ impl Db {
       self.write("INSERT INTO db_version(version) VALUES (?)", [VERSION])?;
     }
     self.commit()
+  }
+
+  /// Rebuilds an index stored in small pages, which makes it smaller and faster to search.
+  fn ensure_page_size(&self, path: &Path) -> Result<()> {
+    let page_size: i64 = self.connection.pragma_query_value(None, "page_size", |row| row.get(0))?;
+    let journal_mode: String = self.connection.pragma_query_value(None, "journal_mode", |row| row.get(0))?;
+    // The rebuild can't change the page size of an index that is still in WAL mode.
+    if page_size >= PAGE_SIZE || journal_mode == "wal" {
+      return Ok(());
+    }
+    let images: i64 = self.connection.query_row("SELECT COUNT(*) FROM images", [], |row| row.get(0))?;
+    if images > 0 {
+      // SQLite writes the rebuilt database to a temporary file and then copies it back through a journal.
+      let needed_bytes = 2 * std::fs::metadata(path)?.len();
+      let needed_space = format!("{:.1} GB", needed_bytes as f64 / 1e9);
+      if fs4::available_space(path.parent().unwrap_or(path))? < needed_bytes {
+        eprintln!(
+          "skipping the index rebuild that makes it smaller and faster to search: \
+           it needs {needed_space} of free disk space"
+        );
+        return Ok(());
+      }
+      if images >= REBUILD_CONFIRMATION_IMAGES && std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
+        eprint!(
+          "rclip can rebuild its index of {images} images to make it about 40% smaller and faster to search; \
+           this runs once, may take a few minutes, and needs {needed_space} of free disk space. \
+           Rebuild it now? [Y/n] "
+        );
+        let mut answer = String::new();
+        // A closed or unreadable stdin declines.
+        let read = std::io::stdin().read_line(&mut answer).unwrap_or(0);
+        if read == 0 || !["", "y", "yes"].contains(&answer.trim().to_lowercase().as_str()) {
+          eprintln!("skipping the index rebuild; rclip will ask again next time");
+          return Ok(());
+        }
+      }
+      eprintln!("rebuilding the index once to make it smaller and faster to search");
+    }
+    self.connection.execute_batch("VACUUM")?;
+    Ok(())
   }
 
   fn has_cached_vectors(&self) -> Result<bool> {
@@ -240,6 +296,7 @@ impl Db {
               db_path,
               rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
             )?;
+            connection.pragma_update(None, "mmap_size", MMAP_SIZE)?;
             let mut statement = connection.prepare(
               "SELECT filepath, vector FROM images NOT INDEXED
               WHERE id >= ?1 AND id < ?2 AND filepath >= ?3 AND filepath < ?4 AND deleted IS NULL",
@@ -257,6 +314,16 @@ impl Db {
     })
   }
 
+  /// Returns the path of every indexed image under `path`.
+  pub fn filepaths(&self, path: &str) -> Result<Vec<String>> {
+    let (start, end) = dirpath_range(path);
+    let mut statement = self
+      .connection
+      .prepare_cached("SELECT filepath FROM images WHERE filepath >= ? AND filepath < ? AND deleted IS NULL")?;
+    let filepaths = statement.query_map([start, end], |row| row.get(0))?.collect::<rusqlite::Result<_>>()?;
+    Ok(filepaths)
+  }
+
   /// Calls `visit` for every indexed image under `path`, most recently modified first, starting
   /// after `after`. Stops when `visit` returns `false`.
   pub fn for_each_filepath(
@@ -266,8 +333,11 @@ impl Db {
     mut visit: impl FnMut(&str, f64) -> Result<bool>,
   ) -> Result<()> {
     let (start, end) = dirpath_range(path);
-    let mut sql =
-      "SELECT filepath, modified_at FROM images WHERE filepath >= ?1 AND filepath < ?2 AND deleted IS NULL".to_string();
+    // SQLite would otherwise pick the filepath index and sort every image under `path` for each page; walking
+    // the recency index returns a page as soon as it finds enough images under `path`.
+    let mut sql = "SELECT filepath, modified_at FROM images INDEXED BY recent_images
+      WHERE filepath >= ?1 AND filepath < ?2 AND deleted IS NULL"
+      .to_string();
     if after.is_some() {
       sql += " AND modified_at <= ?3 AND (modified_at < ?3 OR filepath > ?4)";
     }
@@ -421,6 +491,52 @@ mod tests {
     assert_eq!(list(None), ["/p/new-a.jpg", "/p/new-b.jpg", "/p/old.jpg"]);
     let cursor = ImageCursor { modified_at: 2.0, filepath: "/p/new-a.jpg".into() };
     assert_eq!(list(Some(&cursor)), ["/p/new-b.jpg", "/p/old.jpg"]);
+  }
+
+  /// Creates an index holding one image in the 4 KB pages older versions used.
+  fn create_small_page_index(path: &Path) {
+    let db = Db { connection: Connection::open(path).unwrap(), path: None };
+    db.ensure_tables().unwrap();
+    db.ensure_version(VectorCacheReset::Allow).unwrap();
+    insert(&db, "/photos/cat.jpg", 1.0);
+    db.commit().unwrap();
+  }
+
+  fn pragma<T: rusqlite::types::FromSql>(db: &Db, name: &str) -> T {
+    db.connection.pragma_query_value(None, name, |row| row.get(0)).unwrap()
+  }
+
+  #[test]
+  fn new_indexes_use_large_pages() {
+    let directory = tempfile::tempdir().unwrap();
+    let db = Db::open(&directory.path().join("db.sqlite3"), VectorCacheReset::Allow).unwrap();
+    assert_eq!(pragma::<i64>(&db, "page_size"), PAGE_SIZE);
+  }
+
+  #[test]
+  fn rebuilds_small_page_indexes_with_large_pages() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("db.sqlite3");
+    create_small_page_index(&path);
+    Connection::open(&path).unwrap().pragma_update(None, "journal_mode", "WAL").unwrap();
+    let db = Db::open(&path, VectorCacheReset::Allow).unwrap();
+    assert_eq!(pragma::<i64>(&db, "page_size"), PAGE_SIZE);
+    assert_eq!(pragma::<String>(&db, "journal_mode"), "delete");
+    assert_eq!(db.filepaths("/photos").unwrap(), ["/photos/cat.jpg"]);
+  }
+
+  #[test]
+  fn keeps_small_pages_while_another_connection_holds_the_index_in_wal_mode() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("db.sqlite3");
+    create_small_page_index(&path);
+    let other = Connection::open(&path).unwrap();
+    other.pragma_update(None, "journal_mode", "WAL").unwrap();
+    let _: i64 = other.query_row("SELECT COUNT(*) FROM images", [], |row| row.get(0)).unwrap();
+    let db = Db::open(&path, VectorCacheReset::Allow).unwrap();
+    assert_eq!(pragma::<String>(&db, "journal_mode"), "wal");
+    assert_eq!(pragma::<i64>(&db, "page_size"), 4096);
+    assert_eq!(db.filepaths("/photos").unwrap(), ["/photos/cat.jpg"]);
   }
 
   #[test]

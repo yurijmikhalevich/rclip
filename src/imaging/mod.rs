@@ -22,7 +22,8 @@ pub const IMAGE_EXT: &[&str] =
   &["jpg", "jpeg", "png", "webp", "heic", "tiff", "tif", "bmp", "gif", "jp2", "pnm", "pbm", "pgm", "ppm"];
 /// RAW formats are indexed only with `--experimental-raw-support` and only when there is no
 /// processed image with the same name alongside them.
-pub const IMAGE_RAW_EXT: &[&str] = &["arw", "cr2", "dng"];
+pub const IMAGE_RAW_EXT: &[&str] =
+  &["3fr", "arw", "cr2", "cr3", "dng", "erf", "iiq", "mos", "mrw", "nef", "nrw", "orf", "pef", "raf", "rw2", "srw"];
 
 /// Pillow's historic decompression-bomb limit; the automatic cap never goes below it so that
 /// ordinary large photos (high-MP panoramas, scans) always index.
@@ -112,22 +113,23 @@ pub fn file_extension(path: &str) -> String {
   Path::new(path).extension().and_then(|ext| ext.to_str()).map(str::to_ascii_lowercase).unwrap_or_default()
 }
 
-/// Reads and decodes an image file. `max_pixels` of `None` disables the decompression-bomb cap.
-pub fn read_image(path: &str, max_pixels: Option<u64>) -> Result<RgbImage, ImageError> {
+/// Reads and decodes an image file like [`decode`].
+pub fn read_image(path: &str, max_pixels: Option<u64>, min_side: Option<u32>) -> Result<RgbImage, ImageError> {
   let path = path.strip_prefix("file://").unwrap_or(path);
   let data = std::fs::read(path)?;
-  decode(&data, &file_extension(path), max_pixels)
+  decode(&data, &file_extension(path), max_pixels, min_side)
 }
 
 /// The interactive UI's background, shown behind transparent pixels.
 const DISPLAY_BACKGROUND: u8 = 0x12;
 
 /// Reads an image for display: upright according to its EXIF orientation and with transparency
-/// flattened onto the UI background, like the Python version's interactive UI.
-pub fn read_display_image(path: &str) -> Result<RgbImage, ImageError> {
+/// flattened onto the UI background, like the Python version's interactive UI. `draft` lets JPEGs
+/// decode at a reduced scale that keeps the stored image at least that large.
+pub fn read_display_image(path: &str, draft: Option<(u32, u32)>) -> Result<RgbImage, ImageError> {
   let data = std::fs::read(path)?;
   let extension = file_extension(path);
-  let image = decode::decode_flattened(&data, &extension, DISPLAY_BACKGROUND)?;
+  let image = decode::decode_flattened(&data, &extension, DISPLAY_BACKGROUND, draft)?;
   // RAW files show their embedded preview or LibRaw's output, which are already upright, and the
   // native HEIF decoders apply the orientation themselves.
   if IMAGE_RAW_EXT.contains(&extension.as_str()) || extension == "heic" {

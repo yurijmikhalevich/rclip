@@ -2,15 +2,22 @@
 
 use std::ffi::c_void;
 
-use objc2_core_foundation::{CFData, CFNumber, CFRetained, CGPoint, CGRect, CGSize};
+use objc2_core_foundation::{
+  CFBoolean, CFData, CFDictionary, CFNumber, CFRetained, CFString, CFType, CGPoint, CGRect, CGSize,
+};
 use objc2_core_graphics::{
   CGBitmapContextCreate, CGColorSpace, CGColorSpaceModel, CGContext, CGImage, CGImageAlphaInfo,
 };
-use objc2_image_io::{CGImageSource, kCGImagePropertyOrientation};
+use objc2_image_io::{
+  CGImageSource, kCGImagePropertyOrientation, kCGImageSourceCreateThumbnailFromImageAlways,
+  kCGImageSourceThumbnailMaxPixelSize,
+};
 
 use crate::imaging::{ImageError, RgbImage, check_pixel_limit};
 
-pub fn decode(data: &[u8], max_pixels: Option<u64>) -> Result<RgbImage, ImageError> {
+/// Decodes an HEIF image. `min_side` lets Image I/O downscale while decoding, as long as the shortest
+/// side stays at least that long.
+pub fn decode(data: &[u8], max_pixels: Option<u64>, min_side: Option<u32>) -> Result<RgbImage, ImageError> {
   let data = CFData::from_bytes(data);
   // SAFETY: no options dictionary is passed.
   let source = unsafe { CGImageSource::with_data(&data, None) }
@@ -23,8 +30,23 @@ pub fn decode(data: &[u8], max_pixels: Option<u64>) -> Result<RgbImage, ImageErr
     return Err(ImageError::decode("macOS returned invalid HEIF image dimensions"));
   }
   check_pixel_limit(width as u32, height as u32, max_pixels)?;
+  // A downscaled frame avoids decoding and converting the full image.
+  let image = min_side.and_then(|min_side| thumbnail(&source, width, height, min_side as usize)).unwrap_or(image);
+  let (width, height) = (CGImage::width(Some(&image)), CGImage::height(Some(&image)));
   let pixels = render_rgb(&image, width, height)?;
   Ok(RgbImage { width: width as u32, height: height as u32, pixels }.oriented(orientation(&source)))
+}
+
+/// Asks Image I/O for the smallest frame whose shortest side still covers `min_side`. Returns `None`
+/// when Image I/O cannot produce one, so the caller falls back to the full frame.
+fn thumbnail(source: &CGImageSource, width: usize, height: usize, min_side: usize) -> Option<CFRetained<CGImage>> {
+  let max_pixel_size = CFNumber::new_i64((min_side * width.max(height) / width.min(height) + 1) as i64);
+  // SAFETY: the keys are constant CFStrings provided by Image I/O.
+  let keys = unsafe { [kCGImageSourceCreateThumbnailFromImageAlways, kCGImageSourceThumbnailMaxPixelSize] };
+  let values: [&CFType; 2] = [CFBoolean::new(true), &max_pixel_size];
+  let options = CFDictionary::<CFString, CFType>::from_slices(&keys, &values);
+  // SAFETY: the source is valid and the options hold the value types Image I/O expects for these keys.
+  unsafe { source.thumbnail_at_index(0, Some(options.as_opaque())) }
 }
 
 /// Draws the image into an 8-bit RGBX bitmap. The bitmap uses the image's own RGB color space so

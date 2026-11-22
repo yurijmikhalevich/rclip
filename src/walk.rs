@@ -85,7 +85,8 @@ pub struct FileEntry {
 /// Errors that do not stop the walk.
 #[derive(Debug)]
 pub enum WalkIssue {
-  /// A directory could not be listed; its previously indexed images must be kept as they are.
+  /// A directory could not be listed, or an entry such as a symlink to an inaccessible target could not be
+  /// inspected; its previously indexed images must be kept as they are.
   UnreadableDir(String, std::io::Error),
   /// A file's metadata could not be read.
   Metadata(String, std::io::Error),
@@ -162,7 +163,14 @@ fn walk_paths(root: &str, filter: &PathFilter, mut visit: impl FnMut(Found) -> b
       let (is_dir, metadata) = if file_type.is_symlink() {
         match fs::metadata(&path) {
           Ok(metadata) => (metadata.is_dir(), Some(metadata)),
-          Err(_) => continue,
+          // a dangling symlink
+          Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+          Err(error) => {
+            if !visit(Found::Issue(WalkIssue::UnreadableDir(path, error))) {
+              return;
+            }
+            continue;
+          }
         }
       } else {
         (file_type.is_dir(), None)
@@ -302,6 +310,27 @@ mod tests {
     let paths = walked(root.path(), &PathFilter::new(None, false, false));
     assert!(paths.len() <= 2, "{paths:?}");
     assert!(paths.contains(&"a/b.jpg".to_string()));
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn reports_symlinks_to_inaccessible_targets_and_skips_dangling_ones() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let (root, outside) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+    let locked = outside.path().join("locked");
+    touch(&locked, "a.jpg");
+    symlink(locked.join("a.jpg"), root.path().join("inaccessible.jpg")).unwrap();
+    symlink(outside.path().join("missing.jpg"), root.path().join("dangling.jpg")).unwrap();
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+    let mut unreadable = Vec::new();
+    walk(root.path().to_str().unwrap(), &PathFilter::new(None, false, false), |entry| {
+      if let Err(WalkIssue::UnreadableDir(path, _)) = entry {
+        unreadable.push(path);
+      }
+      true
+    });
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(unreadable, [root.path().join("inaccessible.jpg").to_str().unwrap()]);
   }
 
   #[cfg(unix)]

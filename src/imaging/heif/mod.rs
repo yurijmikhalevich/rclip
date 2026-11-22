@@ -18,6 +18,10 @@ pub fn is_supported() -> bool {
 }
 
 #[cfg(not(any(target_os = "macos", windows)))]
-pub fn decode(_data: &[u8], _max_pixels: Option<u64>) -> Result<super::RgbImage, super::ImageError> {
+pub fn decode(
+  _data: &[u8],
+  _max_pixels: Option<u64>,
+  _min_side: Option<u32>,
+) -> Result<super::RgbImage, super::ImageError> {
   Err(super::ImageError::decode("native HEIF decoding is available only on macOS and Windows"))
 }

@@ -60,6 +60,6 @@ pub fn exit_with_permission_error(directory: &str, is_current_directory: bool) -
   } else {
     (directory.to_string(), None)
   };
-  println!("{}", permission_error(&realpath, symlink, is_current_directory));
+  eprintln!("{}", permission_error(&realpath, symlink, is_current_directory));
   std::process::exit(1);
 }

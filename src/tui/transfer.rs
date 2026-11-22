@@ -95,7 +95,7 @@ pub fn copy_image_to_clipboard(filepath: &str) -> Result<(), String> {
   if CLIPBOARD_NATIVE_EXTENSIONS.contains(&imaging::file_extension(filepath).as_str()) {
     return run_kitten(&executable, &["clipboard", filepath], Some(Duration::from_secs(30))).map(drop);
   }
-  let image = imaging::read_display_image(filepath).map_err(|error| error.to_string())?;
+  let image = imaging::read_display_image(filepath, None).map_err(|error| error.to_string())?;
   let directory = std::env::temp_dir().join(format!("rclip-clipboard-{}", std::process::id()));
   std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
   let converted = directory.join("image.png");
