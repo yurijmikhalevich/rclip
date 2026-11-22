@@ -386,3 +386,20 @@ fn read_input(events: &Sender<Event>, paused: &AtomicBool, idle: &AtomicBool, st
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn abbreviates_the_home_directory() {
+    let home = crate::paths::home_dir().expect("the tests run with a home directory");
+    let home = home.to_str().expect("the home directory is valid UTF-8");
+    let separator = std::path::MAIN_SEPARATOR;
+    assert_eq!(display_directory(home), "~");
+    assert_eq!(display_directory(&format!("{home}{separator}photos")), format!("~{separator}photos"));
+    // A directory next to the home directory only shares its beginning.
+    let elsewhere = format!("{home}-elsewhere{separator}photos");
+    assert_eq!(display_directory(&elsewhere), elsewhere);
+  }
+}

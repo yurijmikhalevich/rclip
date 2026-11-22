@@ -531,8 +531,8 @@ mod tests {
     KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
   }
 
-  fn results(count: usize, scored: bool) -> Vec<TuiResult> {
-    (0..count)
+  fn results(indexes: std::ops::Range<usize>, scored: bool) -> Vec<TuiResult> {
+    indexes
       .map(|index| TuiResult {
         filepath: format!("/p/{index}.jpg"),
         score: scored.then_some(1.0 - index as f64 / 100.0),
@@ -543,7 +543,58 @@ mod tests {
   fn respond(app: &mut App, effects: Vec<Effect>, count: usize, cursor: Option<ImageCursor>) {
     let Some(Effect::Request(generation, request)) = effects.into_iter().next() else { panic!("expected a request") };
     let scored = matches!(request, Request::Search(_));
-    app.on_response(Response { generation, request, outcome: Ok((results(count, scored), cursor)) });
+    app.on_response(Response { generation, request, outcome: Ok((results(0..count, scored), cursor)) });
+  }
+
+  /// Stands in for the worker: a library of `total` images that is browsed a page at a time.
+  struct Library {
+    total: usize,
+    requests: Vec<Request>,
+  }
+
+  impl Library {
+    const PAGE: usize = 25;
+
+    fn answer(&mut self, app: &mut App, effects: Vec<Effect>) {
+      for effect in effects {
+        let Effect::Request(generation, request) = effect else { panic!("expected a request, got {effect:?}") };
+        self.requests.push(request.clone());
+        let outcome = match &request {
+          Request::Search(_) => (results(0..self.total, true), None),
+          Request::Browse(after) => {
+            // The fake cursor's timestamp is the index of the next image.
+            let start = after.as_ref().map_or(0, |cursor| cursor.modified_at as usize);
+            let end = (start + Self::PAGE).min(self.total);
+            let next = ImageCursor { modified_at: end as f64, filepath: format!("/p/{}.jpg", end.saturating_sub(1)) };
+            (results(start..end, false), (end < self.total).then_some(next))
+          }
+        };
+        app.on_response(Response { generation, request, outcome: Ok(outcome) });
+      }
+    }
+
+    /// Answers `effects` and whatever the detail view's following frames ask for, like the event loop does.
+    fn settle(&mut self, app: &mut App, mut effects: Vec<Effect>) {
+      loop {
+        self.answer(app, effects);
+        effects = app.after_frame(0);
+        if effects.is_empty() {
+          break;
+        }
+      }
+    }
+  }
+
+  /// An app browsing a library of `total` images whose first page is shown.
+  fn browsing(total: usize, batch_size: usize) -> (App, Library) {
+    let (mut app, effects) = App::new("~/p".into(), batch_size);
+    let mut library = Library { total, requests: Vec::new() };
+    library.answer(&mut app, effects);
+    (app, library)
+  }
+
+  fn selected_path(app: &App) -> Option<&str> {
+    app.selected_result().map(|result| result.filepath.as_str())
   }
 
   fn type_text(app: &mut App, text: &str) {
@@ -733,5 +784,388 @@ mod tests {
     let mut input = Input { text: "a\u{3000}b".into(), cursor: 3 };
     input.edit(&ctrl('w'));
     assert_eq!((input.text.as_str(), input.cursor), ("a\u{3000}", 2));
+  }
+
+  #[test]
+  fn searches_show_ranked_results_and_no_path_until_one_is_selected() {
+    let (mut app, mut library) = browsing(2, 25);
+    type_text(&mut app, "cat");
+    let effects = app.on_key(key(KeyCode::Enter));
+    assert_eq!(effects, [Effect::Request(2, Request::Search("cat".into()))]);
+    assert_eq!(app.status, Some("Searching…"));
+    library.answer(&mut app, effects);
+    assert_eq!((app.focus, app.ranked, app.status, app.show_selected_path), (Focus::Search, true, None, false));
+    app.on_key(key(KeyCode::Down));
+    assert_eq!((app.focus, app.show_selected_path, selected_path(&app)), (Focus::Results, true, Some("/p/0.jpg")));
+    app.on_key(key(KeyCode::Right));
+    assert_eq!(app.selected_result(), Some(&TuiResult { filepath: "/p/1.jpg".into(), score: Some(0.99) }));
+  }
+
+  #[test]
+  fn submitting_searches_at_once_and_only_once() {
+    let (mut app, _) = browsing(2, 25);
+    type_text(&mut app, " cat ");
+    assert_eq!(app.on_key(key(KeyCode::Enter)), [Effect::Request(2, Request::Search("cat".into()))]);
+    assert!(app.tick(Instant::now() + DEBOUNCE).is_empty());
+    assert_eq!(app.next_deadline(), None);
+  }
+
+  #[test]
+  fn searches_once_typing_pauses() {
+    let (mut app, _) = browsing(2, 25);
+    type_text(&mut app, "ca");
+    let first_deadline = app.next_deadline().unwrap();
+    std::thread::sleep(Duration::from_millis(5));
+    type_text(&mut app, "t");
+    assert!(app.tick(first_deadline).is_empty());
+    let deadline = app.next_deadline().unwrap();
+    assert_eq!(app.tick(deadline), [Effect::Request(2, Request::Search("cat".into()))]);
+    assert!(app.tick(deadline + DEBOUNCE).is_empty());
+  }
+
+  #[test]
+  fn only_changes_to_the_query_search() {
+    let (mut app, _) = browsing(2, 25);
+    type_text(&mut app, "cat");
+    app.tick(Instant::now() + DEBOUNCE);
+    for code in [KeyCode::Left, KeyCode::Home, KeyCode::End, KeyCode::Delete] {
+      app.on_key(key(code));
+      assert_eq!(app.next_deadline(), None, "{code:?}");
+    }
+    // Clearing the query browses all images again.
+    for _ in 0..3 {
+      app.on_key(key(KeyCode::Backspace));
+    }
+    assert_eq!(app.tick(Instant::now() + DEBOUNCE), [Effect::Request(3, Request::Browse(None))]);
+  }
+
+  #[test]
+  fn ignores_results_for_a_query_that_was_edited_since() {
+    let (mut app, _) = browsing(2, 25);
+    type_text(&mut app, "cat");
+    let effects = app.on_key(key(KeyCode::Enter));
+    type_text(&mut app, "s");
+    respond(&mut app, effects, 5, None);
+    assert_eq!((app.results.len(), app.ranked), (2, false));
+  }
+
+  #[test]
+  fn moving_stops_at_the_first_and_last_result() {
+    let (mut app, _) = browsing(6, 25);
+    app.grid.columns = 4;
+    app.on_key(key(KeyCode::Down));
+    for (code, selected) in [
+      (KeyCode::Left, 0),
+      (KeyCode::Char('k'), 0),
+      (KeyCode::Right, 1),
+      (KeyCode::Right, 2),
+      (KeyCode::Left, 1),
+      (KeyCode::Char('h'), 0),
+      (KeyCode::Char('j'), 4),
+      (KeyCode::Char('l'), 5),
+      (KeyCode::Right, 5),
+      (KeyCode::Down, 5),
+      (KeyCode::Char('k'), 1),
+    ] {
+      app.on_key(key(code));
+      assert_eq!((app.selected, app.focus), (selected, Focus::Results), "{code:?}");
+    }
+  }
+
+  #[test]
+  fn opens_the_selected_result_in_the_detail_view_and_browses_it() {
+    let (mut app, _) = browsing(3, 25);
+    app.on_key(key(KeyCode::Down));
+    app.on_key(key(KeyCode::Right));
+    app.on_key(key(KeyCode::Enter));
+    assert_eq!((app.view, app.focus, app.selected), (View::Detail, Focus::Results, 1));
+    for (code, selected) in [
+      (KeyCode::Left, 0),
+      (KeyCode::Left, 0),
+      (KeyCode::Char('l'), 1),
+      (KeyCode::Right, 2),
+      (KeyCode::Right, 2),
+      (KeyCode::Char('h'), 1),
+      // The detail view has no rows to move between, and Enter does not leave it.
+      (KeyCode::Down, 1),
+      (KeyCode::Char('j'), 1),
+      (KeyCode::Char('k'), 1),
+      (KeyCode::Enter, 1),
+    ] {
+      app.on_key(key(code));
+      assert_eq!((app.view, app.selected), (View::Detail, selected), "{code:?}");
+    }
+    app.on_key(key(KeyCode::Char('o')));
+    assert_eq!((app.view, app.focus, app.selected, app.show_selected_path), (View::Grid, Focus::Results, 1, true));
+    assert!(app.reveal_selection);
+  }
+
+  #[test]
+  fn chords_act_on_the_shown_selection_while_letters_stay_text_in_the_search_field() {
+    let (mut app, mut library) = browsing(2, 25);
+    type_text(&mut app, "cat");
+    let effects = app.on_key(key(KeyCode::Enter));
+    library.answer(&mut app, effects);
+    app.on_key(key(KeyCode::Down));
+    app.on_key(key(KeyCode::Right));
+    assert_eq!(app.on_key(ctrl('y')), [Effect::CopyImage("/p/1.jpg".into())]);
+    assert_eq!(app.on_key(ctrl('p')), [Effect::CopyPath("/p/1.jpg".into())]);
+    assert_eq!(app.on_key(ctrl('s')), [Effect::Download("/p/1.jpg".into())]);
+
+    // Switching views from the search field keeps it focused and its cursor in place.
+    app.on_key(ctrl('f'));
+    app.on_key(key(KeyCode::Home));
+    app.on_key(key(KeyCode::Right));
+    app.on_key(ctrl('o'));
+    assert_eq!((app.view, app.focus, app.input.cursor), (View::Detail, Focus::Search, 1));
+    assert_eq!(app.on_key(ctrl('p')), [Effect::CopyPath("/p/1.jpg".into())]);
+    for c in "oypsq".chars() {
+      assert!(app.on_key(key(KeyCode::Char(c))).is_empty(), "{c}");
+    }
+    assert_eq!((app.input.text.as_str(), app.view), ("coypsqat", View::Detail));
+
+    // Back in the grid, the focused search field means no result is selected, so the chords do nothing.
+    app.on_key(ctrl('o'));
+    assert_eq!((app.view, app.focus), (View::Grid, Focus::Search));
+    for c in ['y', 'p', 's'] {
+      assert!(app.on_key(ctrl(c)).is_empty(), "{c}");
+    }
+  }
+
+  #[test]
+  fn escape_leaves_the_search_field_and_the_detail_view_but_never_quits() {
+    let (mut app, _) = browsing(2, 25);
+    app.on_key(key(KeyCode::Esc));
+    assert_eq!((app.view, app.focus), (View::Grid, Focus::Results));
+    app.on_key(key(KeyCode::Enter));
+    assert_eq!(app.view, View::Detail);
+    app.on_key(key(KeyCode::Esc));
+    for ignored in [key(KeyCode::Esc), key(KeyCode::Char('q')), ctrl('q')] {
+      assert!(app.on_key(ignored).is_empty());
+      assert_eq!((app.view, app.focus), (View::Grid, Focus::Results));
+    }
+    app.on_key(ctrl('f'));
+    assert_eq!(app.focus, Focus::Search);
+    assert_eq!(app.on_key(ctrl('c')), [Effect::Quit]);
+  }
+
+  #[test]
+  fn a_new_search_keeps_the_detail_view_open_on_its_first_result() {
+    let (mut app, mut library) = browsing(3, 25);
+    for code in [KeyCode::Down, KeyCode::Right, KeyCode::Char('o')] {
+      app.on_key(key(code));
+    }
+    assert_eq!((app.view, selected_path(&app), app.show_selected_path), (View::Detail, Some("/p/1.jpg"), true));
+    app.on_key(key(KeyCode::Char('/')));
+    type_text(&mut app, "o");
+    assert_eq!((app.input.text.as_str(), app.view, app.focus), ("o", View::Detail, Focus::Search));
+    let effects = app.on_key(key(KeyCode::Enter));
+    library.answer(&mut app, effects);
+    assert_eq!((app.view, app.focus, app.selected, app.ranked), (View::Detail, Focus::Search, 0, true));
+    assert!(app.show_selected_path);
+
+    app.on_key(key(KeyCode::Esc));
+    app.on_key(key(KeyCode::Right));
+    assert_eq!((app.focus, app.selected), (Focus::Results, 1));
+    app.on_key(key(KeyCode::Char('o')));
+    assert_eq!((app.view, app.focus, app.selected, app.input.text.as_str()), (View::Grid, Focus::Results, 1, "o"));
+    app.on_key(key(KeyCode::Char('o')));
+    app.on_key(key(KeyCode::Up));
+    assert_eq!((app.view, app.focus), (View::Detail, Focus::Search));
+  }
+
+  #[test]
+  fn the_detail_view_stays_open_without_results() {
+    let (mut app, mut library) = browsing(3, 25);
+    for code in [KeyCode::Down, KeyCode::Char('o'), KeyCode::Char('/'), KeyCode::Char('x')] {
+      app.on_key(key(code));
+    }
+    library.total = 0;
+    let effects = app.on_key(key(KeyCode::Enter));
+    library.answer(&mut app, effects);
+    assert_eq!((app.view, app.status, app.selected_result()), (View::Detail, Some("No results"), None));
+    assert!(app.on_key(ctrl('y')).is_empty());
+    for code in [KeyCode::Down, KeyCode::Right, KeyCode::Left, KeyCode::Char('o'), KeyCode::Char('o')] {
+      assert!(app.on_key(key(code)).is_empty(), "{code:?}");
+    }
+    assert_eq!((app.view, app.focus), (View::Detail, Focus::Results));
+
+    // Clearing the query browses again and shows the first image.
+    library.total = 1;
+    app.on_key(key(KeyCode::Char('/')));
+    app.on_key(key(KeyCode::Backspace));
+    let effects = app.on_key(key(KeyCode::Enter));
+    library.answer(&mut app, effects);
+    assert_eq!((app.view, selected_path(&app), app.ranked, app.status), (View::Detail, Some("/p/0.jpg"), false, None));
+  }
+
+  #[test]
+  fn results_arriving_in_the_detail_view_replace_the_shown_image() {
+    for (count, score) in [(0, None), (1, Some(1.0))] {
+      let (mut app, mut library) = browsing(3, 25);
+      type_text(&mut app, "cat");
+      let effects = app.on_key(key(KeyCode::Enter));
+      for code in [KeyCode::Down, KeyCode::Right, KeyCode::Char('o')] {
+        app.on_key(key(code));
+      }
+      assert_eq!((app.view, selected_path(&app)), (View::Detail, Some("/p/1.jpg")));
+      library.total = count;
+      library.answer(&mut app, effects);
+      assert_eq!((app.view, app.results.len(), app.selected), (View::Detail, count, 0));
+      assert_eq!(app.selected_result().and_then(|result| result.score), score);
+    }
+  }
+
+  #[test]
+  fn browsing_the_detail_view_to_the_end_loads_every_result() {
+    for (query, neighbors) in [("", 0), ("", 2), ("cat", 0), ("cat", 2)] {
+      let (mut app, mut library) = browsing(51, 25);
+      if !query.is_empty() {
+        type_text(&mut app, query);
+        let effects = app.on_key(key(KeyCode::Enter));
+        library.answer(&mut app, effects);
+      }
+      assert_eq!(app.results.len(), 25);
+      app.on_key(key(KeyCode::Down));
+      app.filmstrip_neighbors = neighbors;
+      let effects = app.on_key(key(KeyCode::Char('o')));
+      library.settle(&mut app, effects);
+      for index in 1..51 {
+        let effects = app.on_key(key(KeyCode::Right));
+        library.settle(&mut app, effects);
+        assert_eq!(app.selected, index, "{query:?} with {neighbors} neighbors");
+        // The results shown next to the selection in the filmstrip are loaded ahead of it.
+        assert!(app.results.len() > (index + neighbors).min(50), "{query:?} with {neighbors} neighbors at {index}");
+      }
+      app.on_key(key(KeyCode::Right));
+      assert_eq!(app.selected, 50);
+      app.on_key(key(KeyCode::Left));
+      app.on_key(key(KeyCode::Char('o')));
+      assert_eq!((app.view, app.selected, app.results.len()), (View::Grid, 49, 51));
+      let browses = library.requests.iter().filter(|request| matches!(request, Request::Browse(_))).count();
+      let searches = library.requests.len() - browses;
+      assert_eq!((browses, searches), if query.is_empty() { (3, 0) } else { (1, 1) });
+    }
+  }
+
+  #[test]
+  fn an_advance_past_the_loaded_results_waits_for_the_next_page_unless_cancelled() {
+    for (action, view, selected) in
+      [(KeyCode::Left, View::Detail, 23), (KeyCode::Right, View::Detail, 25), (KeyCode::Char('o'), View::Grid, 24)]
+    {
+      let (mut app, mut library) = browsing(26, 25);
+      app.on_key(key(KeyCode::Down));
+      app.on_key(key(KeyCode::Char('o')));
+      // The next page starts loading at the last loaded result and has not arrived yet.
+      let mut page = Vec::new();
+      for _ in 0..25 {
+        page.extend(app.on_key(key(KeyCode::Right)));
+      }
+      assert_eq!((app.selected, page.len()), (24, 1));
+      assert!(app.on_key(key(KeyCode::Right)).is_empty());
+      assert!(app.on_key(key(action)).is_empty());
+      library.answer(&mut app, page);
+      assert_eq!((app.view, app.selected, app.results.len()), (view, selected, 26), "{action:?}");
+      assert_eq!(library.requests.len(), 2);
+    }
+  }
+
+  #[test]
+  fn a_new_search_discards_the_page_being_loaded() {
+    let (mut app, mut library) = browsing(26, 25);
+    let page = app.after_frame(0);
+    assert!(matches!(page[..], [Effect::Request(1, Request::Browse(Some(_)))]));
+    assert_eq!(app.status, Some("Loading…"));
+    type_text(&mut app, "cat");
+    let search = app.tick(Instant::now() + DEBOUNCE);
+    assert_eq!(search, [Effect::Request(2, Request::Search("cat".into()))]);
+    library.answer(&mut app, page);
+    assert_eq!((app.results.len(), app.ranked), (25, false));
+    library.answer(&mut app, search);
+    assert_eq!((app.results.len(), app.ranked, app.status), (25, true, None));
+  }
+
+  #[test]
+  fn showing_more_results_keeps_the_selection() {
+    let (mut app, mut library) = browsing(3, 2);
+    // Browsed pages are shown whole, whatever the search batch size is.
+    assert_eq!(app.results.len(), 3);
+    type_text(&mut app, "cat");
+    let effects = app.on_key(key(KeyCode::Enter));
+    library.answer(&mut app, effects);
+    app.on_key(key(KeyCode::Down));
+    app.on_key(key(KeyCode::Right));
+    assert_eq!(app.results.len(), 2);
+    assert!(app.after_frame(0).is_empty());
+    assert_eq!((app.results.len(), app.selected, app.focus, app.show_selected_path), (3, 1, Focus::Results, true));
+  }
+
+  #[test]
+  fn a_page_that_failed_to_load_is_requested_again() {
+    for detail in [false, true] {
+      let (mut app, mut library) = browsing(26, 25);
+      if detail {
+        app.on_key(key(KeyCode::Down));
+        app.on_key(key(KeyCode::Char('o')));
+        app.selected = 23;
+      }
+      let page = if detail { app.on_key(key(KeyCode::Right)) } else { app.after_frame(0) };
+      let Some(Effect::Request(generation, request)) = page.into_iter().next() else { panic!("expected a request") };
+      app.on_response(Response { generation, request: request.clone(), outcome: Err("page failed".into()) });
+      let notification = &app.notifications[0];
+      assert_eq!(
+        (notification.title.as_str(), notification.message.as_str()),
+        ("Unable to load more images", "page failed")
+      );
+      assert!(notification.error);
+      assert_eq!((app.results.len(), app.status), (25, None));
+
+      let retry = if detail {
+        app.on_key(key(KeyCode::Right))
+      } else {
+        app.scroll_grid(1, 0);
+        app.after_frame(0)
+      };
+      assert_eq!(retry, [Effect::Request(generation, request)]);
+      library.answer(&mut app, retry);
+      assert_eq!((app.results.len(), app.notifications.len()), (26, 1));
+      if detail {
+        assert_eq!((app.view, app.selected), (View::Detail, 25));
+      }
+    }
+  }
+
+  #[test]
+  fn notifications_name_the_copied_file_and_expire() {
+    let (mut app, _) = browsing(1, 25);
+    app.copied_path(&["", "photos", "cat.jpg"].join(std::path::MAIN_SEPARATOR_STR));
+    let notification = &app.notifications[0];
+    assert_eq!((notification.title.as_str(), notification.message.as_str()), ("cat.jpg", "Path copied"));
+    assert!(!notification.error);
+    let expires = app.next_deadline().unwrap();
+    app.tick(expires - Duration::from_millis(1));
+    assert_eq!(app.notifications.len(), 1);
+    app.tick(expires);
+    assert!(app.notifications.is_empty());
+    assert_eq!(app.next_deadline(), None);
+  }
+
+  #[test]
+  fn clicking_a_card_selects_it() {
+    let (mut app, _) = browsing(3, 25);
+    app.select(2);
+    assert_eq!((app.selected, app.focus, app.show_selected_path), (2, Focus::Results, true));
+    app.select(3);
+    assert_eq!(app.selected, 2);
+  }
+
+  #[test]
+  fn scrolling_stops_at_the_ends_of_the_grid() {
+    let (mut app, _) = browsing(3, 25);
+    app.grid.viewport_rows = 10;
+    for (lines, scroll) in [(-3, 0), (3, 3), (100, 20), (-100, 0)] {
+      app.scroll_grid(lines, 30);
+      assert_eq!(app.scroll, scroll);
+    }
   }
 }

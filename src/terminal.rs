@@ -206,11 +206,13 @@ mod tests {
   use super::*;
   use std::collections::HashMap;
 
-  fn check(
-    vars: &[(&str, &str)],
-    is_windows: bool,
-    support: fn(&Environment<'_>) -> Result<(), String>,
-  ) -> Result<(), String> {
+  type Support = fn(&Environment<'_>) -> Result<(), String>;
+
+  /// Both checks, each with the flag it tells the user to override it with.
+  const MODES: [(Support, &str); 2] =
+    [(interactive_support, "--force-interactive"), (preview_support, "--force-preview")];
+
+  fn check(vars: &[(&str, &str)], is_windows: bool, support: Support) -> Result<(), String> {
     let vars: HashMap<String, String> = vars.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
     let lookup = move |name: &str| vars.get(name).cloned();
     support(&Environment { var: &lookup, is_windows, is_atty: true })
@@ -220,8 +222,14 @@ mod tests {
   fn supports_kitty_ghostty_and_new_iterm2() {
     for vars in [
       vec![("KITTY_WINDOW_ID", "1")],
+      vec![("KITTY_PID", "42")],
+      vec![("TERM", "xterm-kitty")],
+      vec![("GHOSTTY_RESOURCES_DIR", "/path/to/ghostty")],
+      vec![("TERM_PROGRAM", "ghostty")],
       vec![("TERM", "xterm-ghostty")],
+      vec![("TERM_PROGRAM", "iTerm.app"), ("TERM_PROGRAM_VERSION", "3.5.0")],
       vec![("TERM_PROGRAM", "iTerm.app"), ("TERM_PROGRAM_VERSION", "3.5.2")],
+      vec![("TERM_PROGRAM", "iTerm.app"), ("TERM_PROGRAM_VERSION", "3.5")],
       vec![("TERM_PROGRAM", "iTerm.app")],
     ] {
       assert!(check(&vars, false, interactive_support).is_ok(), "{vars:?}");
@@ -232,43 +240,77 @@ mod tests {
   #[test]
   fn rejects_old_iterm2() {
     let vars = [("TERM_PROGRAM", "iTerm.app"), ("TERM_PROGRAM_VERSION", "3.4.19")];
-    assert!(check(&vars, false, interactive_support).unwrap_err().contains("prior to 3.5.0"));
-    assert!(check(&vars, false, preview_support).unwrap_err().contains("--force-preview"));
+    for (support, flag) in MODES {
+      let reason = check(&vars, false, support).unwrap_err();
+      assert!(reason.contains("prior to 3.5.0") && reason.contains(flag), "{reason}");
+    }
   }
 
   #[test]
   fn wezterm_and_konsole_support_previews_only() {
-    for vars in [vec![("TERM_PROGRAM", "WezTerm")], vec![("KONSOLE_VERSION", "")]] {
-      assert!(check(&vars, false, interactive_support).is_err());
-      assert!(check(&vars, false, preview_support).is_ok());
+    for vars in [
+      vec![("TERM_PROGRAM", "WezTerm")],
+      vec![("WEZTERM_EXECUTABLE", "/path/to/wezterm")],
+      vec![("WEZTERM_PANE", "1")],
+      vec![("KONSOLE_VERSION", "")],
+    ] {
+      let reason = check(&vars, false, interactive_support).unwrap_err();
+      assert!(reason.contains("Unicode placeholders") && reason.contains("--force-interactive"), "{reason}");
+      assert!(check(&vars, false, preview_support).is_ok(), "{vars:?}");
     }
   }
 
   #[test]
   fn explains_unsupported_terminals() {
-    assert!(check(&[("WT_SESSION", "x")], true, interactive_support).unwrap_err().starts_with("Windows Terminal"));
-    assert!(check(&[], true, preview_support).unwrap_err().starts_with("Windows Command Prompt"));
+    for (vars, is_windows, explanation) in [
+      (vec![("WT_SESSION", "abcd-1234")], true, "Windows Terminal does not support"),
+      (vec![], true, "Windows Command Prompt and PowerShell do not support"),
+      (vec![("TERM_PROGRAM", "Apple_Terminal")], false, "Apple Terminal (Terminal.app) does not support"),
+      (vec![("TERM", "alacritty")], false, "Alacritty does not support"),
+      (vec![("ALACRITTY_LOG", "/tmp/alacritty.log")], false, "Alacritty does not support"),
+      (vec![("ALACRITTY_WINDOW_ID", "1")], false, "Alacritty does not support"),
+      (vec![("TERM", "dumb")], false, "terminal type 'dumb' does not support"),
+      (vec![("TERM", "linux")], false, "terminal type 'linux' does not support"),
+      (vec![("TMUX", "/tmp/tmux-1000/default,1234,0")], false, "running inside tmux without outer terminal"),
+      (vec![], false, "could not detect a terminal emulator"),
+    ] {
+      for (support, flag) in MODES {
+        let reason = check(&vars, is_windows, support).unwrap_err();
+        assert!(reason.starts_with(explanation) && reason.contains(flag), "{vars:?}: {reason}");
+      }
+    }
     assert_eq!(
       check(&[("TERM_PROGRAM", "Apple_Terminal")], false, preview_support).unwrap_err(),
       "Apple Terminal (Terminal.app) does not support the Kitty Graphics Protocol. \
       Consider using Ghostty, Kitty, WezTerm, or iTerm2. To preview anyway, use --force-preview."
     );
-    assert!(check(&[("TERM", "dumb")], false, interactive_support).unwrap_err().contains("'dumb'"));
     assert!(check(&[("TMUX", "/tmp/x")], false, interactive_support).unwrap_err().contains("allow-passthrough"));
-    assert!(check(&[], false, interactive_support).unwrap_err().starts_with("could not detect"));
   }
 
   #[test]
-  fn requires_a_tty() {
-    let lookup = |_: &str| None;
+  fn recognizes_a_supported_terminal_inside_tmux_and_on_windows() {
+    for (support, _) in MODES {
+      assert!(check(&[("TMUX", "/tmp/x"), ("KITTY_WINDOW_ID", "1")], false, support).is_ok());
+      assert!(check(&[("TERM_PROGRAM", "ghostty")], true, support).is_ok());
+    }
+  }
+
+  #[test]
+  fn requires_a_tty_even_in_a_supported_terminal() {
+    let lookup = |name: &str| (name == "KITTY_WINDOW_ID").then(|| "1".to_string());
     let env = Environment { var: &lookup, is_windows: false, is_atty: false };
-    assert!(interactive_support(&env).unwrap_err().contains("not a TTY"));
-    assert!(preview_support(&env).unwrap_err().contains("not a TTY"));
+    assert_eq!(interactive_support(&env).unwrap_err(), "interactive mode requires a terminal (stdout is not a TTY)");
+    assert_eq!(preview_support(&env).unwrap_err(), "image preview requires a terminal (stdout is not a TTY)");
   }
 
   #[test]
   fn parses_versions() {
     assert_eq!(parse_version("3.5.0beta2"), (3, 5, 0));
     assert_eq!(parse_version("3.10"), (3, 10, 0));
+    assert_eq!(parse_version("3.5.2"), (3, 5, 2));
+    assert_eq!(parse_version("3.4.19"), (3, 4, 19));
+    assert_eq!(parse_version("4"), (4, 0, 0));
+    assert_eq!(parse_version(""), (0, 0, 0));
+    assert_eq!(parse_version("invalid"), (0, 0, 0));
   }
 }
