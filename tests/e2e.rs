@@ -352,14 +352,14 @@ fn null_terminates_paths() {
 #[test]
 fn json_output_matches_the_table() {
   let run = Run::new();
-  let (_, table) = run.output(&images(), &["kitty"]);
-  let (success, json) = run.output(&images(), &["kitty", "--json", "--no-indexing"]);
-  assert!(success);
-  let expected: Vec<String> = results(&table)
-    .iter()
-    .map(|(filepath, score)| format!("{{\"score\": {score}, \"filepath\": \"{filepath}\"}}"))
+  let table = String::from_utf8(run.rclip(&images(), &["kitty"]).stdout).unwrap();
+  let json = run.rclip(&images(), &["kitty", "--json", "--no-indexing"]);
+  assert!(json.status.success());
+  let expected: Vec<serde_json::Value> = results(&table)
+    .into_iter()
+    .map(|(filepath, score)| serde_json::json!({ "score": score, "filepath": filepath }))
     .collect();
-  assert_eq!(json, format!("[{}]\n", expected.join(", ")));
+  assert_eq!(serde_json::from_slice::<serde_json::Value>(&json.stdout).unwrap(), serde_json::Value::Array(expected));
 }
 
 #[test]

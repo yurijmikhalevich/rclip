@@ -17,7 +17,6 @@ use std::io::Write;
 use std::process::ExitCode;
 
 use anyhow::{Context, Result};
-use serde::Serialize;
 
 use cli::{MaxImagePixels, Options};
 use db::{Db, VectorCacheReset};
@@ -121,13 +120,9 @@ fn print_results(results: &[SearchResult], options: &Options) -> Result<()> {
   } else if options.args.json {
     let results: Vec<JsonResult<'_>> = results
       .iter()
-      .map(|result| JsonResult {
-        // Python's `round(score, 3)`
-        score: format!("{:.3}", result.score).parse().expect("a formatted number is a number"),
-        filepath: &result.filepath,
-      })
+      .map(|result| JsonResult { score: (result.score * 1000.0).round() / 1000.0, filepath: &result.filepath })
       .collect();
-    results.serialize(&mut serde_json::Serializer::with_formatter(&mut output, PythonJson))?;
+    serde_json::to_writer(&mut output, &results)?;
     writeln!(output)?;
   } else if options.args.filepath_only {
     for result in results {
@@ -154,51 +149,4 @@ fn print_results(results: &[SearchResult], options: &Options) -> Result<()> {
 struct JsonResult<'a> {
   score: f64,
   filepath: &'a str,
-}
-
-/// Formats JSON like Python's `json.dumps`, so that `--json` prints the same bytes as the Python version.
-struct PythonJson;
-
-impl serde_json::ser::Formatter for PythonJson {
-  fn begin_array_value<W: ?Sized + Write>(&mut self, writer: &mut W, first: bool) -> std::io::Result<()> {
-    if first { Ok(()) } else { writer.write_all(b", ") }
-  }
-
-  fn begin_object_key<W: ?Sized + Write>(&mut self, writer: &mut W, first: bool) -> std::io::Result<()> {
-    if first { Ok(()) } else { writer.write_all(b", ") }
-  }
-
-  fn begin_object_value<W: ?Sized + Write>(&mut self, writer: &mut W) -> std::io::Result<()> {
-    writer.write_all(b": ")
-  }
-
-  fn write_string_fragment<W: ?Sized + Write>(&mut self, writer: &mut W, fragment: &str) -> std::io::Result<()> {
-    for character in fragment.chars() {
-      if character.is_ascii() {
-        writer.write_all(&[character as u8])?;
-      } else {
-        for unit in character.encode_utf16(&mut [0; 2]) {
-          write!(writer, "\\u{unit:04x}")?;
-        }
-      }
-    }
-    Ok(())
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn formats_json_like_python() {
-    let results =
-      [JsonResult { score: 0.3, filepath: "/p/\"鳥\" 🐦.jpg" }, JsonResult { score: -0.012, filepath: "b" }];
-    let mut output = Vec::new();
-    results.serialize(&mut serde_json::Serializer::with_formatter(&mut output, PythonJson)).unwrap();
-    assert_eq!(
-      String::from_utf8(output).unwrap(),
-      r#"[{"score": 0.3, "filepath": "/p/\"\u9ce5\" \ud83d\udc26.jpg"}, {"score": -0.012, "filepath": "b"}]"#
-    );
-  }
 }
