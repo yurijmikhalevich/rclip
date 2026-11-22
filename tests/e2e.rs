@@ -407,7 +407,10 @@ fn interactive_starts_and_exits_cleanly() {
   let (mut controller, device) = unsafe {
     let (mut controller, mut device) = (0, 0);
     let mut size = libc::winsize { ws_row: 40, ws_col: 120, ws_xpixel: 1200, ws_ypixel: 800 };
-    assert_eq!(libc::openpty(&mut controller, &mut device, std::ptr::null_mut(), std::ptr::null_mut(), &mut size), 0);
+    assert_eq!(
+      libc::openpty(&mut controller, &mut device, std::ptr::null_mut(), std::ptr::null_mut(), &raw mut size),
+      0
+    );
     (std::fs::File::from_raw_fd(controller), OwnedFd::from_raw_fd(device))
   };
   let mut command = Command::new(env!("CARGO_BIN_EXE_rclip"));
