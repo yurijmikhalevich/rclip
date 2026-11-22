@@ -1,18 +1,32 @@
 #!/usr/bin/env bash
-
+# Wraps the Linux binary from a release archive into an AppImage in the current directory.
+#
+# Usage: release-utils/appimage/build_appimage.sh <rclip-<version>-x86_64-unknown-linux-gnu.tar.gz>
+# Needs appimagetool.
 set -euo pipefail
 
-app_version=${APP_VERSION:?APP_VERSION is required}
-recipe=./release-utils/appimage/appimage-builder.yml
-appdir=./AppDir
-artifact="rclip-${app_version}-x86_64.AppImage"
-update_information='gh-releases-zsync|AppImageCrafters|python-appimage-example|latest|python-appimage-*x86_64.AppImage.zsync'
+archive=$1
+version=$(basename "$archive" -x86_64-unknown-linux-gnu.tar.gz)
+version=${version#rclip-}
+appdir=AppDir
+here=$(dirname "$0")
 
-rm -rf "$appdir" appimage-build .bundle.yml "$artifact" "${artifact}.zsync"
+rm -rf "$appdir"
+mkdir -p "$appdir/usr/bin" "$appdir/usr/share/doc/rclip" "$appdir/usr/share/icons/hicolor/256x256/apps"
+tar xzf "$archive" --strip-components=1 -C "$appdir/usr/share/doc/rclip"
+mv "$appdir/usr/share/doc/rclip/rclip" "$appdir/usr/bin/"
+cp "$here/logo@256.png" "$appdir/usr/share/icons/hicolor/256x256/apps/rclip.png"
+cp "$here/logo@256.png" "$appdir/rclip.png"
+ln -s usr/bin/rclip "$appdir/AppRun"
+cat > "$appdir/rclip.desktop" <<DESKTOP
+[Desktop Entry]
+Type=Application
+Name=rclip
+Comment=Semantic photo search for the command line
+Exec=rclip
+Icon=rclip
+Terminal=true
+Categories=Graphics;Utility;
+DESKTOP
 
-appimage-builder --skip-tests --skip-appimage --recipe "$recipe"
-# appimage-builder hardcodes Terminal=false in the desktop entry it generates, but
-# rclip is a CLI application, so the entry must launch it in a terminal.
-sed -i 's/^Terminal=false$/Terminal=true/' "$appdir"/*.desktop
-grep -qx 'Terminal=true' "$appdir"/*.desktop
-ARCH=x86_64 appimagetool --comp zstd --mksquashfs-opt -Xcompression-level --mksquashfs-opt 3 --mksquashfs-opt -b --mksquashfs-opt 128K --no-appstream --updateinformation "$update_information" "$appdir" "$artifact"
+ARCH=x86_64 appimagetool --comp zstd --no-appstream "$appdir" "rclip-$version-x86_64.AppImage"

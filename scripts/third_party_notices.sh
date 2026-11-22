@@ -31,7 +31,8 @@ section() {
 
 # Prints the source directory of a crate, where it keeps the licences of the library it bundles.
 crate() {
-  dirname "$(jq -r --arg name "$1" '.packages[] | select(.name == $name).manifest_path' <<< "$packages")"
+  jq -r --arg name "$1" '.packages[] | select(.name == $name).manifest_path | sub("[\\\\/]Cargo.toml$"; "")' <<< "$packages" |
+    tr -d '\r'
 }
 
 # the libraries compiled from sources that the crates above bundle
@@ -40,8 +41,19 @@ section "OpenJPEG (bundled in openjpeg-sys)" "$(crate openjpeg-sys)/vendor/LICEN
 section "zlib (bundled in libz-sys)" "$(crate libz-sys)/src/zlib/LICENSE"
 section "SQLite (bundled in libsqlite3-sys)" <(echo "SQLite is in the public domain: https://www.sqlite.org/copyright.html")
 
-# the libraries rclip itself brings
-section "LibRaw 0.22.3, used under the Common Development and Distribution License 1.0. \
-Its source code is at https://github.com/LibRaw/LibRaw/tree/0.22.3" \
+# the libraries rclip itself brings, whose versions the SBOMs list too
+version() {
+  jq -r --arg name "$1" '.[] | select(.name == $name).version' compliance/native_components.json | tr -d '\r'
+}
+libraw=$(version LibRaw)
+onnxruntime=$(version onnxruntime)
+header=vendor/libraw/libraw/libraw_version.h
+submodule=$(sed -nE 's/^#define LIBRAW_(MAJOR|MINOR|PATCH)_VERSION ([0-9]+).*/\2/p' "$header" | paste -sd . -)
+if [[ $submodule != "$libraw" ]]; then
+  echo "error: vendor/libraw is LibRaw $submodule, but compliance/native_components.json says $libraw" >&2
+  exit 1
+fi
+section "LibRaw $libraw, used under the Common Development and Distribution License 1.0. \
+Its source code is at https://github.com/LibRaw/LibRaw/tree/$libraw" \
   vendor/libraw/COPYRIGHT vendor/libraw/LICENSE.CDDL compliance/notices/ADOBE-DNG-PATENT-LICENSE.txt
-section "ONNX Runtime 1.31.0" compliance/onnxruntime-1.31.0/{LICENSE,ThirdPartyNotices.txt}
+section "ONNX Runtime $onnxruntime" "compliance/onnxruntime-$onnxruntime"/{LICENSE,ThirdPartyNotices.txt}

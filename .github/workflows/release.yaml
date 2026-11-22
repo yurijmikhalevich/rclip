@@ -4,26 +4,11 @@ on:
   push:
     tags:
       - v[0-9]+.[0-9]+.[0-9]+*
+  # builds and tests every artifact without publishing anything
   workflow_dispatch:
     inputs:
-      pypi:
-        description: Build and test PyPI artifacts
-        type: boolean
-        default: true
-      snap:
-        description: Build and test Snap artifacts
-        type: boolean
-        default: true
-      appimage:
-        description: Build and test the AppImage
-        type: boolean
-        default: true
-      windows:
-        description: Build and test the Windows MSI
-        type: boolean
-        default: true
       sign_windows:
-        description: Sign the Windows MSI (only used when Windows is selected)
+        description: Sign the Windows MSI
         type: boolean
         default: false
 
@@ -31,12 +16,6 @@ permissions:
   contents: read
 
 jobs:
-  lint:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v6
-      - uses: ./.github/actions/lint
-
   parse_tag:
     runs-on: ubuntu-22.04
     outputs:
@@ -44,75 +23,101 @@ jobs:
       version: ${{ steps.parse.outputs.version }}
     steps:
       - uses: actions/checkout@v6
-        if: github.event_name == 'workflow_dispatch'
-      - uses: actions/setup-python@v6
-        if: github.event_name == 'workflow_dispatch'
-        with:
-          python-version: '3.12'
       - id: parse
         shell: bash
         run: |
+          version=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)
+          is_stable_version=false
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            version="${GITHUB_REF_NAME#v}"
+            if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
+              echo "the tag $GITHUB_REF_NAME doesn't match the version in Cargo.toml, $version" >&2
+              exit 1
+            fi
             is_stable_version=$([[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] && echo true || echo false)
-          else
-            version=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
-            is_stable_version=false
           fi
 
           echo "is_stable_version=$is_stable_version" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-  pypi-build:
-    needs: [lint, parse_tag]
-    if: github.event_name == 'push' || inputs.pypi
+  # Builds the binary for every platform. All the other jobs package and test these binaries.
+  build:
+    needs: parse_tag
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04-arm
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2022
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - uses: ./.github/actions/setup-syft
+      - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
+        with:
+          tool: cargo-about@0.9.3,cargo-auditable@0.7.7
+      - uses: ./.github/actions/rust-build-setup
+      # cargo-auditable records the crates compiled into the binary, which the SBOM is generated from
+      - run: cargo auditable build --release --locked
+      - run: release-utils/package.sh ${{ matrix.target }}
+        shell: bash
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rclip-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  # The LibRaw sources are published with each release, before the binaries built from them.
+  libraw-source:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
-      - uses: ./.github/actions/setup-syft
-      - uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-      - name: Install dependencies
-        run: uv sync --locked
-      - run: uv build
-      - name: Generate wheel SBOM
+          submodules: true
+      - name: Archive the LibRaw sources
         run: |
-          mkdir -p build/compliance
-          python -m zipfile -e \
-            dist/rclip-${{ needs.parse_tag.outputs.version }}-py3-none-any.whl \
-            build/wheel-sbom-root
-          SYFT_FILE_METADATA_SELECTION=none syft scan dir:build/wheel-sbom-root \
-            -o cyclonedx-json=build/compliance/rclip-wheel.cdx.json
-          python -c 'import json; components=json.load(open("build/compliance/rclip-wheel.cdx.json"))["components"]; assert any(component.get("name") == "rclip" for component in components), "rclip not in wheel SBOM"'
+          version=$(jq -r '.[] | select(.name == "LibRaw").version' compliance/native_components.json)
+          mkdir source
+          git -C vendor/libraw archive --format=tar.gz --prefix="LibRaw-$version/" -o "$PWD/source/LibRaw-$version-source.tar.gz" HEAD
       - uses: actions/upload-artifact@v7
         with:
-          name: pypi
-          path: dist/*
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v7
-        with:
-          name: pypi-compliance
-          path: build/compliance/*
+          name: libraw-source
+          path: source/*
           if-no-files-found: error
 
-  pypi-test:
-    needs: pypi-build
+  wheel-test:
+    needs: build
     strategy:
       matrix:
-        python: ['3.12', '3.13']
-        os: [ubuntu-22.04, macos-15, windows-2022]
-    runs-on: ${{ matrix.os }}
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-22.04-arm
+          - target: aarch64-apple-darwin
+            runner: macos-15
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2022
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: true
       - uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python }}
-      - run: python -m pip install --upgrade pip
+          python-version: '3.13'
       - uses: actions/download-artifact@v8
         with:
-          name: pypi
+          name: rclip-${{ matrix.target }}
           path: dist/
       - run: pip install dist/rclip-*.whl
         shell: bash
@@ -121,80 +126,53 @@ jobs:
         # shared with other GitHub-hosted runners and fails the tests with HTTP 429.
         env:
           HF_TOKEN: ${{ secrets.HF_READONLY_TOKEN }}
-        with:
-          python: ${{ matrix.python }}
-          force-bash: true
 
   pypi-release:
-    needs: pypi-test
-    if: github.event_name == 'push'
+    needs: [parse_tag, create_release]
+    # pre-releases stay off PyPI: every release there counts toward the project's storage quota
+    if: ${{ !cancelled() && needs.create_release.result == 'success' && needs.parse_tag.outputs.is_stable_version == 'true' }}
     runs-on: ubuntu-22.04
     permissions:
       id-token: write
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: pypi
-          path: dist/
+          pattern: rclip-*
+          path: artifacts/
+          merge-multiple: true
+      - run: mkdir dist && mv artifacts/*.whl dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
 
-  brew:
-    # the Formula references the rclip package published to PyPI
-    needs: [parse_tag, pypi-release, source-release]
-    if: github.event_name == 'push' && needs.parse_tag.outputs.is_stable_version == 'true'
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-      - name: Install dependencies
-        run: uv sync --locked
-      - name: Setup git
-        run: |
-          git config --global user.email "zhibot.gh@gmail.com"
-          git config --global user.name "Zhi Bot"
-      - run: make release-brew
-        env:
-          GITHUB_TOKEN: ${{ secrets.ZHIBOT_GITHUB_TOKEN }}
-
   snap-build:
-    needs: lint
-    if: github.event_name == 'push' || inputs.snap
+    needs: build
     strategy:
       matrix:
         include:
           - arch: amd64
+            target: x86_64-unknown-linux-gnu
             runner: ubuntu-22.04
           - arch: arm64
+            target: aarch64-unknown-linux-gnu
             runner: ubuntu-22.04-arm
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/download-artifact@v8
         with:
-          python-version: '3.12'
-      - uses: ./.github/actions/setup-syft
+          name: rclip-${{ matrix.target }}
+          path: dist/
+      - name: Lay out the files of the snap
+        run: |
+          mkdir -p snap-root/bin snap-root/share/doc/rclip
+          tar xzf dist/rclip-*.tar.gz --strip-components=1 -C snap-root/share/doc/rclip
+          mv snap-root/share/doc/rclip/rclip snap-root/bin/
       - uses: canonical/setup-lxd@main
       - run: sudo snap install snapcraft --classic
       - run: snapcraft --use-lxd --build-for ${{ matrix.arch }}
-      - name: Extract assembled Snap
-        run: unsquashfs -d snap-root rclip_*.snap
-      - uses: ./.github/actions/audit-runtime
-        with:
-          root: snap-root
-          legal_dir: snap-root/share/doc/rclip
-          syft_json: snap-syft.json
-          cyclonedx_json: rclip-${{ matrix.arch }}-snap.cdx.json
-          report_output: snap-${{ matrix.arch }}-compliance.json
       - uses: actions/upload-artifact@v7
         with:
           name: snap-${{ matrix.arch }}
-          path: |
-            rclip_*.snap
-            rclip-${{ matrix.arch }}-snap.cdx.json
-            snap-${{ matrix.arch }}-compliance.json
+          path: rclip_*.snap
           if-no-files-found: error
 
   snap-test:
@@ -209,6 +187,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: true
       - uses: actions/download-artifact@v8
         with:
           name: snap-${{ matrix.arch }}
@@ -218,8 +198,10 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_READONLY_TOKEN }}
 
   snap-release:
-    needs: [snap-test, parse_tag, source-release]
-    if: github.event_name == 'push'
+    needs: [parse_tag, create_release]
+    # create_release runs for pre-releases although the windows jobs it needs are skipped, which
+    # would skip this job too without the explicit condition
+    if: ${{ !cancelled() && needs.create_release.result == 'success' }}
     runs-on: ubuntu-22.04
     steps:
       - run: sudo snap install snapcraft --classic
@@ -241,49 +223,25 @@ jobs:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_LOGIN }}
 
   appimage-build:
-    needs: [lint, parse_tag]
-    if: github.event_name == 'push' || inputs.appimage
+    needs: build
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
-      - uses: ./.github/actions/setup-syft
-      - uses: actions/setup-python@v6
+      - uses: actions/download-artifact@v8
         with:
-          python-version: '3.13'
-      - run: sudo apt-get install -y fuse
-      - name: Install appimage-builder
-        run: |
-          wget -O appimage-builder-x86_64.AppImage https://github.com/AppImageCrafters/appimage-builder/releases/download/v1.1.0/appimage-builder-1.1.0-x86_64.AppImage
-          chmod +x appimage-builder-x86_64.AppImage
-          sudo mv appimage-builder-x86_64.AppImage /usr/local/bin/appimage-builder
+          name: rclip-x86_64-unknown-linux-gnu
+          path: dist/
       - name: Install appimagetool
         run: |
+          sudo apt-get install -y fuse
           wget -O appimagetool-x86_64.AppImage https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
           chmod +x appimagetool-x86_64.AppImage
           sudo mv appimagetool-x86_64.AppImage /usr/local/bin/appimagetool
-      - name: Build AppImage
-        env:
-          APP_VERSION: ${{ needs.parse_tag.outputs.version }}
-        run: bash ./release-utils/appimage/build_appimage.sh
-      - name: Extract assembled AppImage
-        run: |
-          chmod +x rclip-*.AppImage
-          appimage_path=(./rclip-*.AppImage)
-          "${appimage_path[0]}" --appimage-extract >/dev/null
-      - uses: ./.github/actions/audit-runtime
-        with:
-          root: squashfs-root
-          legal_dir: squashfs-root/usr/share/doc/rclip
-          syft_json: appimage-syft.json
-          cyclonedx_json: rclip-${{ needs.parse_tag.outputs.version }}-appimage.cdx.json
-          report_output: appimage-compliance.json
+      - run: release-utils/appimage/build_appimage.sh dist/rclip-*-x86_64-unknown-linux-gnu.tar.gz
       - uses: actions/upload-artifact@v7
         with:
           name: appimage
-          path: |
-            rclip-*.AppImage
-            rclip-*-appimage.cdx.json
-            appimage-compliance.json
+          path: rclip-*.AppImage
           if-no-files-found: error
 
   appimage-test:
@@ -291,6 +249,8 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v6
+        with:
+          submodules: true
       - run: sudo apt-get install -y fuse
       - uses: actions/download-artifact@v8
         with:
@@ -304,28 +264,23 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_READONLY_TOKEN }}
 
   windows-build:
-    needs: [lint, parse_tag]
+    needs: [parse_tag, build]
+    # signing an MSI is paid for, so pre-releases don't get one
     if: >-
       (github.event_name == 'push' && needs.parse_tag.outputs.is_stable_version == 'true') ||
-      (github.event_name == 'workflow_dispatch' && inputs.windows)
+      github.event_name == 'workflow_dispatch'
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v6
-      - uses: ./.github/actions/setup-syft
-      - uses: actions/setup-python@v6
+      - uses: actions/download-artifact@v8
         with:
-          python-version: '3.12'
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-      - name: Install dependencies
-        run: uv sync --locked --no-dev
-      - run: make build-windows
-      - uses: ./.github/actions/audit-runtime
-        with:
-          root: dist/rclip
-          legal_dir: dist/rclip/legal
-          syft_json: build/windows-syft.json
-          cyclonedx_json: build/rclip-windows.cdx.json
-          report_output: build/windows-compliance.json
+          name: rclip-x86_64-pc-windows-msvc
+          path: dist/
+      - name: Lay out the files of the installer
+        shell: bash
+        run: |
+          mkdir dist/rclip
+          tar xzf dist/rclip-*.tar.gz --strip-components=1 -C dist/rclip
       - name: Install Advinst
         uses: caphyon/advinst-github-action@main
         with:
@@ -347,70 +302,53 @@ jobs:
           if ( ( Get-FileHash -Algorithm SHA256 CodeSignTool.zip ).Hash -ne 'AC9CDBFF6D482DBC1107ABC8789570F57ECF85773332BBA466CB3E00CE0BB841' ) { throw 'hash does not match' }
           Expand-Archive -Path CodeSignTool.zip -DestinationPath .
           cd CodeSignTool-v1.2.7-windows
-          & ./CodeSignTool.bat sign -input_file_path="${env:GITHUB_WORKSPACE}/build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi" -username=${{ secrets.WINDOWS_SIGNING_USERNAME }} -credential_id='${{ secrets.WINDOWS_SIGNING_CREDENTIAL_ID }}' -password='${{ secrets.WINDOWS_SIGNING_PASSWORD }}' -totp_secret='${{ secrets.WINDOWS_SIGNING_TOTP_SECRET }}' -output_dir_path="${env:GITHUB_WORKSPACE}/artifacts"
-      - name: Stage Windows compliance artifacts
-        run: |
-          Copy-Item build/rclip-windows.cdx.json artifacts/
-          Copy-Item build/windows-compliance.json artifacts/
+          & ./CodeSignTool.bat sign -input_file_path="${env:GITHUB_WORKSPACE}/build-msi/rclip-SetupFiles/rclip-${{ needs.parse_tag.outputs.version }}.msi" -username=${{ secrets.ES_USERNAME }} -password="${{ secrets.ES_PASSWORD }}" -totp_secret="${{ secrets.ES_TOTP_SECRET }}" -output_dir_path="${env:GITHUB_WORKSPACE}/artifacts"
       - uses: actions/upload-artifact@v7
         with:
           name: windows
           path: artifacts/*
           if-no-files-found: error
 
-  source-bundle:
-    needs: lint
-    if: github.event_name == 'push'
-    runs-on: ubuntu-22.04
+  windows-test:
+    needs: [parse_tag, windows-build]
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
         with:
-          python-version: '3.12'
-      - name: Build LibRaw corresponding source bundle
-        run: |
-          mkdir -p source
-          rawpy_version=$(python -c 'import tomllib; print(tomllib.load(open("compliance/sources.toml", "rb"))["rawpy"]["version"])')
-          python -m rclip._compliance source-bundle \
-            --manifest compliance/sources.toml \
-            --output "source/rawpy-${rawpy_version}-corresponding-source.tar.gz"
-      - name: Download textual-image corresponding source
-        run: |
-          python - <<'PY'
-          from hashlib import sha256
-          from pathlib import Path
-          import tomllib
-          from urllib.request import urlopen
-
-          lock = tomllib.loads(Path("uv.lock").read_text())
-          package = next(package for package in lock["package"] if package["name"] == "textual-image")
-          source = package["sdist"]
-          with urlopen(source["url"], timeout=60) as response:
-            data = response.read()
-          expected = source["hash"].removeprefix("sha256:")
-          if sha256(data).hexdigest() != expected:
-            raise ValueError("textual-image source hash does not match uv.lock")
-          (Path("source") / Path(source["url"]).name).write_bytes(data)
-          PY
-      - uses: actions/upload-artifact@v7
+          submodules: true
+      - uses: actions/download-artifact@v8
         with:
-          name: corresponding-source
-          path: source/*
-          if-no-files-found: error
+          name: windows
+      - name: Install MSI
+        run: |
+          $process = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i rclip-${{ needs.parse_tag.outputs.version }}.msi /quiet /norestart'
+          if ($process.ExitCode -notin 0, 3010) { throw "msiexec failed with exit code $($process.ExitCode)" }
+      - uses: ./.github/actions/test-system-rclip
+        env:
+          HF_TOKEN: ${{ secrets.HF_READONLY_TOKEN }}
 
-  source-release:
-    needs: [parse_tag, source-bundle, pypi-release, snap-test, appimage-test, windows-test]
+  create_release:
+    needs: [parse_tag, libraw-source, wheel-test, snap-test, appimage-test, windows-test]
+    # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
     if: ${{ github.event_name == 'push' && !cancelled() }}
     runs-on: ubuntu-22.04
     permissions:
       contents: write
     steps:
+      # if any of the needs jobs fail, we don't want to create a release
+      # this is needed because the condition above allows skipped dependencies
       - if: ${{ contains(needs.*.result, 'failure') }}
         run: exit 1
       - uses: actions/download-artifact@v8
         with:
-          name: corresponding-source
-          path: source/
+          path: artifacts/
+          merge-multiple: true
+      - name: Rename the snaps and the AppImage for the GitHub releases page
+        run: |
+          for snap in artifacts/*.snap; do
+            mv "$snap" "${snap//_/-}"
+          done
+          mv artifacts/rclip-${{ needs.parse_tag.outputs.version }}-x86_64.AppImage artifacts/rclip-${{ needs.parse_tag.outputs.version }}-amd64.AppImage
       - name: Get previous public release tag
         id: previous_release
         env:
@@ -432,11 +370,11 @@ jobs:
           )
           echo "tag=$previous_tag" >> "$GITHUB_OUTPUT"
           echo "Previous public release tag: ${previous_tag:-<none>}"
-      - name: Publish corresponding source before binary distributions
+      - name: Create Release
         uses: ncipollo/release-action@v1
         with:
           name: ${{ github.ref_name }}
-          artifacts: source/*
+          artifacts: artifacts/*
           allowUpdates: true
           artifactErrorsFailBuild: true
           generateReleaseNotes: true
@@ -444,52 +382,17 @@ jobs:
           prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
-  windows-test:
-    needs: [parse_tag, windows-build]
-    runs-on: windows-2022
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v8
-        with:
-          name: windows
-      - name: Install MSI
-        run: |
-          $process = Start-Process msiexec.exe -Wait -PassThru -ArgumentList '/i rclip-${{ needs.parse_tag.outputs.version }}.msi /quiet /norestart'
-          if ($process.ExitCode -notin 0, 3010) { throw "msiexec failed with exit code $($process.ExitCode)" }
-      - uses: ./.github/actions/test-system-rclip
-        env:
-          HF_TOKEN: ${{ secrets.HF_READONLY_TOKEN }}
-
-  create_release:
-    needs: [parse_tag, pypi-release, snap-release, appimage-test, windows-test, source-release]
-    # the windows job doesn't run for pre-releases, but we need to create a release for pre-releases too
-    if: ${{ github.event_name == 'push' && !cancelled() }}
+  brew:
+    # the formula downloads the binaries from the GitHub release
+    needs: [parse_tag, create_release]
+    if: ${{ !cancelled() && needs.create_release.result == 'success' && needs.parse_tag.outputs.is_stable_version == 'true' }}
     runs-on: ubuntu-22.04
-    permissions:
-      contents: write
     steps:
-      # if any of the needs jobs fail, we don't want to create a release
-      # this is needed because the condition above allows skipped dependencies
-      - if: ${{ contains(needs.*.result, 'failure') }}
-        run: exit 1
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v8
-        with:
-          path: artifacts/
-      - name: Rename snaps for GitHub releases page
+      - name: Setup git
         run: |
-          for snap in artifacts/snap-*/*.snap; do
-            mv "$snap" "${snap//_/-}"
-          done
-      - name: Rename AppImage for GitHub releases page
-        run: mv artifacts/appimage/rclip-${{ needs.parse_tag.outputs.version }}-x86_64.AppImage artifacts/appimage/rclip-${{ needs.parse_tag.outputs.version }}-amd64.AppImage
-      - name: Create Release
-        uses: ncipollo/release-action@v1
-        with:
-          name: ${{ github.ref_name }}
-          artifacts: artifacts/pypi/rclip-*,artifacts/snap-amd64/rclip-*.snap,artifacts/snap-arm64/rclip-*.snap,artifacts/appimage/rclip-*.AppImage,artifacts/windows/rclip-*.msi,artifacts/**/*.cdx.json,artifacts/**/*compliance.json
-          allowUpdates: true
-          artifactErrorsFailBuild: true
-          omitBodyDuringUpdate: true
-          prerelease: ${{ needs.parse_tag.outputs.is_stable_version == 'false' }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          git config --global user.email "zhibot.gh@gmail.com"
+          git config --global user.name "Zhi Bot"
+      - run: make release-brew
+        env:
+          GITHUB_TOKEN: ${{ secrets.ZHIBOT_GITHUB_TOKEN }}

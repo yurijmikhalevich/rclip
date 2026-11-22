@@ -27,14 +27,6 @@ apps:
 
 parts:
   rclip:
-    plugin: uv
-    source: .
-    build-snaps:
-      - astral-uv/latest/stable
-    override-build: |
-      craftctl default
-      "$CRAFT_PART_INSTALL/bin/python" -m rclip._compliance collect \
-        --root "$CRAFT_PART_INSTALL" \
-        --output "$CRAFT_PART_INSTALL/share/doc/rclip" \
-        --policy "$CRAFT_PART_SRC/compliance/policy.toml" \
-        --common-notices "$CRAFT_PART_SRC/compliance/notices"
+    # the release workflow lays out the binary it built and its notices in snap-root
+    plugin: dump
+    source: snap-root

@@ -1,5 +1,5 @@
 name: Build ONNX Runtime
-description: Builds or restores the static ONNX Runtime libraries for x86-64 Linux and makes the rclip build link them
+description: Builds or restores the static ONNX Runtime libraries for Linux and makes the rclip build link them
 
 runs:
   using: composite

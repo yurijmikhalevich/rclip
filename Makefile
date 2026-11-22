@@ -5,9 +5,6 @@ else
     SED := gsed
 endif
 
-build-appimage:
-	APP_VERSION=$(shell python3 -c 'from pathlib import Path; import tomllib; print(tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"])') bash ./release-utils/appimage/build_appimage.sh
-
 lint-style:
 	uv run ruff check
 
@@ -24,26 +21,22 @@ test:
 	uv run pytest tests
 
 test-system-rclip:
-	RCLIP_TEST_RUN_SYSTEM_RCLIP=true uv run --no-sync python -m pytest tests/e2e
+	RCLIP_TEST_RUN_SYSTEM_RCLIP=true cargo test --release --locked --test e2e
 
 build-docker:
 	DOCKER_DEFAULT_PLATFORM=linux/amd64 docker build . -t rclip
 
 # CI runs release-brew as part of the `release` action
-build-windows:
-	uv run --exact --no-dev python -m rclip._compliance collect --root .venv --output build/legal --policy compliance/policy.toml --common-notices compliance/notices --include-python-runtime
-	uv run --exact --no-dev --with pyinstaller==6.22.3 pyinstaller -y ./release-utils/windows/pyinstaller.spec
-
-# CI runs release-brew as part of the `release` action
 release-brew:
-	uv run ./release-utils/homebrew/release.sh
+	./release-utils/homebrew/release.sh
 
 release:
-	@test $(VERSION) || (echo "VERSION arg is required (e.g. VERSION=major|minor|patch|alpha|beta|rc)" && exit 1)
-	uv version --no-sync --bump $(VERSION)
-	$(SED) -i "s/version: .*/version: $$(uv version --short)/" snap/snapcraft.yaml
-	$(SED) -i -e "s/^version: .*/version: $$(uv version --short)/" -e "s/^date-released: .*/date-released: $$(date +%F)/" CITATION.cff
-	git commit -am "release: v$$(uv version --short)"
+	@test $(VERSION) || (echo "VERSION arg is required (e.g. VERSION=5.0.0 or VERSION=5.0.0-rc.1)" && exit 1)
+	$(SED) -i '0,/^version = .*/s//version = "$(VERSION)"/' Cargo.toml
+	cargo update --offline --workspace
+	$(SED) -i "s/version: .*/version: $(VERSION)/" snap/snapcraft.yaml
+	$(SED) -i -e "s/^version: .*/version: $(VERSION)/" -e "s/^date-released: .*/date-released: $$(date +%F)/" CITATION.cff
+	git commit -am "release: v$(VERSION)"
 	git push origin $$(git branch --show-current)
-	git tag v$$(uv version --short)
-	git push origin v$$(uv version --short)
+	git tag v$(VERSION)
+	git push origin v$(VERSION)

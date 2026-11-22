@@ -53,7 +53,7 @@ sudo snap install rclip
   #### Using <code>pip</code>
 
   ```bash
-  pip install --extra-index-url https://download.pytorch.org/whl/cpu rclip
+  pip install rclip
   ```
 </details>
 
@@ -287,11 +287,11 @@ The build downloads a prebuilt ONNX Runtime and compiles libjpeg-turbo, OpenJPEG
 
 ## Distribution compliance
 
-Self-contained rclip bundles include a `THIRD_PARTY_NOTICES.txt` file and the
-complete licence and patent notices for their redistributed dependencies. Each
-GitHub release also includes CycloneDX SBOMs and corresponding rawpy/LibRaw and
-textual-image source archives. The reviewed dependency and codec policy is
-documented in [`compliance/`](compliance/README.md).
+Every rclip download includes a `THIRD_PARTY_NOTICES.txt` file with the complete
+licence and patent notices of the software compiled into the binary. Each
+GitHub release also includes a CycloneDX SBOM for every platform and the source
+code of the LibRaw version it was built with. The reviewed dependency and codec
+policy is documented in [`compliance/`](compliance/README.md).
 
 The separately downloaded model includes its model card, attribution, and the
 MIT notices for OpenCLIP and the OpenAI CLIP tokenizer and vocabulary.
