@@ -1,0 +1,92 @@
+name: experiment-onnxruntime-baseline
+
+# Compares rclip linked to ort's prebuilt ONNX Runtime (compiled for AVX2) with rclip linked to an
+# ONNX Runtime built here for baseline x86-64, and runs the latter on an emulated x86-64-v1 CPU.
+
+on:
+  push:
+    branches:
+      - experiment/onnxruntime-baseline
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v6
+      - name: Describe the runner
+        run: |
+          echo "ORT_LIBS=$RUNNER_TEMP/ort-libs" >> "$GITHUB_ENV"
+          echo "WORK=$RUNNER_TEMP/work" >> "$GITHUB_ENV"
+          lscpu | grep -E 'Model name|^CPU\(s\)'
+          lscpu | grep -oE '\b(sse4_2|avx|avx2|fma|avx512f|avx512_vnni|avx_vnni)\b' | sort -u | tr '\n' ' '
+          echo; nproc; free -g | head -2; df -h / | tail -1
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nasm ninja-build qemu-user
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version; cmake --version | head -1; gcc --version | head -1
+      - uses: actions/cache@v4
+        id: onnxruntime
+        with:
+          path: ${{ runner.temp }}/ort-libs
+          key: onnxruntime-1.31.0-baseline-x86_64-linux-1
+      - name: Build ONNX Runtime for baseline x86-64
+        if: steps.onnxruntime.outputs.cache-hit != 'true'
+        run: |
+          python3 experiments/onnxruntime-baseline/fetch_source.py "$RUNNER_TEMP/ort-src"
+          cmake -S "$RUNNER_TEMP/ort-src/cmake" -B "$RUNNER_TEMP/ort-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -Donnxruntime_BUILD_SHARED_LIB=OFF -Donnxruntime_BUILD_UNIT_TESTS=OFF -Donnxruntime_USE_TELEMETRY=OFF
+          time cmake --build "$RUNNER_TEMP/ort-build"
+          # ort links re2, which the default target doesn't build
+          cmake --build "$RUNNER_TEMP/ort-build" --target re2
+          mkdir -p "$ORT_LIBS"
+          cd "$RUNNER_TEMP/ort-build"
+          find . -name '*.a' -exec cp --parents {} "$ORT_LIBS/" \;
+          du -sh "$ORT_LIBS"
+      - name: Build rclip with the prebuilt ONNX Runtime
+        run: |
+          mkdir -p "$WORK"
+          time cargo build --release --locked
+          cp target/release/rclip "$WORK/rclip-prebuilt"
+      - name: Build rclip with the baseline ONNX Runtime
+        run: |
+          time ORT_LIB_LOCATION="$ORT_LIBS" cargo build --release --locked
+          cp target/release/rclip "$WORK/rclip-baseline"
+          ls -la "$WORK"
+          ldd "$WORK/rclip-baseline"
+      - name: Prepare the benchmark data
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet pillow numpy
+          "$RUNNER_TEMP/venv/bin/python" experiments/onnxruntime-baseline/make_images.py "$WORK/images" 100 600
+          mkdir -p "$WORK/library" "$WORK/v1" "$WORK"/data/{prebuilt-data,baseline-data,prebuilt-big,baseline-big,v1}
+          # the first run downloads the model, which the other data directories then share
+          (cd tests/e2e/images && RCLIP_DATADIR="$WORK/data/prebuilt-data" "$WORK/rclip-prebuilt" kitty)
+          for directory in baseline-data prebuilt-big baseline-big v1; do
+            for file in "$WORK"/data/prebuilt-data/*; do
+              [ "$(basename "$file")" = db.sqlite3 ] || ln -s "$file" "$WORK/data/$directory/"
+            done
+          done
+          PYTHONPATH=. "$RUNNER_TEMP/venv/bin/python" experiments/onnxruntime-baseline/make_index.py \
+            "$WORK/data/prebuilt-big/db.sqlite3" "$WORK/library" 300000
+          cp "$WORK/data/prebuilt-big/db.sqlite3" "$WORK/data/baseline-big/db.sqlite3"
+          cp tests/e2e/images/cat.jpg "tests/e2e/images/boats on a lake.png" tests/e2e/images/tree.webp "$WORK/v1/"
+      - name: Run on an emulated x86-64-v1 CPU
+        working-directory: ${{ runner.temp }}/work/v1
+        env:
+          RCLIP_DATADIR: ${{ runner.temp }}/work/data/v1
+        run: |
+          qemu-x86_64 -cpu Opteron_G1 /lib64/ld-linux-x86-64.so.2 --help | grep -A4 glibc-hwcaps
+          time qemu-x86_64 -cpu Opteron_G1 "$WORK/rclip-baseline" --version
+          time qemu-x86_64 -cpu Opteron_G1 "$WORK/rclip-baseline" cat
+          status=0; qemu-x86_64 -cpu Opteron_G1 "$WORK/rclip-prebuilt" --version || status=$?
+          echo "the prebuilt variant exits with $status on this CPU"
+      - name: Benchmark
+        run: python3 experiments/onnxruntime-baseline/bench.py "$WORK"
