@@ -218,6 +218,11 @@ pub fn modified_at(metadata: &Metadata) -> f64 {
 mod tests {
   use super::*;
 
+  /// Converts a path written with `/` to the platform's separators.
+  fn native(path: &str) -> String {
+    path.replace('/', std::path::MAIN_SEPARATOR_STR)
+  }
+
   fn walked(root: &std::path::Path, filter: &PathFilter) -> Vec<String> {
     let root = root.to_str().unwrap();
     let mut paths = Vec::new();
@@ -282,23 +287,24 @@ mod tests {
 
   #[test]
   fn excluded_dir_names_must_match_whole_components() {
-    let filter = PathFilter::new(Some(vec!["skip".into(), "a/b".into()]), false, false);
+    let filter = PathFilter::new(Some(vec!["skip".into(), native("a/b")]), false, false);
     assert!(filter.is_excluded_dir("skip"));
-    assert!(filter.is_excluded_dir("x/skip/y"));
+    assert!(filter.is_excluded_dir(&native("x/skip/y")));
     assert!(!filter.is_excluded_dir("skipper"));
-    assert!(!filter.is_excluded_dir("x/noskip"));
-    assert!(filter.is_excluded_dir("x/a/b"));
+    assert!(!filter.is_excluded_dir(&native("x/noskip")));
+    assert!(filter.is_excluded_dir(&native("x/a/b")));
     assert!(!filter.is_excluded_dir(""));
   }
 
   #[test]
   fn excludes_indexed_files_the_same_way() {
     let filter = PathFilter::new(None, false, false);
-    assert!(filter.is_excluded("/p/.hidden/a.jpg", "/p"));
-    assert!(filter.is_excluded("/p/x/.a.jpg", "/p"));
-    assert!(filter.is_excluded("/p/x/node_modules/a.jpg", "/p"));
-    assert!(!filter.is_excluded("/p/x/a.jpg", "/p"));
-    assert!(!filter.is_excluded("/node_modules/p/a.jpg", "/node_modules/p"));
+    let is_excluded = |filepath, directory| filter.is_excluded(&native(filepath), &native(directory));
+    assert!(is_excluded("/p/.hidden/a.jpg", "/p"));
+    assert!(is_excluded("/p/x/.a.jpg", "/p"));
+    assert!(is_excluded("/p/x/node_modules/a.jpg", "/p"));
+    assert!(!is_excluded("/p/x/a.jpg", "/p"));
+    assert!(!is_excluded("/node_modules/p/a.jpg", "/node_modules/p"));
   }
 
   #[cfg(unix)]

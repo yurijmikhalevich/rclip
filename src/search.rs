@@ -256,17 +256,19 @@ mod tests {
   #[test]
   fn lists_images_with_exclusions_applied_before_the_limit() {
     let db = Db::open_in_memory().unwrap();
+    // `list_images` splits paths at the platform's separator
+    let native = |path: &str| path.replace('/', std::path::MAIN_SEPARATOR_STR);
     for (path, modified_at) in [("/p/a.jpg", 5.0), ("/p/.hidden.jpg", 4.0), ("/p/b.jpg", 3.0), ("/p/c.jpg", 2.0)] {
-      db.upsert_image(&crate::db::NewImage { filepath: path, modified_at, size: 1, vector: &[0; 4], hash: "h" })
-        .unwrap();
+      let image = crate::db::NewImage { filepath: &native(path), modified_at, size: 1, vector: &[0; 4], hash: "h" };
+      db.upsert_image(&image).unwrap();
     }
     let model = Model::new(crate::model::download::ModelFiles::new(Path::new("/nonexistent")));
     let filter = PathFilter::new(None, false, false);
-    let search = Search { db: &db, model: &model, filter: &filter, directory: "/p" };
+    let search = Search { db: &db, model: &model, filter: &filter, directory: &native("/p") };
     let (page, cursor) = search.list_images(2, None, None).unwrap();
-    assert_eq!(page, ["/p/a.jpg", "/p/b.jpg"]);
+    assert_eq!(page, [native("/p/a.jpg"), native("/p/b.jpg")]);
     let (page, cursor) = search.list_images(2, cursor.as_ref(), None).unwrap();
-    assert_eq!(page, ["/p/c.jpg"]);
+    assert_eq!(page, [native("/p/c.jpg")]);
     assert!(cursor.is_none());
   }
 }

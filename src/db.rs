@@ -379,6 +379,8 @@ pub fn dirpath_range(path: &str) -> (String, String) {
 mod tests {
   use super::*;
 
+  // The tests use Windows paths because `dirpath_range` treats them the same way on every platform.
+
   fn insert(db: &Db, filepath: &str, modified_at: f64) {
     db.upsert_image(&NewImage { filepath, modified_at, size: 1, vector: &[1, 2, 3, 4], hash: "hash" }).unwrap();
   }
@@ -397,7 +399,9 @@ mod tests {
 
   #[test]
   fn dirpath_range_handles_separators() {
-    assert_eq!(dirpath_range("/photos"), ("/photos/".into(), "/photos0".into()));
+    let separator = std::path::MAIN_SEPARATOR;
+    let after_separator = (separator as u8 + 1) as char;
+    assert_eq!(dirpath_range("/photos"), (format!("/photos{separator}"), format!("/photos{after_separator}")));
     assert_eq!(dirpath_range("/photos/"), ("/photos/".into(), "/photos0".into()));
     assert_eq!(dirpath_range("Y:\\"), ("Y:\\".into(), "Y:]".into()));
     assert_eq!(dirpath_range("C:\\photos"), ("C:\\photos\\".into(), "C:\\photos]".into()));
@@ -406,12 +410,12 @@ mod tests {
   #[test]
   fn vectors_are_scoped_to_the_directory() {
     let db = Db::open_in_memory().unwrap();
-    insert(&db, "/photos/a.jpg", 1.0);
-    insert(&db, "/photos/nested/b.jpg", 2.0);
-    insert(&db, "/photos2/c.jpg", 3.0);
-    insert(&db, "/photo%/d.jpg", 4.0);
-    assert_eq!(vectors(&db, "/photos"), ["/photos/a.jpg", "/photos/nested/b.jpg"]);
-    assert_eq!(vectors(&db, "/photo%"), ["/photo%/d.jpg"]);
+    insert(&db, r"Y:\photos\a.jpg", 1.0);
+    insert(&db, r"Y:\photos\nested\b.jpg", 2.0);
+    insert(&db, r"Y:\photos2\c.jpg", 3.0);
+    insert(&db, r"Y:\photo%\d.jpg", 4.0);
+    assert_eq!(vectors(&db, r"Y:\photos"), [r"Y:\photos\a.jpg", r"Y:\photos\nested\b.jpg"]);
+    assert_eq!(vectors(&db, r"Y:\photo%"), [r"Y:\photo%\d.jpg"]);
   }
 
   #[test]
@@ -420,13 +424,13 @@ mod tests {
     let db = Db::open(&directory.path().join("db.sqlite3"), VectorCacheReset::Allow).unwrap();
     let count = PARALLEL_SCAN_MIN_ROWS as usize + 10;
     for index in 0..count {
-      insert(&db, &format!("/photos/{index}.jpg"), 1.0);
+      insert(&db, &format!(r"Y:\photos\{index}.jpg"), 1.0);
     }
-    insert(&db, "/other/a.jpg", 1.0);
+    insert(&db, r"Y:\other\a.jpg", 1.0);
     db.commit().unwrap();
     let states = db
       .scan_vectors(
-        "/photos",
+        r"Y:\photos",
         || 0usize,
         |count, _, _| {
           let _: () = *count += 1;
@@ -455,14 +459,14 @@ mod tests {
   #[test]
   fn deletion_flow_marks_and_restores_images() {
     let db = Db::open_in_memory().unwrap();
-    insert(&db, "/photos/a.jpg", 1.0);
-    insert(&db, "/photos/b.jpg", 1.0);
+    insert(&db, r"Y:\photos\a.jpg", 1.0);
+    insert(&db, r"Y:\photos\b.jpg", 1.0);
     db.commit().unwrap();
-    db.mark_deleted("/photos/b.jpg").unwrap();
-    assert!(db.image_state("/photos/b.jpg").unwrap().unwrap().deleted);
-    assert_eq!(vectors(&db, "/photos"), ["/photos/a.jpg"]);
-    db.restore_image("/photos/b.jpg").unwrap();
-    assert_eq!(vectors(&db, "/photos"), ["/photos/a.jpg", "/photos/b.jpg"]);
+    db.mark_deleted(r"Y:\photos\b.jpg").unwrap();
+    assert!(db.image_state(r"Y:\photos\b.jpg").unwrap().unwrap().deleted);
+    assert_eq!(vectors(&db, r"Y:\photos"), [r"Y:\photos\a.jpg"]);
+    db.restore_image(r"Y:\photos\b.jpg").unwrap();
+    assert_eq!(vectors(&db, r"Y:\photos"), [r"Y:\photos\a.jpg", r"Y:\photos\b.jpg"]);
   }
 
   #[test]
@@ -476,21 +480,21 @@ mod tests {
   #[test]
   fn lists_recent_filepaths_with_a_cursor() {
     let db = Db::open_in_memory().unwrap();
-    insert(&db, "/p/old.jpg", 1.0);
-    insert(&db, "/p/new-a.jpg", 2.0);
-    insert(&db, "/p/new-b.jpg", 2.0);
+    insert(&db, r"Y:\p\old.jpg", 1.0);
+    insert(&db, r"Y:\p\new-a.jpg", 2.0);
+    insert(&db, r"Y:\p\new-b.jpg", 2.0);
     let list = |after: Option<&ImageCursor>| {
       let mut paths = Vec::new();
-      db.for_each_filepath("/p", after, |filepath, _| {
+      db.for_each_filepath(r"Y:\p", after, |filepath, _| {
         paths.push(filepath.to_string());
         Ok(true)
       })
       .unwrap();
       paths
     };
-    assert_eq!(list(None), ["/p/new-a.jpg", "/p/new-b.jpg", "/p/old.jpg"]);
-    let cursor = ImageCursor { modified_at: 2.0, filepath: "/p/new-a.jpg".into() };
-    assert_eq!(list(Some(&cursor)), ["/p/new-b.jpg", "/p/old.jpg"]);
+    assert_eq!(list(None), [r"Y:\p\new-a.jpg", r"Y:\p\new-b.jpg", r"Y:\p\old.jpg"]);
+    let cursor = ImageCursor { modified_at: 2.0, filepath: r"Y:\p\new-a.jpg".into() };
+    assert_eq!(list(Some(&cursor)), [r"Y:\p\new-b.jpg", r"Y:\p\old.jpg"]);
   }
 
   /// Creates an index holding one image in the 4 KB pages older versions used.
@@ -498,7 +502,7 @@ mod tests {
     let db = Db { connection: Connection::open(path).unwrap(), path: None };
     db.ensure_tables().unwrap();
     db.ensure_version(VectorCacheReset::Allow).unwrap();
-    insert(&db, "/photos/cat.jpg", 1.0);
+    insert(&db, r"Y:\photos\cat.jpg", 1.0);
     db.commit().unwrap();
   }
 
@@ -522,7 +526,7 @@ mod tests {
     let db = Db::open(&path, VectorCacheReset::Allow).unwrap();
     assert_eq!(pragma::<i64>(&db, "page_size"), PAGE_SIZE);
     assert_eq!(pragma::<String>(&db, "journal_mode"), "delete");
-    assert_eq!(db.filepaths("/photos").unwrap(), ["/photos/cat.jpg"]);
+    assert_eq!(db.filepaths(r"Y:\photos").unwrap(), [r"Y:\photos\cat.jpg"]);
   }
 
   #[test]
@@ -536,7 +540,7 @@ mod tests {
     let db = Db::open(&path, VectorCacheReset::Allow).unwrap();
     assert_eq!(pragma::<String>(&db, "journal_mode"), "wal");
     assert_eq!(pragma::<i64>(&db, "page_size"), 4096);
-    assert_eq!(db.filepaths("/photos").unwrap(), ["/photos/cat.jpg"]);
+    assert_eq!(db.filepaths(r"Y:\photos").unwrap(), [r"Y:\photos\cat.jpg"]);
   }
 
   #[test]

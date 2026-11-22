@@ -57,7 +57,7 @@ jobs:
         with:
           path: ${{ runner.temp }}/rclip-test-data
           key: rclip-test-data-${{ runner.os }}-${{ hashFiles('src/model/download.rs') }}
-      - run: cargo test --release --locked
+      - run: cargo test --release --locked --no-fail-fast
         env:
           RCLIP_TEST_DATADIR: ${{ runner.temp }}/rclip-test-data
 
