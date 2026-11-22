@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 use std::fs::{self, Metadata};
 use std::path::{MAIN_SEPARATOR, PathBuf};
+use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::imaging::{IMAGE_EXT, IMAGE_RAW_EXT};
@@ -134,10 +135,16 @@ enum Found {
   Issue(WalkIssue),
 }
 
+/// The real path of a directory being walked, linked to the directory it was reached from.
+struct RealDir {
+  path: PathBuf,
+  parent: Option<Rc<RealDir>>,
+}
+
 fn walk_paths(root: &str, filter: &PathFilter, mut visit: impl FnMut(Found) -> bool) {
-  let mut stack = vec![root.to_string()];
-  let mut visited_links = HashSet::new();
-  while let Some(dir) = stack.pop() {
+  let real_root = RealDir { path: fs::canonicalize(root).unwrap_or_else(|_| root.into()), parent: None };
+  let mut stack = vec![(root.to_string(), Rc::new(real_root))];
+  while let Some((dir, real_dir)) = stack.pop() {
     let entries = match fs::read_dir(&dir) {
       Ok(entries) => entries,
       Err(error) => {
@@ -197,8 +204,8 @@ fn walk_paths(root: &str, filter: &PathFilter, mut visit: impl FnMut(Found) -> b
         if filter.is_excluded_dir(relative_path(&path, root)) {
           continue;
         }
-        if file_type.is_symlink() {
-          let target = match fs::canonicalize(&path) {
+        let real_path = if file_type.is_symlink() {
+          match fs::canonicalize(&path) {
             Ok(target) => target,
             Err(error) => {
               if !visit(Found::Issue(WalkIssue::UnreadableDir(path, error))) {
@@ -206,12 +213,16 @@ fn walk_paths(root: &str, filter: &PathFilter, mut visit: impl FnMut(Found) -> b
               }
               continue;
             }
-          };
-          if !visited_links.insert(target) {
-            continue;
           }
+        } else {
+          real_dir.path.join(name)
+        };
+        // A symlink back to a directory on its own branch would repeat forever; other aliases are walked like
+        // the Python version walks them, so each of their paths stays indexed.
+        if std::iter::successors(Some(&real_dir), |dir| dir.parent.as_ref()).any(|dir| dir.path == real_path) {
+          continue;
         }
-        stack.push(path);
+        stack.push((path, Rc::new(RealDir { path: real_path, parent: Some(Rc::clone(&real_dir)) })));
       } else if filter.is_image_name(name) && !visit(Found::File { path, metadata }) {
         return;
       }
@@ -335,13 +346,18 @@ mod tests {
 
   #[cfg(unix)]
   #[test]
-  fn survives_symlink_cycles() {
-    let root = tempfile::tempdir().unwrap();
+  fn walks_symlink_aliases_but_not_cycles() {
+    use std::os::unix::fs::symlink;
+    let (root, outside) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
     touch(root.path(), "a/b.jpg");
-    std::os::unix::fs::symlink(root.path().join("a"), root.path().join("a/loop")).unwrap();
+    touch(outside.path(), "shared/c.jpg");
+    symlink(root.path().join("a"), root.path().join("a/loop")).unwrap();
+    symlink(root.path(), root.path().join("a/root")).unwrap();
+    symlink(outside.path().join("shared"), root.path().join("album1")).unwrap();
+    symlink(outside.path().join("shared"), root.path().join("album2")).unwrap();
+    symlink(root.path().join("album2"), outside.path().join("shared/back")).unwrap();
     let paths = walked(root.path(), &PathFilter::new(None, false, false));
-    assert!(paths.len() <= 2, "{paths:?}");
-    assert!(paths.contains(&"a/b.jpg".to_string()));
+    assert_eq!(paths, ["a/b.jpg", "album1/c.jpg", "album2/c.jpg"]);
   }
 
   #[cfg(unix)]
