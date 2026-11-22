@@ -1,0 +1,4 @@
+reviews:
+  path_filters:
+    # third-party sources, which rclip doesn't patch
+    - "!vendor/**"
