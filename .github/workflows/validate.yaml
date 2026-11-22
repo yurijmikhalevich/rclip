@@ -33,7 +33,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, macos-26, windows-2022]
+        # ort's prebuilt ONNX Runtime needs glibc 2.38, which Ubuntu 22.04 doesn't have
+        os: [ubuntu-24.04, macos-26, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
