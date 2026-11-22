@@ -163,16 +163,18 @@ fn search_formats() {
 #[test]
 fn search_heic() {
   let run = Run::new();
-  let (success, output) = run.output(&fixtures().join("images heic"), &["bee"]);
-  assert!(success, "{output}");
-  let results = results(&output);
-  let names: Vec<_> = results.iter().map(|(path, _)| path.trim_start_matches("<test_images_dir>")).collect();
-  if cfg!(windows) && names == ["bee.jpg"] {
-    // rclip decodes HEIC with the operating system's codec, which Windows doesn't always have
+  let directory = fixtures().join("images heic");
+  let indexing = String::from_utf8(run.rclip(&directory, &["bee"]).stderr).unwrap();
+  // rclip decodes HEIC with the operating system's codec, which Windows doesn't always have
+  if cfg!(windows) && indexing.contains("could not find an installed HEIF decoder") {
     eprintln!("skipping: Windows has no HEIC codec installed");
     return;
   }
-  assert_eq!(names, ["bee.heic", "bee.jpg"]);
+  let (success, output) = run.output(&directory, &["--no-indexing", "bee"]);
+  assert!(success, "{output}");
+  let results = results(&output);
+  let names: Vec<_> = results.iter().map(|(path, _)| path.trim_start_matches("<test_images_dir>")).collect();
+  assert_eq!(names, ["bee.heic", "bee.jpg"], "{indexing}");
   assert!((results[0].1 - 0.286).abs() <= 0.002 && (results[1].1 - 0.274).abs() <= 0.002, "{output}");
 }
 
