@@ -41,7 +41,7 @@ pub struct Args {
   pub query: Option<String>,
 
   #[arg(long, short = 'v', action = ArgAction::Version, help = concat!("prints \"rclip ", env!("CARGO_PKG_VERSION"), "\""))]
-  version: (),
+  pub version: (),
 
   /// a text query or a path/URL to an image file to add to the "original" query, can be used multiple times;
   /// "+ QUERY" is a shorthand
