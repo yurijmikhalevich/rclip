@@ -64,3 +64,47 @@ codec components, and attach CycloneDX SBOMs. The compliance reporting workflow
 runs ScanCode on dependency or packaging pull requests, every Monday, and
 against the latest released AppImage and MSI. The policy and exact-version
 checks fail closed before a release is published.
+
+## Rust version
+
+The Rust version of rclip is a single statically linked binary, so its policy is checked on the
+sources it is built from:
+
+- `about.toml` lists the licences its crates may use.
+- `scripts/third_party_notices.sh` fails when a crate needs any other licence or when `Cargo.lock`
+  contains an HEVC or HEIF decoder. Otherwise, it prints the notices that must accompany the binary:
+  the licence texts of the crates, of the libraries some crates bundle (libjpeg-turbo, OpenJPEG,
+  zlib, and SQLite), and of LibRaw and ONNX Runtime.
+- The compliance workflow runs the script whenever the dependencies, the LibRaw submodule, or the
+  policy change.
+
+HEIC images are decoded only by the operating system's codec. Never add an HEVC or HEIF decoder.
+
+### LibRaw
+
+rclip uses LibRaw 0.22.3, a git submodule in `vendor/libraw`, under the CDDL 1.0, one of the two
+licences LibRaw offers; the other is the LGPL 2.1. The CDDL covers only LibRaw's own files, so it
+puts no conditions on the rest of a statically linked binary. It requires that LibRaw's source code
+stays available to everyone who gets the binary; the notices shipped with the binary say where to
+get it.
+
+- Check the licence of every new LibRaw version before moving the submodule to it. Its README says:
+  "We do not guarantee that the licensing will not change in future versions."
+- Don't patch LibRaw's files. If that becomes unavoidable, publish the changes under both of its
+  licences, so that either stays usable.
+- Never add LibRaw's GPL demosaic packs, and never add GPL code to the binary: the CDDL and the GPL
+  are incompatible.
+- When the submodule moves, update the LibRaw version in `scripts/third_party_notices.sh` and
+  `vendor/README.md`.
+
+### Dependency policy workflow
+
+When `Cargo.lock`, the LibRaw submodule, or the ONNX Runtime version changes:
+
+1. Check the copyright licence, patent terms, and notices of every new component, including the
+   native libraries a crate bundles.
+2. Add a new licence to `accepted` in `about.toml` only after reviewing it.
+3. Add the licence files of a newly bundled native library to `scripts/third_party_notices.sh`.
+4. When ONNX Runtime changes, replace `onnxruntime-<version>` with the `LICENSE` and
+   `ThirdPartyNotices.txt` of the new version and update the script.
+5. Run `scripts/third_party_notices.sh > /dev/null`.

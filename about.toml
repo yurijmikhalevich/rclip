@@ -1,0 +1,24 @@
+# The licence policy for the Rust crates compiled into rclip. `scripts/third_party_notices.sh` fails
+# when a crate needs a licence that isn't accepted here; review a new licence before adding it.
+# `compliance/README.md` describes the whole process.
+accepted = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "CDLA-Permissive-2.0",
+]
+# the platforms rclip is released for
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+# only what ends up in the binary
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
