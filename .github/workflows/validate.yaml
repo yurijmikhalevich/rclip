@@ -33,8 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # ort's prebuilt ONNX Runtime needs glibc 2.38, which Ubuntu 22.04 doesn't have
-        os: [ubuntu-24.04, macos-26, windows-2022]
+        os: [ubuntu-22.04, macos-26, windows-2022]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -51,6 +50,8 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y --no-install-recommends nasm
           fi
+      - uses: ./.github/actions/onnxruntime
+        if: runner.os == 'Linux'
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: cargo fmt --check
       - run: cargo clippy --release --locked --all-targets -- -D warnings
@@ -63,6 +64,18 @@ jobs:
       - run: cargo test --release --locked --no-fail-fast
         env:
           RCLIP_TEST_DATADIR: ${{ runner.temp }}/rclip-test-data
+      # ort's prebuilt ONNX Runtime needs AVX2, so check that the one built from source doesn't.
+      - name: Index and search on an emulated x86-64-v1 CPU
+        if: runner.os == 'Linux'
+        shell: bash
+        env:
+          RCLIP_DATADIR: ${{ runner.temp }}/rclip-test-data
+        run: |
+          sudo apt-get install -y --no-install-recommends qemu-user
+          mkdir "$RUNNER_TEMP/old-cpu"
+          cp tests/e2e/images/cat.jpg "tests/e2e/images/boats on a lake.png" tests/e2e/images/tree.webp "$RUNNER_TEMP/old-cpu"
+          cd "$RUNNER_TEMP/old-cpu"
+          qemu-x86_64 -cpu Opteron_G1 "$GITHUB_WORKSPACE/target/release/rclip" cat | tee /dev/stderr | sed -n 2p | grep -F cat.jpg
 
   kitty-copy:
     strategy:

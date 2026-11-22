@@ -1,0 +1,23 @@
+name: Build ONNX Runtime
+description: Builds or restores the static ONNX Runtime libraries for x86-64 Linux and makes the rclip build link them
+
+runs:
+  using: composite
+  steps:
+    - id: image
+      shell: bash
+      run: echo "name=$ImageOS" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache@v6
+      id: cache
+      with:
+        path: ${{ runner.temp }}/onnxruntime
+        key: onnxruntime-${{ steps.image.outputs.name }}-${{ runner.arch }}-${{ hashFiles('scripts/build_onnxruntime.sh', 'scripts/fetch_onnxruntime_source.py') }}
+    - name: Build ONNX Runtime
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends ninja-build
+        scripts/build_onnxruntime.sh "$RUNNER_TEMP/onnxruntime"
+    - shell: bash
+      run: echo "ORT_LIB_LOCATION=$RUNNER_TEMP/onnxruntime" >> "$GITHUB_ENV"

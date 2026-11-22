@@ -283,7 +283,7 @@ cargo build --release
 ./target/release/rclip "search query"
 ```
 
-The build downloads a prebuilt ONNX Runtime and compiles libjpeg-turbo, OpenJPEG, SQLite, zlib, and [LibRaw](vendor/README.md), which is a git submodule, from source. Run the tests with `cargo test --release`; the end-to-end tests download the model on their first run.
+The build downloads a prebuilt ONNX Runtime and compiles libjpeg-turbo, OpenJPEG, SQLite, zlib, and [LibRaw](vendor/README.md), which is a git submodule, from source. The prebuilt ONNX Runtime needs a CPU with AVX2 on x86-64. To run on older CPUs, build it from source with `scripts/build_onnxruntime.sh <directory>` on Linux, which takes about half an hour, and set `ORT_LIB_LOCATION=<directory>` when building rclip. Run the tests with `cargo test --release`; the end-to-end tests download the model on their first run.
 
 ## Distribution compliance
 
