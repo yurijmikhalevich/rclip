@@ -4,6 +4,8 @@ use std::process::Command;
 fn main() {
   println!("cargo:rerun-if-changed=build.rs");
   println!("cargo:rerun-if-changed=src/imaging/raw_params.cpp");
+  // cc doesn't tell Cargo about the files it compiles, so moving the submodule wouldn't rebuild LibRaw
+  println!("cargo:rerun-if-changed=vendor/libraw");
   build_libraw();
   if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
     link_compiler_runtime();
