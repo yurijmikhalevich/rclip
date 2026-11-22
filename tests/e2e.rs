@@ -222,6 +222,19 @@ fn search_by_image() {
   snapshot_test(&images(), &[query.to_str().unwrap()], "test_search_by_image");
 }
 
+/// The pixel limit keeps indexing from running out of memory on huge images; an image the user
+/// searches by is read regardless of it.
+#[test]
+fn searches_by_an_image_larger_than_the_pixel_limit() {
+  let run = Run::new();
+  assert!(run.output(&images(), &["kitty"]).0);
+  let query = images().join("cat.jpg");
+  let args = ["--no-indexing", "--max-image-megapixels", "0.0001", query.to_str().unwrap()];
+  let (success, output) = run.output(&images(), &args);
+  assert!(success, "{output}");
+  assert_matches_snapshot(&output, "test_search_by_image");
+}
+
 #[test]
 fn search_by_image_from_url() {
   snapshot_test(
