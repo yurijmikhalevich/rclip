@@ -80,7 +80,7 @@ impl Input {
       KeyCode::Char('w') if control => {
         let end = self.byte_index(self.cursor);
         let trimmed = self.text[..end].trim_end();
-        let start = trimmed.rfind(char::is_whitespace).map_or(0, |index| index + 1);
+        let start = trimmed.trim_end_matches(|c: char| !c.is_whitespace()).len();
         self.text.replace_range(start..end, "");
         self.cursor = self.text[..start].chars().count();
       }
@@ -705,5 +705,12 @@ mod tests {
     input.edit(&ctrl('u'));
     assert_eq!(input.text, "");
     assert_eq!(input.edit(&key(KeyCode::F(1))), None);
+  }
+
+  #[test]
+  fn deletes_a_word_after_multibyte_whitespace() {
+    let mut input = Input { text: "a\u{3000}b".into(), cursor: 3 };
+    input.edit(&ctrl('w'));
+    assert_eq!((input.text.as_str(), input.cursor), ("a\u{3000}", 2));
   }
 }
