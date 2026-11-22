@@ -26,7 +26,9 @@ pub fn transmit(id: u32, png: &[u8], columns: u16, rows: u16, tmux: bool) -> Vec
   for (index, chunk) in chunks.iter().enumerate() {
     let more = u8::from(index + 1 < chunks.len());
     let chunk = std::str::from_utf8(chunk).expect("base64 is ASCII");
-    push_command(&mut sequence, &format!("i={id},m={more},f=100,q=2;{chunk}"), tmux);
+    // Only the first chunk carries the image's keys; the protocol allows just `m` and `q` after it.
+    let keys = if index == 0 { format!("i={id},m={more},f=100,q=2") } else { format!("m={more},q=2") };
+    push_command(&mut sequence, &format!("{keys};{chunk}"), tmux);
   }
   push_command(&mut sequence, &format!("a=p,i={id},c={columns},r={rows},U=1,q=2"), tmux);
   sequence.into_bytes()
@@ -400,7 +402,7 @@ mod tests {
     let png = vec![0u8; 4000];
     let sequence = String::from_utf8(transmit(7, &png, 3, 2, false)).unwrap();
     assert!(sequence.starts_with("\x1b_Gi=7,m=1,f=100,q=2;"));
-    assert!(sequence.contains("\x1b_Gi=7,m=0,f=100,q=2;"));
+    assert!(sequence.contains("\x1b\\\x1b_Gm=0,q=2;"));
     assert!(sequence.ends_with("\x1b_Ga=p,i=7,c=3,r=2,U=1,q=2\x1b\\"));
   }
 
