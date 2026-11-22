@@ -147,7 +147,17 @@ fn walk_paths(root: &str, filter: &PathFilter, mut visit: impl FnMut(Found) -> b
         continue;
       }
     };
-    for entry in entries.flatten() {
+    for entry in entries {
+      let entry = match entry {
+        Ok(entry) => entry,
+        // the rest of the listing is lost, so the directory's images are kept as they are
+        Err(error) => {
+          if !visit(Found::Issue(WalkIssue::UnreadableDir(dir, error))) {
+            return;
+          }
+          break;
+        }
+      };
       let file_name = entry.file_name();
       let Some(name) = file_name.to_str() else {
         if !visit(Found::Issue(WalkIssue::NonUtf8(entry.path()))) {
@@ -159,7 +169,15 @@ fn walk_paths(root: &str, filter: &PathFilter, mut visit: impl FnMut(Found) -> b
         continue;
       }
       let path = join(&dir, name);
-      let Ok(file_type) = entry.file_type() else { continue };
+      let file_type = match entry.file_type() {
+        Ok(file_type) => file_type,
+        Err(error) => {
+          if !visit(Found::Issue(WalkIssue::UnreadableDir(path, error))) {
+            return;
+          }
+          continue;
+        }
+      };
       let (is_dir, metadata) = if file_type.is_symlink() {
         match fs::metadata(&path) {
           Ok(metadata) => (metadata.is_dir(), Some(metadata)),
@@ -180,7 +198,15 @@ fn walk_paths(root: &str, filter: &PathFilter, mut visit: impl FnMut(Found) -> b
           continue;
         }
         if file_type.is_symlink() {
-          let Ok(target) = fs::canonicalize(&path) else { continue };
+          let target = match fs::canonicalize(&path) {
+            Ok(target) => target,
+            Err(error) => {
+              if !visit(Found::Issue(WalkIssue::UnreadableDir(path, error))) {
+                return;
+              }
+              continue;
+            }
+          };
           if !visited_links.insert(target) {
             continue;
           }
