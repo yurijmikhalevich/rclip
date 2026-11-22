@@ -477,6 +477,8 @@ fn tempdir() -> tempfile::TempDir {
 struct FakeHub {
   endpoint: String,
   downloads: Arc<Mutex<Vec<String>>>,
+  /// The `Authorization` header of every request, or an empty string for a request without one.
+  authorizations: Arc<Mutex<Vec<String>>>,
 }
 
 impl FakeHub {
@@ -485,6 +487,8 @@ impl FakeHub {
     let endpoint = format!("http://{}", listener.local_addr().unwrap());
     let downloads = Arc::new(Mutex::new(Vec::new()));
     let log = Arc::clone(&downloads);
+    let authorizations = Arc::new(Mutex::new(Vec::new()));
+    let authorization_log = Arc::clone(&authorizations);
     let siblings: Vec<_> = [&WEIGHTS[..], &NOTICES, &CORE_ML_PACKAGE, &["another-model/visual.onnx"]]
       .concat()
       .iter()
@@ -496,8 +500,13 @@ impl FakeHub {
         let mut stream = stream.unwrap();
         let mut lines = BufReader::new(&stream).lines().map_while(Result::ok);
         let Some(request) = lines.next() else { continue };
-        // Read the headers too: closing a connection with unread data can reset it.
-        lines.find(String::is_empty);
+        // Read all the headers: closing a connection with unread data can reset it.
+        let headers: Vec<String> = lines.take_while(|line| !line.is_empty()).collect();
+        let authorization = headers.iter().find_map(|header| {
+          let (name, value) = header.split_once(": ")?;
+          name.eq_ignore_ascii_case("authorization").then(|| value.to_string())
+        });
+        authorization_log.lock().unwrap().push(authorization.unwrap_or_default());
         let path = request.split(' ').nth(1).unwrap_or_default();
         let body = match path.strip_prefix("/yurijmikhalevich/rclip-models/resolve/main/") {
           Some(file) => {
@@ -509,7 +518,7 @@ impl FakeHub {
         write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).ok();
       }
     });
-    FakeHub { endpoint, downloads }
+    FakeHub { endpoint, downloads, authorizations }
   }
 
   /// Runs rclip with `datadir` as its data directory. The run fails after the download because the
@@ -521,6 +530,7 @@ impl FakeHub {
       .current_dir(fixtures().join("empty_directory"))
       .env("HF_ENDPOINT", &self.endpoint)
       .env("RCLIP_DATADIR", datadir)
+      .env("HF_TOKEN", "token")
       .env_remove("RCLIP_USE_ONNX_ON_MACOS");
     command.output().expect("rclip runs");
   }
@@ -545,6 +555,8 @@ fn downloads_the_model_files_missing_from_the_data_directory() {
   hub.rclip(datadir.path());
   assert_eq!(hub.downloads(), model_files());
   assert_downloaded(datadir.path(), &model_files());
+  // HF_TOKEN authenticates the requests, which raises Hugging Face's rate limits
+  assert!(hub.authorizations.lock().unwrap().iter().all(|authorization| authorization == "Bearer token"));
 }
 
 #[test]
