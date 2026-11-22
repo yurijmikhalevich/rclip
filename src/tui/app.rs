@@ -49,6 +49,8 @@ pub struct Input {
   pub text: String,
   /// The cursor position, in characters.
   pub cursor: usize,
+  /// Whether the whole text is selected, so that typing replaces it.
+  pub selected: bool,
 }
 
 impl Input {
@@ -60,10 +62,24 @@ impl Input {
     self.text.chars().count()
   }
 
+  fn select_all(&mut self) {
+    self.selected = !self.text.is_empty();
+    self.cursor = self.len();
+  }
+
   /// Applies an editing key; returns whether the text changed, or `None` if the key is not an
   /// editing key.
   fn edit(&mut self, key: &KeyEvent) -> Option<bool> {
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
+    let typed = matches!(key.code, KeyCode::Char(_)) && !control && !key.modifiers.contains(KeyModifiers::ALT);
+    // Typing or deleting replaces the selection; any other key just drops it.
+    if std::mem::take(&mut self.selected) && (typed || matches!(key.code, KeyCode::Backspace | KeyCode::Delete)) {
+      self.text.clear();
+      self.cursor = 0;
+      if !typed {
+        return Some(true);
+      }
+    }
     let before = self.text.clone();
     match key.code {
       KeyCode::Char('a') if control => self.cursor = 0,
@@ -84,7 +100,7 @@ impl Input {
         self.text.replace_range(start..end, "");
         self.cursor = self.text[..start].chars().count();
       }
-      KeyCode::Char(c) if !control && !key.modifiers.contains(KeyModifiers::ALT) => {
+      KeyCode::Char(c) if typed => {
         let index = self.byte_index(self.cursor);
         self.text.insert(index, c);
         self.cursor += 1;
@@ -374,7 +390,7 @@ impl App {
       return vec![Effect::Quit];
     }
     if (chord('f') || plain('/')) && !search_focused {
-      self.focus = Focus::Search;
+      self.focus_search();
       return Vec::new();
     }
     if bound('o') {
@@ -411,7 +427,7 @@ impl App {
       (View::Grid, KeyCode::Char('k')) => self.move_by(-(self.grid.columns as isize)),
       (View::Grid, KeyCode::Up) => {
         if self.selected < self.grid.columns {
-          self.focus = Focus::Search;
+          self.focus_search();
           Vec::new()
         } else {
           self.move_by(-(self.grid.columns as isize))
@@ -420,11 +436,18 @@ impl App {
       (View::Detail, KeyCode::Left | KeyCode::Char('h')) => self.move_detail(-1),
       (View::Detail, KeyCode::Right | KeyCode::Char('l')) => self.move_detail(1),
       (View::Detail, KeyCode::Up) => {
-        self.focus = Focus::Search;
+        self.focus_search();
         Vec::new()
       }
       _ => Vec::new(),
     }
+  }
+
+  /// Moves the focus to the search field and selects the query, so that typing starts a new one, like
+  /// text fields do when they get the focus from the keyboard.
+  fn focus_search(&mut self) {
+    self.focus = Focus::Search;
+    self.input.select_all();
   }
 
   fn on_search_key(&mut self, key: KeyEvent) -> Vec<Effect> {
@@ -781,7 +804,7 @@ mod tests {
 
   #[test]
   fn deletes_a_word_after_multibyte_whitespace() {
-    let mut input = Input { text: "a\u{3000}b".into(), cursor: 3 };
+    let mut input = Input { text: "a\u{3000}b".into(), cursor: 3, selected: false };
     input.edit(&ctrl('w'));
     assert_eq!((input.text.as_str(), input.cursor), ("a\u{3000}", 2));
   }
@@ -930,6 +953,30 @@ mod tests {
     for c in ['y', 'p', 's'] {
       assert!(app.on_key(ctrl(c)).is_empty(), "{c}");
     }
+  }
+
+  #[test]
+  fn focusing_the_search_field_from_the_keyboard_selects_the_query_so_that_typing_replaces_it() {
+    let (mut app, _) = browsing(2, 25);
+    type_text(&mut app, "cat");
+    app.on_key(key(KeyCode::Down));
+    app.on_key(key(KeyCode::Char('/')));
+    type_text(&mut app, "dog");
+    assert_eq!(app.input.text, "dog");
+
+    app.on_key(key(KeyCode::Esc));
+    app.on_key(ctrl('f'));
+    app.on_key(key(KeyCode::Backspace));
+    assert_eq!((app.input.text.as_str(), app.input.cursor), ("", 0));
+
+    // Any other key keeps the query and edits it as usual.
+    type_text(&mut app, "cat");
+    app.on_key(key(KeyCode::Esc));
+    app.on_key(key(KeyCode::Up));
+    assert_eq!(app.focus, Focus::Search);
+    app.on_key(key(KeyCode::Left));
+    type_text(&mut app, "r");
+    assert_eq!(app.input.text, "cart");
   }
 
   #[test]

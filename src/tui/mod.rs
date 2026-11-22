@@ -173,7 +173,9 @@ impl Session<'_> {
       }
       MouseEventKind::Down(MouseButton::Left) => {
         if inside(self.hits.input) {
+          // A click places the cursor rather than selecting the query.
           self.app.focus = app::Focus::Search;
+          self.app.input.selected = false;
           return Vec::new();
         }
         if let Some(&(_, offset)) = self.hits.filmstrip.iter().find(|(area, _)| inside(*area)) {

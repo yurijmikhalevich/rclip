@@ -112,7 +112,8 @@ fn draw_input(frame: &mut Frame<'_>, app: &App, area: Rect) {
   if chars.is_empty() {
     Paragraph::new("Search images…").style(muted()).render(inner, frame.buffer_mut());
   } else {
-    Paragraph::new(chars[start..].iter().collect::<String>()).render(inner, frame.buffer_mut());
+    let style = if focused && app.input.selected { Style::default().reversed() } else { Style::default() };
+    Paragraph::new(chars[start..].iter().collect::<String>()).style(style).render(inner, frame.buffer_mut());
   }
   if focused {
     frame.set_cursor_position((inner.x + column as u16, inner.y));
