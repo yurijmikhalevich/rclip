@@ -5,20 +5,15 @@ else
     SED := gsed
 endif
 
-lint-style:
-	uv run ruff check
+lint:
+	cargo fmt --check
+	cargo clippy --release --locked --all-targets -- -D warnings
 
 fix-style:
-	uv run ruff check --fix
-	uv run ruff format
-
-lint-types:
-	uv run ty check
-
-lint: lint-style lint-types
+	cargo fmt
 
 test:
-	uv run pytest tests
+	cargo test --release --locked
 
 test-system-rclip:
 	RCLIP_TEST_RUN_SYSTEM_RCLIP=true cargo test --release --locked --test e2e
