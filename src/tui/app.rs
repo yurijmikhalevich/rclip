@@ -148,6 +148,8 @@ pub struct App {
   next_cursor: Option<ImageCursor>,
   generation: u64,
   loading_more: bool,
+  /// Set when a page failed to load, so that frames stop requesting it until the user scrolls or presses a key.
+  page_failed: bool,
   pending_detail_advance: bool,
   batch_size: usize,
   debounce: Option<Instant>,
@@ -175,6 +177,7 @@ impl App {
       next_cursor: None,
       generation: 0,
       loading_more: false,
+      page_failed: false,
       pending_detail_advance: false,
       batch_size,
       debounce: None,
@@ -247,6 +250,7 @@ impl App {
       }
       Err(message) => {
         self.loading_more = false;
+        self.page_failed = append;
         self.pending_detail_advance = false;
         self.status = None;
         let title = if append { "Unable to load more images" } else { "Search failed" };
@@ -318,6 +322,9 @@ impl App {
   /// Called after each frame: loads more results once the grid is scrolled near its end, or the
   /// detail view nears the last loaded result.
   pub fn after_frame(&mut self, grid_lines: usize) -> Vec<Effect> {
+    if self.page_failed {
+      return Vec::new();
+    }
     match self.view {
       View::Grid => {
         let max_scroll = grid_lines.saturating_sub(self.grid.viewport_rows);
@@ -355,6 +362,7 @@ impl App {
   }
 
   pub fn on_key(&mut self, key: KeyEvent) -> Vec<Effect> {
+    self.page_failed = false;
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
     let search_focused = self.focus == Focus::Search;
     let plain = |c: char| key.code == KeyCode::Char(c) && !control;
@@ -497,6 +505,7 @@ impl App {
   }
 
   pub fn scroll_grid(&mut self, lines: isize, grid_lines: usize) {
+    self.page_failed = false;
     let max_scroll = grid_lines.saturating_sub(self.grid.viewport_rows);
     self.scroll = self.scroll.saturating_add_signed(lines).min(max_scroll);
   }
@@ -653,6 +662,18 @@ mod tests {
     assert_eq!(app.notifications[0].title, "Search failed");
     assert!(app.notifications[0].error);
     assert_eq!(app.status, None);
+  }
+
+  #[test]
+  fn requests_a_failed_page_again_only_after_user_input() {
+    let (mut app, effects) = App::new("~/p".into(), 100);
+    respond(&mut app, effects, 25, cursor());
+    let page = app.after_frame(0);
+    assert_eq!(page, [Effect::Request(1, Request::Browse(cursor()))]);
+    app.on_response(Response { generation: 1, request: Request::Browse(cursor()), outcome: Err("failed".into()) });
+    assert!(app.after_frame(0).is_empty());
+    app.scroll_grid(1, 0);
+    assert_eq!(app.after_frame(0), page);
   }
 
   #[test]
