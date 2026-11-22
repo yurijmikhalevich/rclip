@@ -31,13 +31,3 @@ pub fn home_dir() -> Option<PathBuf> {
   let variable = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
   std::env::var_os(variable).filter(|value| !value.is_empty()).map(PathBuf::from)
 }
-
-/// An optional shared download cache for model files, set with `RCLIP_MODEL_CACHE_DIR`.
-pub fn model_cache_dir() -> Result<Option<PathBuf>> {
-  let Some(cache_dir) = std::env::var_os("RCLIP_MODEL_CACHE_DIR").filter(|value| !value.is_empty()) else {
-    return Ok(None);
-  };
-  let cache_dir = PathBuf::from(cache_dir);
-  std::fs::create_dir_all(&cache_dir).with_context(|| format!("cannot create {}", cache_dir.display()))?;
-  Ok(Some(cache_dir))
-}

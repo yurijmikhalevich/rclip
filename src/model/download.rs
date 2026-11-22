@@ -75,7 +75,7 @@ impl ModelFiles {
       let total = wanted.iter().chain(&package_files).map(|file| file.size).sum();
       let progress = progress_bar(total);
       for file in wanted {
-        hub.fetch(file, &self.datadir.join(&file.path), &progress)?;
+        hub.download(file, &self.datadir.join(&file.path), &progress)?;
       }
       if missing_package {
         // Download the package into a staging directory so that an interrupted download is never
@@ -83,7 +83,7 @@ impl ModelFiles {
         let staging = self.visual_coreml().with_extension("mlpackage.incomplete");
         fs::remove_dir_all(&staging).ok();
         for file in package_files {
-          hub.fetch(file, &staging.join(&file.path[package_prefix.len()..]), &progress)?;
+          hub.download(file, &staging.join(&file.path[package_prefix.len()..]), &progress)?;
         }
         fs::rename(&staging, self.visual_coreml())?;
       }
@@ -134,9 +134,6 @@ struct RepoFile {
 struct Hub {
   agent: ureq::Agent,
   endpoint: String,
-  /// A shared download cache (`RCLIP_MODEL_CACHE_DIR`) that files are fetched into and then copied
-  /// from, so that several data directories can reuse one download.
-  cache_dir: Option<PathBuf>,
 }
 
 impl Hub {
@@ -147,7 +144,7 @@ impl Hub {
       .into();
     let endpoint =
       std::env::var("HF_ENDPOINT").ok().filter(|value| !value.is_empty()).unwrap_or("https://huggingface.co".into());
-    Ok(Hub { agent, endpoint: endpoint.trim_end_matches('/').to_string(), cache_dir: crate::paths::model_cache_dir()? })
+    Ok(Hub { agent, endpoint: endpoint.trim_end_matches('/').to_string() })
   }
 
   fn list_files(&self) -> Result<Vec<RepoFile>> {
@@ -165,19 +162,6 @@ impl Hub {
         .map(|sibling| RepoFile { size: sibling.size.unwrap_or(0), path: sibling.rfilename })
         .collect(),
     )
-  }
-
-  fn fetch(&self, file: &RepoFile, target: &Path, progress: &ProgressBar) -> Result<()> {
-    if let Some(cache_dir) = &self.cache_dir {
-      let cached = cache_dir.join(REPO_ID).join(&file.path);
-      if !cached.is_file() {
-        self.download(file, &cached, progress)?;
-      } else {
-        progress.inc(file.size);
-      }
-      return copy_atomically(&cached, target);
-    }
-    self.download(file, target, progress)
   }
 
   fn download(&self, file: &RepoFile, target: &Path, progress: &ProgressBar) -> Result<()> {
@@ -211,12 +195,4 @@ fn partial_path(target: &Path) -> PathBuf {
   let mut name = target.file_name().expect("model files have names").to_os_string();
   name.push(".incomplete");
   target.with_file_name(name)
-}
-
-fn copy_atomically(from: &Path, to: &Path) -> Result<()> {
-  fs::create_dir_all(to.parent().expect("model files live in a directory"))?;
-  let partial = partial_path(to);
-  fs::copy(from, &partial).with_context(|| format!("cannot copy {} to {}", from.display(), partial.display()))?;
-  fs::rename(partial, to)?;
-  Ok(())
 }

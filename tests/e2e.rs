@@ -514,18 +514,14 @@ impl FakeHub {
 
   /// Runs rclip with `datadir` as its data directory. The run fails after the download because the
   /// downloaded files are not real models.
-  fn rclip(&self, datadir: &Path, model_cache_dir: Option<&Path>) {
+  fn rclip(&self, datadir: &Path) {
     let mut command = rclip();
     command
       .arg("kitty")
       .current_dir(fixtures().join("empty_directory"))
       .env("HF_ENDPOINT", &self.endpoint)
       .env("RCLIP_DATADIR", datadir)
-      .env_remove("RCLIP_MODEL_CACHE_DIR")
       .env_remove("RCLIP_USE_ONNX_ON_MACOS");
-    if let Some(model_cache_dir) = model_cache_dir {
-      command.env("RCLIP_MODEL_CACHE_DIR", model_cache_dir);
-    }
     command.output().expect("rclip runs");
   }
 
@@ -546,7 +542,7 @@ fn assert_downloaded(datadir: &Path, files: &[&str]) {
 fn downloads_the_model_files_missing_from_the_data_directory() {
   let hub = FakeHub::start();
   let datadir = tempdir();
-  hub.rclip(datadir.path(), None);
+  hub.rclip(datadir.path());
   assert_eq!(hub.downloads(), model_files());
   assert_downloaded(datadir.path(), &model_files());
 }
@@ -561,20 +557,9 @@ fn downloads_only_the_notices_for_an_already_downloaded_model() {
     std::fs::write(path, "").unwrap();
   }
   std::fs::create_dir(datadir.path().join(COMPILED_CORE_ML_MODEL)).unwrap();
-  hub.rclip(datadir.path(), None);
+  hub.rclip(datadir.path());
   assert_eq!(hub.downloads(), NOTICES);
   assert_downloaded(datadir.path(), &NOTICES);
-}
-
-#[test]
-fn downloads_each_file_once_for_data_directories_that_share_a_model_cache_dir() {
-  let hub = FakeHub::start();
-  let (model_cache_dir, first, second) = (tempdir(), tempdir(), tempdir());
-  hub.rclip(first.path(), Some(model_cache_dir.path()));
-  hub.rclip(second.path(), Some(model_cache_dir.path()));
-  assert_eq!(hub.downloads(), model_files());
-  assert_downloaded(first.path(), &model_files());
-  assert_downloaded(second.path(), &model_files());
 }
 
 #[cfg(target_os = "macos")]
