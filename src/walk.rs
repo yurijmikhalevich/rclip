@@ -274,6 +274,20 @@ mod tests {
     paths
   }
 
+  /// The directories and entries `walk` could not read.
+  #[cfg(unix)]
+  fn unreadable(root: &std::path::Path, filter: &PathFilter) -> Vec<String> {
+    let mut unreadable = Vec::new();
+    walk(root.to_str().unwrap(), filter, |entry| {
+      if let Err(WalkIssue::UnreadableDir(path, _)) = entry {
+        unreadable.push(path);
+      }
+      true
+    });
+    unreadable.sort();
+    unreadable
+  }
+
   fn touch(root: &std::path::Path, relative: &str) {
     let path = root.join(relative);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -315,11 +329,30 @@ mod tests {
 
   #[test]
   fn exclusions_are_relative_to_the_root() {
+    for ancestor in [".worktrees", ".git", "node_modules"] {
+      let root = tempfile::tempdir().unwrap();
+      let base = root.path().join(ancestor).join("photos");
+      for path in ["a.jpg", "nested/b.jpg", ".hidden.jpg", "node_modules/c.jpg"] {
+        touch(&base, path);
+      }
+      assert_eq!(walked(&base, &PathFilter::new(None, false, false)), ["a.jpg", "nested/b.jpg"]);
+    }
+  }
+
+  #[test]
+  fn stops_when_the_visitor_declines() {
     let root = tempfile::tempdir().unwrap();
-    let base = root.path().join("node_modules").join("photos");
-    touch(&base, "a.jpg");
-    touch(&base, "node_modules/b.jpg");
-    assert_eq!(walked(&base, &PathFilter::new(None, false, false)), ["a.jpg"]);
+    for path in ["a.jpg", "b.jpg", "nested/c.jpg"] {
+      touch(root.path(), path);
+    }
+    let (root, filter) = (root.path().to_str().unwrap(), PathFilter::new(None, false, false));
+    let mut visited = 0;
+    walk(root, &filter, |_| {
+      visited += 1;
+      false
+    });
+    assert_eq!(visited, 1);
+    assert_eq!(count(root, &filter, &AtomicBool::new(true)), 1);
   }
 
   #[test]
@@ -362,23 +395,41 @@ mod tests {
 
   #[cfg(unix)]
   #[test]
+  fn reports_unreadable_directories_and_walks_the_rest() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = tempfile::tempdir().unwrap();
+    for path in ["a.jpg", "locked/b.jpg", "locked/nested/c.jpg", "z/d.jpg"] {
+      touch(root.path(), path);
+    }
+    let (locked, filter) = (root.path().join("locked"), PathFilter::new(None, false, false));
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+    let (paths, unreadable) = (walked(root.path(), &filter), unreadable(root.path(), &filter));
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(paths, ["a.jpg", "z/d.jpg"]);
+    assert_eq!(unreadable, [locked.to_str().unwrap()]);
+  }
+
+  #[cfg(unix)]
+  #[test]
   fn reports_symlinks_to_inaccessible_targets_and_skips_dangling_ones() {
     use std::os::unix::fs::{PermissionsExt, symlink};
     let (root, outside) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
-    let locked = outside.path().join("locked");
-    touch(&locked, "a.jpg");
+    let (locked, filter) = (outside.path().join("locked"), PathFilter::new(None, false, false));
+    for path in ["a.jpg", "nested/b.jpg"] {
+      touch(&locked, path);
+    }
+    for path in ["first.jpg", "last.jpg"] {
+      touch(root.path(), path);
+    }
     symlink(locked.join("a.jpg"), root.path().join("inaccessible.jpg")).unwrap();
+    symlink(locked.join("nested"), root.path().join("inaccessible_dir")).unwrap();
     symlink(outside.path().join("missing.jpg"), root.path().join("dangling.jpg")).unwrap();
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
-    let mut unreadable = Vec::new();
-    walk(root.path().to_str().unwrap(), &PathFilter::new(None, false, false), |entry| {
-      if let Err(WalkIssue::UnreadableDir(path, _)) = entry {
-        unreadable.push(path);
-      }
-      true
-    });
+    let (paths, unreadable) = (walked(root.path(), &filter), unreadable(root.path(), &filter));
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
-    assert_eq!(unreadable, [root.path().join("inaccessible.jpg").to_str().unwrap()]);
+    assert_eq!(paths, ["first.jpg", "last.jpg"]);
+    let links = ["inaccessible.jpg", "inaccessible_dir"].map(|link| root.path().join(link));
+    assert_eq!(unreadable, links.each_ref().map(|link| link.to_str().unwrap()));
   }
 
   #[cfg(unix)]

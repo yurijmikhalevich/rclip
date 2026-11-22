@@ -26,7 +26,7 @@ use sha2::{Digest, Sha256};
 
 use crate::db::{Db, NewImage};
 use crate::imaging::{self, IMAGE_EXT, IMAGE_RAW_EXT, ImageError, preprocess};
-use crate::model::{IndexEncoder, VECTOR_SIZE};
+use crate::model::VECTOR_SIZE;
 use crate::walk::{self, FileEntry, PathFilter, WalkIssue};
 
 const COMMIT_EVERY: u64 = 50_000;
@@ -41,6 +41,9 @@ pub struct IndexOptions {
   pub max_pixels: Option<u64>,
   pub workers: usize,
 }
+
+/// Computes the normalized embeddings of preprocessed images stored back to back.
+pub type Encoder = Box<dyn Fn(&[f32]) -> Result<Vec<f32>> + Send>;
 
 pub fn loading_workers() -> usize {
   std::thread::available_parallelism().map_or(1, usize::from).clamp(1, MAX_LOADING_WORKERS)
@@ -62,7 +65,7 @@ struct Batch {
 /// renamed or duplicated files, and marks images that disappeared as deleted.
 pub fn ensure_index(
   db: &Db,
-  encoder: impl FnOnce() -> Result<IndexEncoder>,
+  encoder: impl FnOnce() -> Result<Encoder>,
   filter: &PathFilter,
   directory: &str,
   options: &IndexOptions,
@@ -97,12 +100,7 @@ struct Indexer<'a> {
 }
 
 impl Indexer<'_> {
-  fn run(
-    &mut self,
-    encoder: impl FnOnce() -> Result<IndexEncoder>,
-    filter: &PathFilter,
-    directory: &str,
-  ) -> Result<()> {
+  fn run(&mut self, encoder: impl FnOnce() -> Result<Encoder>, filter: &PathFilter, directory: &str) -> Result<()> {
     let stop = Arc::new(AtomicBool::new(false));
     let (entries_tx, entries_rx) = bounded::<Result<FileEntry, WalkIssue>>(4096);
     let walker = {
@@ -157,7 +155,7 @@ impl Indexer<'_> {
 
   fn coordinate(
     &mut self,
-    encoder: impl FnOnce() -> Result<IndexEncoder>,
+    encoder: impl FnOnce() -> Result<Encoder>,
     entries: &Receiver<Result<FileEntry, WalkIssue>>,
     jobs: &Sender<FileEntry>,
     loaded: &Receiver<(FileEntry, Result<LoadedImage, ImageError>)>,
@@ -342,12 +340,12 @@ struct Inference {
 }
 
 impl Inference {
-  fn spawn(encoder: IndexEncoder) -> Self {
+  fn spawn(encoder: Encoder) -> Self {
     let (batches_tx, batches_rx) = unbounded::<Batch>();
     let (embeddings_tx, embeddings_rx) = unbounded();
     let thread = std::thread::spawn(move || {
       for batch in batches_rx {
-        let embeddings = encoder.encode(&batch.tensors);
+        let embeddings = encoder(&batch.tensors);
         if embeddings_tx.send((batch.images, embeddings)).is_err() {
           break;
         }
@@ -434,14 +432,399 @@ fn progress_style(known_total: bool) -> ProgressStyle {
 }
 
 fn progress_bar() -> ProgressBar {
-  let progress = ProgressBar::with_draw_target(None, ProgressDrawTarget::stderr());
+  // The progress of the many indexing runs in the tests would clutter the test output.
+  let target = if cfg!(test) { ProgressDrawTarget::hidden() } else { ProgressDrawTarget::stderr() };
+  let progress = ProgressBar::with_draw_target(None, target);
   progress.set_style(progress_style(false));
   progress
 }
 
 #[cfg(test)]
 mod tests {
+  use std::cell::Cell;
+  use std::path::{MAIN_SEPARATOR_STR, Path};
+  use std::sync::Mutex;
+  use std::time::{Duration, SystemTime};
+
   use super::*;
+  use crate::db::{ImageState, VectorCacheReset};
+  use crate::model::Model;
+  use crate::model::download::ModelFiles;
+  use crate::search::Search;
+
+  /// A directory of images and an index that a fake model keeps in sync with it. The model embeds an image as
+  /// the value of its first pixel, so images of different shades get different vectors.
+  struct Library {
+    /// Declared before the directory to be closed before the directory is removed.
+    db: Db,
+    directory: tempfile::TempDir,
+    /// The number of images in every batch the model has encoded.
+    batches: Arc<Mutex<Vec<usize>>>,
+    /// How long the model takes to encode a batch.
+    encoding_time: Cell<Duration>,
+    /// The modification time of the last written file, in seconds. Every write gets a later one, as files
+    /// written in quick succession can otherwise share a modification time and a size.
+    clock: Cell<u64>,
+  }
+
+  impl Library {
+    fn new() -> Self {
+      let directory = tempfile::tempdir().unwrap();
+      std::fs::create_dir(directory.path().join("photos")).unwrap();
+      let db = Db::open(&directory.path().join("db.sqlite3"), VectorCacheReset::Allow).unwrap();
+      Library {
+        db,
+        directory,
+        batches: Arc::default(),
+        encoding_time: Cell::default(),
+        clock: Cell::new(1_000_000_000),
+      }
+    }
+
+    /// The indexed directory.
+    fn root(&self) -> String {
+      self.directory.path().join("photos").into_os_string().into_string().unwrap()
+    }
+
+    /// The path of a file given relative to the indexed directory with `/` separators.
+    fn path(&self, name: &str) -> String {
+      format!("{}{MAIN_SEPARATOR}{}", self.root(), name.replace('/', MAIN_SEPARATOR_STR))
+    }
+
+    fn write(&self, name: &str, data: &[u8]) {
+      let path = self.path(name);
+      std::fs::create_dir_all(Path::new(&path).parent().unwrap()).unwrap();
+      std::fs::write(&path, data).unwrap();
+      self.clock.set(self.clock.get() + 10);
+      set_modified(&path, self.clock.get());
+    }
+
+    fn index(&self) {
+      self.index_with(&PathFilter::new(None, false, false), &self.root(), None);
+    }
+
+    fn index_with(&self, filter: &PathFilter, directory: &str, max_pixels: Option<u64>) {
+      let (batches, encoding_time) = (Arc::clone(&self.batches), self.encoding_time.get());
+      let encoder = || -> Result<Encoder> {
+        Ok(Box::new(move |tensors: &[f32]| {
+          std::thread::sleep(encoding_time);
+          let embeddings: Vec<f32> =
+            tensors.chunks(preprocess::TENSOR_LEN).flat_map(|tensor| [tensor[0]; VECTOR_SIZE]).collect();
+          batches.lock().unwrap().push(embeddings.len() / VECTOR_SIZE);
+          Ok(embeddings)
+        }))
+      };
+      let options = IndexOptions { batch_size: 2, raw_support: false, max_pixels, workers: 2 };
+      ensure_index(&self.db, encoder, filter, directory, &options).unwrap();
+    }
+
+    /// How many images the model has encoded.
+    fn encoded(&self) -> usize {
+      self.batches.lock().unwrap().iter().sum()
+    }
+
+    /// The images in the index that are not marked as deleted, relative to the indexed directory.
+    fn images(&self) -> Vec<String> {
+      let root = self.root();
+      let mut images: Vec<String> =
+        self.db.filepaths(&root).unwrap().iter().map(|path| relative(path, &root)).collect();
+      images.sort();
+      images
+    }
+
+    /// The images that browsing `directory` with `filter` shows, fetched one per page, relative to `directory`.
+    fn browse(&self, filter: &PathFilter, directory: &str) -> Vec<String> {
+      let model = Model::new(ModelFiles::new(Path::new("/nonexistent")));
+      let search = Search { db: &self.db, model: &model, filter, directory };
+      let (mut images, mut cursor) = (Vec::new(), None);
+      loop {
+        let (page, next) = search.list_images(1, cursor.as_ref(), None).unwrap();
+        images.extend(page.iter().map(|path| relative(path, directory)));
+        cursor = next;
+        if cursor.is_none() {
+          break;
+        }
+      }
+      images.sort();
+      images
+    }
+
+    fn state(&self, name: &str) -> ImageState {
+      self.db.image_state(&self.path(name)).unwrap().unwrap()
+    }
+
+    /// The first value of the vector stored for an image.
+    fn vector(&self, name: &str) -> f32 {
+      let path = self.path(name);
+      let visit = |vectors: &mut Vec<f32>, filepath: &str, vector: &[u8]| {
+        if filepath == path {
+          vectors.push(f32::from_le_bytes(vector[..4].try_into().unwrap()));
+        }
+        Ok(())
+      };
+      self.db.scan_vectors(&self.root(), Vec::new, visit).unwrap().concat()[0]
+    }
+  }
+
+  /// A path relative to `directory`, with `/` separators.
+  fn relative(path: &str, directory: &str) -> String {
+    path[directory.len() + 1..].replace(MAIN_SEPARATOR, "/")
+  }
+
+  fn set_modified(path: &str, seconds: u64) {
+    let time = SystemTime::UNIX_EPOCH + Duration::from_secs(seconds);
+    std::fs::File::options().write(true).open(path).unwrap().set_modified(time).unwrap();
+  }
+
+  /// An encoded square image of one shade of gray.
+  fn png(side: u32, shade: u8) -> Vec<u8> {
+    let mut data = std::io::Cursor::new(Vec::new());
+    let image = image::RgbImage::from_pixel(side, side, image::Rgb([shade; 3]));
+    image.write_to(&mut data, image::ImageFormat::Png).unwrap();
+    data.into_inner()
+  }
+
+  #[test]
+  fn indexes_new_and_changed_images_and_skips_unchanged_ones() {
+    let library = Library::new();
+    library.write("a.png", &png(2, 10));
+    library.index();
+    assert_eq!((library.images(), library.encoded()), (vec!["a.png".to_string()], 1));
+    let vector = library.vector("a.png");
+    library.index();
+    assert_eq!(library.encoded(), 1);
+    library.write("a.png", &png(2, 200));
+    library.index();
+    assert_eq!(library.encoded(), 2);
+    assert!(library.vector("a.png") > vector);
+  }
+
+  #[test]
+  fn leaves_an_up_to_date_index_untouched() {
+    let library = Library::new();
+    library.write("a.png", &png(2, 10));
+    library.write("b.png", &png(2, 20));
+    library.index();
+    // the data version changes when another connection commits a change to the index
+    let observer = rusqlite::Connection::open(library.directory.path().join("db.sqlite3")).unwrap();
+    let data_version = || observer.pragma_query_value(None, "data_version", |row| row.get::<_, i64>(0)).unwrap();
+    let up_to_date = data_version();
+    library.index();
+    assert_eq!(data_version(), up_to_date);
+    library.write("c.png", &png(2, 30));
+    library.index();
+    assert_ne!(data_version(), up_to_date);
+  }
+
+  #[test]
+  fn encodes_images_in_batches_of_the_configured_size() {
+    let library = Library::new();
+    // gives images the time to pile up while the model is busy; they must not make the next batch larger
+    library.encoding_time.set(Duration::from_millis(20));
+    for shade in 0..7 {
+      library.write(&format!("{shade}.png"), &png(2, shade));
+    }
+    library.index();
+    let mut batches = library.batches.lock().unwrap().clone();
+    batches.sort();
+    assert_eq!(batches, [1, 2, 2, 2]);
+    assert_eq!(library.images().len(), 7);
+  }
+
+  #[test]
+  fn keeps_each_image_with_its_own_metadata_and_vector_when_another_one_fails_to_load() {
+    let library = Library::new();
+    library.write("a.png", &png(2, 10));
+    library.write("b.png", b"not an image");
+    library.write("c.png", &png(30, 200));
+    library.index();
+    assert_eq!(library.images(), ["a.png", "c.png"]);
+    for name in ["a.png", "c.png"] {
+      let (state, metadata) = (library.state(name), std::fs::metadata(library.path(name)).unwrap());
+      assert_eq!((state.modified_at, state.size.try_into()), (walk::modified_at(&metadata), Ok(metadata.len())));
+    }
+    assert!(library.vector("a.png") < library.vector("c.png"));
+  }
+
+  #[test]
+  fn skips_images_over_the_pixel_limit() {
+    let library = Library::new();
+    library.write("small.png", &png(10, 10));
+    library.write("large.png", &png(50, 10));
+    let filter = PathFilter::new(None, false, false);
+    library.index_with(&filter, &library.root(), Some(100));
+    assert_eq!(library.images(), ["small.png"]);
+    library.index_with(&filter, &library.root(), None);
+    assert_eq!(library.images(), ["large.png", "small.png"]);
+  }
+
+  #[test]
+  fn reuses_the_vectors_of_renamed_and_duplicated_images() {
+    let library = Library::new();
+    library.write("old.png", &png(2, 10));
+    library.index();
+    std::fs::rename(library.path("old.png"), library.path("new.png")).unwrap();
+    std::fs::copy(library.path("new.png"), library.path("copy.png")).unwrap();
+    library.index();
+    assert_eq!(library.images(), ["copy.png", "new.png"]);
+    assert!(library.state("old.png").deleted);
+    assert_eq!(library.encoded(), 1);
+  }
+
+  #[test]
+  fn recomputes_the_vector_of_an_image_that_shares_only_its_hash_with_an_indexed_one() {
+    let library = Library::new();
+    let data = png(2, 10);
+    library.write("a.png", &data);
+    let other = NewImage { filepath: "other.png", modified_at: 1.0, size: 1, vector: &[0; 4], hash: &file_hash(&data) };
+    library.db.upsert_image(&other).unwrap();
+    library.index();
+    assert_eq!(library.encoded(), 1);
+  }
+
+  #[test]
+  fn restores_a_deleted_image_that_comes_back_unchanged() {
+    let library = Library::new();
+    let data = png(2, 10);
+    library.write("a.png", &data);
+    library.index();
+    std::fs::remove_file(library.path("a.png")).unwrap();
+    library.index();
+    assert!(library.images().is_empty());
+    std::fs::write(library.path("a.png"), &data).unwrap();
+    set_modified(&library.path("a.png"), library.clock.get());
+    library.index();
+    assert_eq!((library.images(), library.encoded()), (vec!["a.png".to_string()], 1));
+  }
+
+  #[test]
+  fn marks_missing_and_unreadable_images_as_deleted() {
+    let library = Library::new();
+    for name in ["kept.png", "removed.png", "broken.png"] {
+      library.write(name, &png(2, 10));
+    }
+    library.index();
+    std::fs::remove_file(library.path("removed.png")).unwrap();
+    library.write("broken.png", b"not an image");
+    library.index();
+    assert_eq!(library.images(), ["kept.png"]);
+    assert!(library.state("removed.png").deleted && library.state("broken.png").deleted);
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn keeps_images_in_unreadable_directories_and_behind_inaccessible_symlinks() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let library = Library::new();
+    for name in ["kept.png", "removed.png", "locked/a.png", "../outside/b.png", "../outside/nested/c.png"] {
+      library.write(name, &png(2, 10));
+    }
+    symlink(library.path("../outside/b.png"), library.path("file_link.png")).unwrap();
+    symlink(library.path("../outside/nested"), library.path("dir_link")).unwrap();
+    library.index();
+    let set_mode = |mode| {
+      for directory in ["locked", "../outside"] {
+        std::fs::set_permissions(library.path(directory), std::fs::Permissions::from_mode(mode)).unwrap();
+      }
+    };
+    set_mode(0o000);
+    std::fs::remove_file(library.path("removed.png")).unwrap();
+    library.index();
+    set_mode(0o755);
+    assert_eq!(library.images(), ["dir_link/c.png", "file_link.png", "kept.png", "locked/a.png"]);
+    assert!(library.state("removed.png").deleted);
+  }
+
+  #[test]
+  fn exclusions_hide_images_without_removing_them_from_the_index() {
+    for (excluded, include_hidden, exclude_dirs) in
+      [(".worktrees", false, None), (".git", true, None), ("private", true, Some(vec!["private".to_string()]))]
+    {
+      let library = Library::new();
+      // the excluded name above the indexed directory must not affect the images in it
+      let root = library.path(&format!("{excluded}/checkout"));
+      let in_excluded = format!("{excluded}/photo.png");
+      let mut all = vec![".photo.png", &in_excluded, "nested/photo.png"];
+      all.sort();
+      for (shade, name) in (0..).zip(&all) {
+        library.write(&format!("{excluded}/checkout/{name}"), &png(2, shade));
+      }
+      let visible = if include_hidden { vec![".photo.png", "nested/photo.png"] } else { vec!["nested/photo.png"] };
+      let everything = PathFilter::new(Some(vec!["unused".into()]), true, false);
+      let restricted = PathFilter::new(exclude_dirs, include_hidden, false);
+
+      library.index_with(&everything, &root, None);
+      assert_eq!(library.browse(&everything, &root), all);
+      // what is in the index already is filtered when indexing is skipped
+      assert_eq!(library.browse(&restricted, &root), visible);
+      // indexing with exclusions keeps the excluded images, also when a scan of a parent excludes them all
+      library.index_with(&restricted, &root, None);
+      library.index_with(&restricted, &library.root(), None);
+      assert_eq!(library.browse(&restricted, &root), visible);
+      library.index_with(&everything, &root, None);
+      assert_eq!(library.browse(&everything, &root), all);
+      assert_eq!(library.encoded(), 3);
+
+      // the removal of an excluded image goes unnoticed until the image is no longer excluded
+      std::fs::remove_file(library.path(&format!("{excluded}/checkout/{in_excluded}"))).unwrap();
+      library.index_with(&restricted, &root, None);
+      assert_eq!(library.browse(&everything, &root), all);
+      library.index_with(&everything, &root, None);
+      all.retain(|name| *name != in_excluded);
+      assert_eq!(library.browse(&everything, &root), all);
+    }
+  }
+
+  /// Applies random changes to a directory and checks after each indexing run that exactly the readable images
+  /// on disk are in the index, and that every other image in the index is marked as deleted.
+  #[test]
+  fn tracks_images_through_random_changes() {
+    let library = Library::new();
+    let (photos, removed) = (library.root(), library.directory.path().join("removed"));
+    std::fs::create_dir(&removed).unwrap();
+    // a linear congruential generator, which makes the same changes on every run
+    let mut seed = 372u64;
+    let mut random = |bound: usize| {
+      seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+      usize::try_from(seed >> 33).unwrap() % bound
+    };
+    let names = |directory: &Path| {
+      let entries = std::fs::read_dir(directory).unwrap();
+      let mut names: Vec<String> = entries.map(|entry| entry.unwrap().file_name().into_string().unwrap()).collect();
+      names.sort();
+      names
+    };
+    for name in 0..8 {
+      library.write(&format!("{name}.png"), &png(2, name));
+    }
+    for round in 0..40 {
+      for change in 0..1 + random(3) {
+        let (files, removed_files) = (names(Path::new(&photos)), names(&removed));
+        let image = png(2, u8::try_from(random(256)).unwrap());
+        let new = format!("{}.png", 8 + 3 * round + change);
+        let operation = ["add", "change", "corrupt", "delete", "rename", "duplicate", "restore"][random(7)];
+        match (operation, files.get(random(files.len().max(1)))) {
+          ("change", Some(file)) => library.write(file, &image),
+          ("corrupt", Some(file)) => library.write(file, b"not an image"),
+          ("delete", Some(file)) => std::fs::rename(library.path(file), removed.join(file)).unwrap(),
+          ("rename", Some(file)) => std::fs::rename(library.path(file), library.path(&new)).unwrap(),
+          ("duplicate", Some(file)) => {
+            std::fs::write(library.path(&new), std::fs::read(library.path(file)).unwrap()).unwrap()
+          }
+          // the image comes back unchanged, with the modification time it has in the index
+          ("restore", _) if !removed_files.is_empty() => {
+            let file = &removed_files[random(removed_files.len())];
+            std::fs::rename(removed.join(file), library.path(file)).unwrap()
+          }
+          _ => library.write(&new, &image),
+        }
+      }
+      library.index();
+      let readable = |name: &String| std::fs::read(library.path(name)).unwrap() != b"not an image";
+      let expected: Vec<String> = names(Path::new(&photos)).into_iter().filter(readable).collect();
+      assert_eq!(library.images(), expected);
+    }
+  }
 
   #[test]
   fn hashes_the_head_and_tail_of_files() {

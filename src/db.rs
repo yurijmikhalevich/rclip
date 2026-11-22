@@ -53,6 +53,9 @@ pub struct Db {
 /// Scans covering fewer rows than this run on a single connection.
 const PARALLEL_SCAN_MIN_ROWS: i64 = 50_000;
 const PARALLEL_SCAN_THREADS: usize = 4;
+/// The scan of the images under a directory on a single connection, which follows the filepath index.
+const VECTORS_SQL: &str =
+  "SELECT filepath, vector FROM images WHERE filepath >= ? AND filepath < ? AND deleted IS NULL";
 
 /// Whether a vector cache built by an incompatible model version may be discarded.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -275,9 +278,7 @@ impl Db {
     let dense = count >= PARALLEL_SCAN_MIN_ROWS && count * 4 >= max_id;
     let (Some(db_path), true, true) = (&self.path, dense, threads > 1) else {
       let mut state = new_state();
-      let mut statement = self.connection.prepare_cached(
-        "SELECT filepath, vector FROM images WHERE filepath >= ? AND filepath < ? AND deleted IS NULL",
-      )?;
+      let mut statement = self.connection.prepare_cached(VECTORS_SQL)?;
       let mut rows = statement.query([&start, &end])?;
       while let Some(row) = rows.next()? {
         visit(&mut state, row.get_ref(0)?.as_str()?, row.get_ref(1)?.as_blob()?)?;
@@ -332,16 +333,7 @@ impl Db {
     mut visit: impl FnMut(&str, f64) -> Result<bool>,
   ) -> Result<()> {
     let (start, end) = dirpath_range(path);
-    // SQLite would otherwise pick the filepath index and sort every image under `path` for each page; walking
-    // the recency index returns a page as soon as it finds enough images under `path`.
-    let mut sql = "SELECT filepath, modified_at FROM images INDEXED BY recent_images
-      WHERE filepath >= ?1 AND filepath < ?2 AND deleted IS NULL"
-      .to_string();
-    if after.is_some() {
-      sql += " AND modified_at <= ?3 AND (modified_at < ?3 OR filepath > ?4)";
-    }
-    sql += " ORDER BY modified_at DESC, filepath";
-    let mut statement = self.connection.prepare_cached(&sql)?;
+    let mut statement = self.connection.prepare_cached(&recent_filepaths_sql(after.is_some()))?;
     let mut rows = match after {
       Some(cursor) => statement.query(params![start, end, cursor.modified_at, cursor.filepath])?,
       None => statement.query(params![start, end])?,
@@ -353,6 +345,19 @@ impl Db {
     }
     Ok(())
   }
+}
+
+/// The "recently modified first" listing query, which continues after a cursor when `after_cursor` is set.
+fn recent_filepaths_sql(after_cursor: bool) -> String {
+  // SQLite would otherwise pick the filepath index and sort every image under `path` for each page; walking
+  // the recency index returns a page as soon as it finds enough images under `path`.
+  let mut sql = "SELECT filepath, modified_at FROM images INDEXED BY recent_images
+    WHERE filepath >= ?1 AND filepath < ?2 AND deleted IS NULL"
+    .to_string();
+  if after_cursor {
+    sql += " AND modified_at <= ?3 AND (modified_at < ?3 OR filepath > ?4)";
+  }
+  sql + " ORDER BY modified_at DESC, filepath"
 }
 
 /// Returns the `[start, end)` filepath range covering every file under `path`.
@@ -413,8 +418,37 @@ mod tests {
     insert(&db, r"Y:\photos\nested\b.jpg", 2.0);
     insert(&db, r"Y:\photos2\c.jpg", 3.0);
     insert(&db, r"Y:\photo%\d.jpg", 4.0);
+    insert(&db, r"Z:\e.jpg", 5.0);
     assert_eq!(vectors(&db, r"Y:\photos"), [r"Y:\photos\a.jpg", r"Y:\photos\nested\b.jpg"]);
+    assert_eq!(vectors(&db, "Y:\\photos\\"), [r"Y:\photos\a.jpg", r"Y:\photos\nested\b.jpg"]);
     assert_eq!(vectors(&db, r"Y:\photo%"), [r"Y:\photo%\d.jpg"]);
+    assert_eq!(
+      vectors(&db, "Y:\\"),
+      [r"Y:\photo%\d.jpg", r"Y:\photos2\c.jpg", r"Y:\photos\a.jpg", r"Y:\photos\nested\b.jpg"]
+    );
+  }
+
+  /// The steps SQLite takes to run `sql`.
+  fn query_plan(db: &Db, sql: &str) -> String {
+    let mut statement = db.connection.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+    let parameters = rusqlite::params_from_iter(std::iter::repeat_n("", statement.parameter_count()));
+    let steps = statement.query_map(parameters, |row| row.get::<_, String>(3)).unwrap();
+    steps.collect::<rusqlite::Result<Vec<_>>>().unwrap().join("; ")
+  }
+
+  #[test]
+  fn scans_a_directory_through_the_filepath_index() {
+    let plan = query_plan(&Db::open_in_memory().unwrap(), VECTORS_SQL);
+    assert!(plan.contains("existing_images (filepath>? AND filepath<?)"), "{plan}");
+  }
+
+  #[test]
+  fn lists_recent_filepaths_without_sorting() {
+    let db = Db::open_in_memory().unwrap();
+    for after_cursor in [false, true] {
+      let plan = query_plan(&db, &recent_filepaths_sql(after_cursor));
+      assert!(plan.contains("recent_images") && !plan.contains("TEMP B-TREE"), "{plan}");
+    }
   }
 
   #[test]
@@ -482,6 +516,7 @@ mod tests {
     insert(&db, r"Y:\p\old.jpg", 1.0);
     insert(&db, r"Y:\p\new-a.jpg", 2.0);
     insert(&db, r"Y:\p\new-b.jpg", 2.0);
+    insert(&db, r"Y:\elsewhere\newest.jpg", 3.0);
     let list = |after: Option<&ImageCursor>| {
       let mut paths = Vec::new();
       db.for_each_filepath(r"Y:\p", after, |filepath, _| {
@@ -514,6 +549,13 @@ mod tests {
     let directory = tempfile::tempdir().unwrap();
     let db = Db::open(&directory.path().join("db.sqlite3"), VectorCacheReset::Allow).unwrap();
     assert_eq!(pragma::<i64>(&db, "page_size"), PAGE_SIZE);
+  }
+
+  #[test]
+  fn reads_the_index_through_a_memory_map() {
+    let directory = tempfile::tempdir().unwrap();
+    let db = Db::open(&directory.path().join("db.sqlite3"), VectorCacheReset::Allow).unwrap();
+    assert!(pragma::<i64>(&db, "mmap_size") > 0);
   }
 
   #[test]

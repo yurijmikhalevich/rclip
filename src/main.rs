@@ -82,7 +82,11 @@ fn run(options: &Options) -> Result<ExitCode> {
       max_pixels,
       workers,
     };
-    index::ensure_index(&db, || model.index_encoder(), &filter, &directory, &index_options)?;
+    let encoder = || -> Result<index::Encoder> {
+      let encoder = model.index_encoder()?;
+      Ok(Box::new(move |batch| encoder.encode(batch)))
+    };
+    index::ensure_index(&db, encoder, &filter, &directory, &index_options)?;
   }
 
   if args.interactive {
