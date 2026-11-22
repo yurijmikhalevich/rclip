@@ -29,6 +29,38 @@ jobs:
         run: uv sync --locked
       - run: make test
 
+  rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-26, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install NASM for libjpeg-turbo's SIMD code
+        if: runner.os != 'macOS'
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            choco install nasm --no-progress -y
+            echo 'C:\Program Files\NASM' >> "$GITHUB_PATH"
+          else
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends nasm
+          fi
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo fmt --check
+      - run: cargo clippy --release --locked --all-targets -- -D warnings
+      # The end-to-end tests download the model; caching it avoids Hugging Face's anonymous per-IP
+      # rate limit, which is shared with other GitHub-hosted runners.
+      - uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/rclip-test-data
+          key: rclip-test-data-${{ runner.os }}-${{ hashFiles('src/model/download.rs') }}
+      - run: cargo test --release --locked
+        env:
+          RCLIP_TEST_DATADIR: ${{ runner.temp }}/rclip-test-data
+
   kitty-copy:
     strategy:
       matrix:
