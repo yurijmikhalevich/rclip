@@ -5,7 +5,6 @@
 //! embeddings for the same files and can share one index.
 
 mod decode;
-mod exif;
 mod heif;
 mod jp2;
 mod jpeg;
@@ -13,7 +12,11 @@ pub mod preprocess;
 mod raw;
 pub mod resample;
 
+use std::io::Cursor;
 use std::path::Path;
+
+use image::metadata::Orientation;
+use image::{DynamicImage, ImageDecoder, ImageReader};
 
 pub use decode::decode;
 
@@ -51,33 +54,13 @@ impl RgbImage {
     }
   }
 
-  /// Applies an EXIF orientation (1-8), returning the image as it should be displayed.
-  pub fn oriented(self, orientation: u32) -> RgbImage {
-    if !(2..=8).contains(&orientation) {
-      return self;
-    }
-    let (width, height) = (self.width as usize, self.height as usize);
-    let transposed = orientation >= 5;
-    let (out_width, out_height) = if transposed { (height, width) } else { (width, height) };
-    let mut pixels = vec![0u8; self.pixels.len()];
-    for y in 0..out_height {
-      for x in 0..out_width {
-        // Map each output coordinate back to the stored pixel it shows.
-        let (sx, sy) = match orientation {
-          2 => (width - 1 - x, y),
-          3 => (width - 1 - x, height - 1 - y),
-          4 => (x, height - 1 - y),
-          5 => (y, x),
-          6 => (y, height - 1 - x),
-          7 => (width - 1 - y, height - 1 - x),
-          _ => (width - 1 - y, x),
-        };
-        let source = (sy * width + sx) * 3;
-        let target = (y * out_width + x) * 3;
-        pixels[target..target + 3].copy_from_slice(&self.pixels[source..source + 3]);
-      }
-    }
-    RgbImage { width: out_width as u32, height: out_height as u32, pixels }
+  /// The image as it should be displayed, given its EXIF orientation.
+  pub fn oriented(self, orientation: Orientation) -> RgbImage {
+    let pixels = image::RgbImage::from_raw(self.width, self.height, self.pixels).expect("the pixels fill the image");
+    let mut image = DynamicImage::ImageRgb8(pixels);
+    image.apply_orientation(orientation);
+    let image = image.into_rgb8();
+    RgbImage { width: image.width(), height: image.height(), pixels: image.into_raw() }
   }
 }
 
@@ -135,7 +118,12 @@ pub fn read_display_image(path: &str, draft: Option<(u32, u32)>) -> Result<RgbIm
   if IMAGE_RAW_EXT.contains(&extension.as_str()) || extension == "heic" {
     return Ok(image);
   }
-  Ok(image.oriented(exif::orientation(&data).map_or(1, u32::from)))
+  Ok(image.oriented(orientation(&data).unwrap_or(Orientation::NoTransforms)))
+}
+
+/// The EXIF orientation of a JPEG, PNG, WebP, or TIFF image.
+fn orientation(data: &[u8]) -> Option<Orientation> {
+  ImageReader::new(Cursor::new(data)).with_guessed_format().ok()?.into_decoder().ok()?.orientation().ok()
 }
 
 /// Picks the pixel cap from the machine's RAM so that only images we can reasonably decode are
@@ -186,14 +174,34 @@ mod tests {
     // 0 1 2
     // 3 4 5
     let image = numbered(3, 2);
-    assert_eq!(values(&image.clone().oriented(1)), [0, 1, 2, 3, 4, 5]);
-    assert_eq!(values(&image.clone().oriented(2)), [2, 1, 0, 5, 4, 3]);
-    assert_eq!(values(&image.clone().oriented(3)), [5, 4, 3, 2, 1, 0]);
-    assert_eq!(values(&image.clone().oriented(4)), [3, 4, 5, 0, 1, 2]);
-    assert_eq!(values(&image.clone().oriented(5)), [0, 3, 1, 4, 2, 5]);
-    assert_eq!(values(&image.clone().oriented(6)), [3, 0, 4, 1, 5, 2]);
-    assert_eq!(values(&image.clone().oriented(7)), [5, 2, 4, 1, 3, 0]);
-    assert_eq!(values(&image.oriented(8)), [2, 5, 1, 4, 0, 3]);
+    assert_eq!(values(&image.clone().oriented(Orientation::from_exif(1).unwrap())), [0, 1, 2, 3, 4, 5]);
+    assert_eq!(values(&image.clone().oriented(Orientation::from_exif(2).unwrap())), [2, 1, 0, 5, 4, 3]);
+    assert_eq!(values(&image.clone().oriented(Orientation::from_exif(3).unwrap())), [5, 4, 3, 2, 1, 0]);
+    assert_eq!(values(&image.clone().oriented(Orientation::from_exif(4).unwrap())), [3, 4, 5, 0, 1, 2]);
+    assert_eq!(values(&image.clone().oriented(Orientation::from_exif(5).unwrap())), [0, 3, 1, 4, 2, 5]);
+    assert_eq!(values(&image.clone().oriented(Orientation::from_exif(6).unwrap())), [3, 0, 4, 1, 5, 2]);
+    assert_eq!(values(&image.clone().oriented(Orientation::from_exif(7).unwrap())), [5, 2, 4, 1, 3, 0]);
+    assert_eq!(values(&image.oriented(Orientation::from_exif(8).unwrap())), [2, 5, 1, 4, 0, 3]);
+  }
+
+  /// Writes a 4x2 image with an EXIF block whose orientation is 6.
+  fn write_with_exif(mut encoder: impl image::ImageEncoder) {
+    // A big-endian TIFF block with one entry: orientation 6, a SHORT stored inline.
+    let exif = b"MM\0\x2a\0\0\0\x08\0\x01\x01\x12\0\x03\0\0\0\x01\0\x06\0\0\0\0\0\0";
+    encoder.set_exif_metadata(exif.to_vec()).unwrap();
+    encoder.write_image(&[200; 4 * 2 * 3], 4, 2, image::ExtendedColorType::Rgb8).unwrap();
+  }
+
+  #[test]
+  fn reads_the_orientation_from_exif() {
+    let (mut jpeg, mut png, mut webp) = (Vec::new(), Vec::new(), Vec::new());
+    write_with_exif(image::codecs::jpeg::JpegEncoder::new(&mut jpeg));
+    write_with_exif(image::codecs::png::PngEncoder::new(&mut png));
+    write_with_exif(image::codecs::webp::WebPEncoder::new_lossless(&mut webp));
+    for data in [jpeg, png, webp] {
+      assert_eq!(orientation(&data), Some(Orientation::Rotate90));
+    }
+    assert_eq!(orientation(b"GIF89a"), None);
   }
 
   #[test]

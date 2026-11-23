@@ -13,6 +13,8 @@ use objc2_image_io::{
   kCGImageSourceThumbnailMaxPixelSize,
 };
 
+use image::metadata::Orientation;
+
 use crate::imaging::{ImageError, RgbImage, check_pixel_limit};
 
 /// Decodes an HEIF image. `min_side` lets Image I/O downscale while decoding, as long as the shortest
@@ -77,19 +79,22 @@ fn render_rgb(image: &CGImage, width: usize, height: usize) -> Result<Vec<u8>, I
   Ok(rgbx.as_chunks::<4>().0.iter().flat_map(|pixel| [pixel[0], pixel[1], pixel[2]]).collect())
 }
 
-fn orientation(source: &CGImageSource) -> u32 {
+fn orientation(source: &CGImageSource) -> Orientation {
   // SAFETY: the source is valid and no options dictionary is passed.
   let Some(properties) = (unsafe { source.properties_at_index(0, None) }) else {
-    return 1;
+    return Orientation::NoTransforms;
   };
   // SAFETY: kCGImagePropertyOrientation is a constant CFString key provided by Image I/O.
   let key: *const c_void = unsafe { (kCGImagePropertyOrientation as *const objc2_core_foundation::CFString).cast() };
   // SAFETY: the dictionary is valid; a missing key yields null.
   let value = unsafe { properties.value(key) };
   if value.is_null() {
-    return 1;
+    return Orientation::NoTransforms;
   }
   // SAFETY: Image I/O stores the orientation as a CFNumber.
   let number = unsafe { &*value.cast::<CFNumber>() };
-  number.as_i32().map_or(1, |value| value as u32)
+  number
+    .as_i32()
+    .and_then(|value| Orientation::from_exif(u8::try_from(value).ok()?))
+    .unwrap_or(Orientation::NoTransforms)
 }
