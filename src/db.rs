@@ -127,8 +127,9 @@ impl Db {
          deleting cached vectors and rebuilding the index."
       );
     }
+    // The upgrade runs in one transaction with the version update, so an interrupted one is retried from the start.
     if version < 2 {
-      self.connection.execute_batch("ALTER TABLE images ADD COLUMN indexing BOOLEAN")?;
+      self.write("ALTER TABLE images ADD COLUMN indexing BOOLEAN", [])?;
       version = 2;
     }
     if version < 3 {
@@ -139,10 +140,8 @@ impl Db {
     }
     if version < 4 {
       // The hash column enables rename and duplicate detection.
-      self.connection.execute_batch(
-        "ALTER TABLE images ADD COLUMN hash TEXT;
-        CREATE INDEX IF NOT EXISTS hash_index ON images(hash) WHERE deleted IS NULL;",
-      )?;
+      self.write("ALTER TABLE images ADD COLUMN hash TEXT", [])?;
+      self.write("CREATE INDEX IF NOT EXISTS hash_index ON images(hash) WHERE deleted IS NULL", [])?;
     }
     if stored.is_some() {
       self.write("UPDATE db_version SET version=?", [VERSION])?;
@@ -561,5 +560,27 @@ mod tests {
     assert_eq!(db.image_state("/a.jpg").unwrap(), None);
     let version: i64 = db.connection.query_row("SELECT version FROM db_version", [], |row| row.get(0)).unwrap();
     assert_eq!(version, VERSION);
+  }
+
+  #[test]
+  fn retries_an_interrupted_upgrade() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("db.sqlite3");
+    let connection = Connection::open(&path).unwrap();
+    connection
+      .execute_batch(
+        "CREATE TABLE images (id INTEGER PRIMARY KEY, deleted BOOLEAN, filepath TEXT NOT NULL UNIQUE,
+          modified_at DATETIME NOT NULL, size INTEGER NOT NULL, vector BLOB NOT NULL, indexing BOOLEAN);
+        CREATE TABLE db_version (version INTEGER);
+        INSERT INTO db_version(version) VALUES (3);
+        CREATE TRIGGER interrupt BEFORE UPDATE ON db_version BEGIN SELECT RAISE(ABORT, 'interrupted'); END;",
+      )
+      .unwrap();
+    assert!(Db::open(&path, VectorCacheReset::Allow).is_err());
+    connection.execute_batch("DROP TRIGGER interrupt").unwrap();
+    drop(connection);
+    let db = Db::open(&path, VectorCacheReset::Allow).unwrap();
+    insert(&db, "/a.jpg", 1.0);
+    assert_eq!(db.vector_by_hash("hash", 1).unwrap(), Some(vec![1, 2, 3, 4]));
   }
 }
