@@ -1,9 +1,9 @@
-//! The Kitty graphics protocol with Unicode placeholders.
+//! The Kitty graphics protocol: transmitting images, and placing them with Unicode placeholders.
 //!
-//! An image is transmitted once and given a virtual placement of `columns`x`rows` cells. It is then
-//! displayed by drawing placeholder characters whose foreground color encodes the image id and
-//! whose diacritics encode the row and column, so images move and clip with the rest of the
-//! terminal UI like ordinary text.
+//! In the interactive UI, an image is transmitted once and given a virtual placement of `columns`x`rows` cells.
+//! It is then displayed by drawing placeholder characters whose foreground color encodes the image id and whose
+//! diacritics encode the row and column, so images move and clip with the rest of the terminal UI like ordinary
+//! text.
 
 use std::fmt::Write as _;
 
@@ -18,8 +18,14 @@ const CHUNK_SIZE: usize = 4096;
 /// The largest number of rows or columns a placement can span.
 pub const MAX_CELLS: u16 = DIACRITICS.len() as u16;
 
-/// Frames a PNG image for transmission and creates its virtual placement.
-pub fn transmit(id: u32, png: &[u8], columns: u16, rows: u16, tmux: bool) -> Vec<u8> {
+/// Whether the output goes through tmux, which forwards the commands only when they are wrapped.
+pub fn in_tmux() -> bool {
+  std::env::var_os("TMUX").is_some_and(|tmux| !tmux.is_empty())
+    || std::env::var("TERM").is_ok_and(|term| term.starts_with("tmux"))
+}
+
+/// Frames a PNG image for transmission in 4 KiB chunks, with `keys` in the first one.
+pub fn transmit_png(keys: &str, png: &[u8], tmux: bool) -> String {
   let payload = base64::engine::general_purpose::STANDARD.encode(png);
   let mut sequence = String::with_capacity(payload.len() + payload.len() / CHUNK_SIZE * 32 + 64);
   let chunks: Vec<&[u8]> = payload.as_bytes().chunks(CHUNK_SIZE).collect();
@@ -27,9 +33,15 @@ pub fn transmit(id: u32, png: &[u8], columns: u16, rows: u16, tmux: bool) -> Vec
     let more = u8::from(index + 1 < chunks.len());
     let chunk = std::str::from_utf8(chunk).expect("base64 is ASCII");
     // Only the first chunk carries the image's keys; the protocol allows just `m` and `q` after it.
-    let keys = if index == 0 { format!("i={id},m={more},f=100,q=2") } else { format!("m={more},q=2") };
+    let keys = if index == 0 { format!("{keys},m={more}") } else { format!("q=2,m={more}") };
     push_command(&mut sequence, &format!("{keys};{chunk}"), tmux);
   }
+  sequence
+}
+
+/// Transmits a PNG image and creates its virtual placement.
+pub fn transmit(id: u32, png: &[u8], columns: u16, rows: u16, tmux: bool) -> Vec<u8> {
+  let mut sequence = transmit_png(&format!("i={id},f=100,q=2"), png, tmux);
   push_command(&mut sequence, &format!("a=p,i={id},c={columns},r={rows},U=1,q=2"), tmux);
   sequence.into_bytes()
 }
@@ -401,9 +413,17 @@ mod tests {
   fn frames_transmissions_in_chunks_followed_by_a_placement() {
     let png = vec![0u8; 4000];
     let sequence = String::from_utf8(transmit(7, &png, 3, 2, false)).unwrap();
-    assert!(sequence.starts_with("\x1b_Gi=7,m=1,f=100,q=2;"));
-    assert!(sequence.contains("\x1b\\\x1b_Gm=0,q=2;"));
+    assert!(sequence.starts_with("\x1b_Gi=7,f=100,q=2,m=1;"));
+    assert!(sequence.contains("\x1b\\\x1b_Gq=2,m=0;"));
     assert!(sequence.ends_with("\x1b_Ga=p,i=7,c=3,r=2,U=1,q=2\x1b\\"));
+  }
+
+  #[test]
+  fn frames_previews_like_the_python_version() {
+    let sequence = transmit_png("a=T,f=100,q=2", &[0; 3073], false);
+    let chunk = "A".repeat(CHUNK_SIZE);
+    assert!(sequence.starts_with(&format!("\x1b_Ga=T,f=100,q=2,m=1;{chunk}\x1b\\\x1b_Gq=2,m=0;")));
+    assert_eq!(transmit_png("a=T,f=100,q=2", b"A", true), "\x1bPtmux;\x1b\x1b_Ga=T,f=100,q=2,m=0;QQ==\x1b\x1b\\\x1b\\");
   }
 
   #[test]

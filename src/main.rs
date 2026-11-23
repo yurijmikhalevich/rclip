@@ -4,6 +4,7 @@ mod cli;
 mod db;
 mod imaging;
 mod index;
+mod kitty;
 mod model;
 mod paths;
 mod preview;

@@ -10,7 +10,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use super::app::{App, Focus, View, file_name};
 use super::images::{Fit, ImageKey, ImageState, Images, Variant};
-use super::kitty;
+use crate::kitty;
 
 const CARD_MIN_WIDTH: u16 = 24;
 const CARD_HEIGHT: u16 = 16;

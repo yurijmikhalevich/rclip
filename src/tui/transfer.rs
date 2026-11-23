@@ -100,7 +100,8 @@ pub fn copy_image_to_clipboard(filepath: &str) -> Result<(), String> {
   // Dropping it removes it.
   let directory = tempfile::Builder::new().prefix("rclip-clipboard-").tempdir().map_err(|error| error.to_string())?;
   let converted = directory.path().join("image.png");
-  crate::preview::encode_png(&image)
+  image
+    .png()
     .map_err(|error| error.to_string())
     .and_then(|png| std::fs::write(&converted, png).map_err(|error| error.to_string()))
     .and_then(|()| {

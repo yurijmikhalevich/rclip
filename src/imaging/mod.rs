@@ -54,6 +54,13 @@ impl RgbImage {
     }
   }
 
+  pub fn png(&self) -> image::ImageResult<Vec<u8>> {
+    let mut png = Vec::new();
+    let encoder = image::codecs::png::PngEncoder::new(&mut png);
+    image::ImageEncoder::write_image(encoder, &self.pixels, self.width, self.height, image::ExtendedColorType::Rgb8)?;
+    Ok(png)
+  }
+
   /// The image as it should be displayed, given its EXIF orientation.
   pub fn oriented(self, orientation: Orientation) -> RgbImage {
     let pixels = image::RgbImage::from_raw(self.width, self.height, self.pixels).expect("the pixels fill the image");

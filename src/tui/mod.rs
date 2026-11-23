@@ -3,7 +3,6 @@
 
 mod app;
 mod images;
-mod kitty;
 mod transfer;
 mod ui;
 mod worker;

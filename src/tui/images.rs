@@ -11,9 +11,9 @@ use std::sync::{Arc, Condvar, Mutex};
 
 use crossbeam_channel::Sender;
 
-use super::kitty;
 use crate::imaging::resample::{Filter, resize};
 use crate::imaging::{self, RgbImage};
+use crate::kitty;
 
 /// Kitty silently evicts the oldest images once a per-buffer quota of decoded pixels is reached,
 /// so keep the transmitted images well below it.
@@ -126,7 +126,6 @@ impl Images {
         std::thread::spawn(move || run_loader(&loader))
       })
       .collect();
-    let tmux = std::env::var_os("TMUX").is_some() || std::env::var("TERM").is_ok_and(|term| term.starts_with("tmux"));
     Images {
       slots: HashMap::new(),
       in_use: HashSet::new(),
@@ -134,7 +133,7 @@ impl Images {
       transmitted_bytes: 0,
       pending: Vec::new(),
       ids: kitty::IdAllocator::new(),
-      tmux,
+      tmux: kitty::in_tmux(),
       loader,
       threads,
     }
