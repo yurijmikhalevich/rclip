@@ -191,7 +191,7 @@ fn search_heic() {
   let directory = fixtures().join("images heic");
   let indexing = String::from_utf8(run.rclip(&directory, &["bee"]).stderr).unwrap();
   // rclip decodes HEIC with the operating system's codec, which Windows doesn't always have
-  if cfg!(windows) && indexing.contains("Windows has no HEIF decoder installed") {
+  if cfg!(windows) && indexing.contains("Windows has no working HEIF decoder") {
     eprintln!("skipping: Windows has no HEIC codec installed");
     return;
   }
