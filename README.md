@@ -275,7 +275,7 @@ Then use `uv run rclip` in place of `rclip`.
 
 ### Building the Rust version
 
-The repository also contains a Rust implementation of **rclip** with the same command-line interface, interactive UI, and index format, so both versions can share an index. It needs [Rust](https://rustup.rs/) 1.92 or newer, a C/C++ compiler, and [CMake](https://cmake.org/).
+The repository also contains a Rust implementation of **rclip** with the same command-line interface, interactive UI, and index format, so both versions can share an index. It needs [Rust](https://rustup.rs/) 1.92 or newer, a C/C++ compiler, and [CMake](https://cmake.org/). On Linux, it also needs pkg-config and the OpenSSL development files, which the build uses to download ONNX Runtime (`sudo apt install pkg-config libssl-dev` on Debian and Ubuntu).
 
 ```bash
 git submodule update --init
