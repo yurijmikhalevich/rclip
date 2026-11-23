@@ -88,7 +88,14 @@ pub struct Args {
   pub force_preview: bool,
 
   /// preview height in pixels; default: 400
-  #[arg(long, short = 'H', value_name = "PREVIEW_HEIGHT_PX", default_value_t = 400, hide_default_value = true)]
+  #[arg(
+    long,
+    short = 'H',
+    value_name = "PREVIEW_HEIGHT_PX",
+    value_parser = clap::value_parser!(u32).range(1..),
+    default_value_t = 400,
+    hide_default_value = true
+  )]
   pub preview_height: u32,
 
   /// allows to skip updating the index if no images were added, changed, or removed
@@ -293,6 +300,8 @@ mod tests {
   fn rejects_non_positive_numbers() {
     assert!(positive_int("0").is_err());
     assert_eq!(positive_int("3"), Ok(3));
+    assert!(Args::try_parse_from(["rclip", "cat", "--preview-height", "0"]).is_err());
+    assert_eq!(args(&["cat", "-H", "1"]).preview_height, 1);
   }
 
   #[test]
