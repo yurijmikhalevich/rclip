@@ -50,15 +50,13 @@ pub fn draw(frame: &mut Frame<'_>, app: &mut App, context: &mut Context<'_>) -> 
     return hits;
   }
   let input = Rect::new(area.x + 1, area.y + 1, area.width - 2, 3);
-  let labels = Rect::new(area.x + 1, area.y + 4, area.width - 2, 1);
   let footer_height = 2;
-  let main = Rect::new(area.x, area.y + 5, area.width, area.height - 5 - footer_height);
+  let main = Rect::new(area.x, area.y + 4, area.width, area.height - 4 - footer_height);
   let path_line = Rect::new(area.x + 1, main.bottom(), area.width - 2, 1);
   let hotkeys = Rect::new(area.x + 1, main.bottom() + 1, area.width - 2, 1);
 
   hits.input = input;
   draw_input(frame, app, input);
-  draw_labels(frame.buffer_mut(), app, labels);
   match app.view {
     View::Grid => draw_grid(frame.buffer_mut(), app, context, main, &mut hits),
     View::Detail => draw_detail(frame.buffer_mut(), app, context, main, &mut hits),
@@ -79,9 +77,21 @@ fn border(focused: bool) -> (BorderType, Style) {
 fn draw_input(frame: &mut Frame<'_>, app: &App, area: Rect) {
   let focused = app.focus == Focus::Search;
   let (border_type, border_style) = border(focused);
-  let mut block = Block::default().borders(Borders::ALL).border_type(border_type).border_style(border_style);
+  let order = if app.ranked { "Search results · Most similar first" } else { "All images · Recently modified first" };
+  // Each title is padded with a space on both sides and stays clear of the corners.
+  let title = |text: &str, width: usize| {
+    Line::styled(format!(" {} ", ellipsize(text, width.saturating_sub(4))), Style::default().fg(Color::Reset))
+  };
+  let width = usize::from(area.width);
+  let status_width = app.status.map_or(0, |status| status.chars().count() + 2);
+  let mut block = Block::default()
+    .borders(Borders::ALL)
+    .border_type(border_type)
+    .border_style(border_style)
+    .title_top(title(order, width.saturating_sub(status_width)).right_aligned())
+    .title_bottom(title(&format!("{} · Including subfolders", app.directory), width));
   if let Some(status) = app.status {
-    block = block.title(Span::styled(status, Style::default().fg(Color::Reset)));
+    block = block.title_top(title(status, width));
   }
   let inner = block.inner(area);
   block.render(area, frame.buffer_mut());
@@ -100,23 +110,13 @@ fn draw_input(frame: &mut Frame<'_>, app: &App, area: Rect) {
     start -= grapheme.chars().count();
   }
   if chars.is_empty() {
-    Paragraph::new(format!("Search images in {}…", app.directory)).style(muted()).render(inner, frame.buffer_mut());
+    Paragraph::new("Search images…").style(muted()).render(inner, frame.buffer_mut());
   } else {
     Paragraph::new(chars[start..].iter().collect::<String>()).render(inner, frame.buffer_mut());
   }
   if focused {
     frame.set_cursor_position((inner.x + column as u16, inner.y));
   }
-}
-
-fn draw_labels(buffer: &mut Buffer, app: &App, area: Rect) {
-  let order = if app.ranked { "Search results · Most similar first" } else { "All images · Recently modified first" };
-  let order_width = (order.chars().count() as u16).min(area.width / 2);
-  let scope_area = Rect::new(area.x, area.y, area.width.saturating_sub(order_width + 2), 1);
-  Paragraph::new(ellipsize(&format!("{} · Including subfolders", app.directory), usize::from(scope_area.width)))
-    .render(scope_area, buffer);
-  let order_area = Rect::new(area.right() - order_width, area.y, order_width, 1);
-  Paragraph::new(ellipsize(order, usize::from(order_width))).alignment(Alignment::Right).render(order_area, buffer);
 }
 
 fn ellipsize(text: &str, width: usize) -> String {
