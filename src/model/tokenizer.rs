@@ -170,29 +170,36 @@ fn fix_text(text: &str) -> String {
   if !text.contains('<') {
     text = html_escape::decode_html_entities(&text).into_owned();
   }
-  let text = remove_terminal_escapes(&text);
-  let mut fixed = String::with_capacity(text.len());
-  let mut chars = text.chars().peekable();
-  while let Some(c) = chars.next() {
+  // The fixes run in ftfy's order, so that each one also applies to what the earlier ones produce:
+  // C1 controls, ligatures, and character width first, then quotes and line breaks, then terminal
+  // escapes and control characters.
+  let mut expanded = String::with_capacity(text.len());
+  for c in text.chars() {
     match c {
-      '\r' => {
-        chars.next_if_eq(&'\n');
-        fixed.push('\n');
-      }
-      '\u{2028}' | '\u{2029}' | '\u{85}' => fixed.push('\n'),
-      '\u{80}'..='\u{9f}' => fixed.push(windows_1252(c as u8)),
-      '\u{2bc}' | '\u{2018}'..='\u{201b}' => fixed.push('\''),
-      '\u{201c}'..='\u{201f}' => fixed.push('"'),
-      '\u{3000}' => fixed.push(' '),
-      '\u{ff01}'..='\u{ffef}' => fixed.extend(c.to_string().nfkc()),
-      c if is_removed_control(c) => {}
+      '\u{80}'..='\u{9f}' => expanded.push(windows_1252(c as u8)),
+      '\u{3000}' => expanded.push(' '),
+      '\u{ff01}'..='\u{ffef}' => expanded.extend(c.to_string().nfkc()),
       c => match ligature(c) {
-        Some(replacement) => fixed.push_str(replacement),
-        None => fixed.push(c),
+        Some(replacement) => expanded.push_str(replacement),
+        None => expanded.push(c),
       },
     }
   }
-  fixed.nfc().collect()
+  let mut uncurled = String::with_capacity(expanded.len());
+  let mut chars = expanded.chars().peekable();
+  while let Some(c) = chars.next() {
+    match c {
+      '\u{2bc}' | '\u{2018}'..='\u{201b}' => uncurled.push('\''),
+      '\u{201c}'..='\u{201f}' => uncurled.push('"'),
+      '\r' => {
+        chars.next_if_eq(&'\n');
+        uncurled.push('\n');
+      }
+      '\u{2028}' | '\u{2029}' => uncurled.push('\n'),
+      c => uncurled.push(c),
+    }
+  }
+  remove_terminal_escapes(&uncurled).chars().filter(|&c| !is_removed_control(c)).nfc().collect()
 }
 
 fn remove_terminal_escapes(text: &str) -> std::borrow::Cow<'_, str> {
@@ -283,6 +290,9 @@ mod tests {
     assert_eq!(fix_text("ＡＢＣ\u{3000}x"), "ABC x");
     assert_eq!(fix_text("e\u{301}"), "é");
     assert_eq!(fix_text("\x1b[31mred\x1b[0m"), "red");
+    // Like ftfy, quotes and line breaks are fixed after ligatures and C1 controls are replaced.
+    assert_eq!(fix_text("ŉ hond"), "'n hond");
+    assert_eq!(fix_text("\u{91}hi\u{92} \u{93}q\u{94} a\u{85}b"), "'hi' \"q\" a…b");
   }
 
   #[test]
