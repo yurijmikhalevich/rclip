@@ -26,15 +26,16 @@ pub fn permission_error(directory: &str, symlink: Option<&str>, is_current_direc
       This command will grant rclip the necessary access to the home directory. Afterward, you can try again."
     );
   }
-  if is_under("/media") {
+  // the roots the removable-media interface grants
+  if let Some(root) = ["/media", "/run/media", "/mnt"].into_iter().find(|root| is_under(root)) {
     return format!(
       "rclip doesn't have access to {path_info}. You can resolve this issue by running:\n\n\
       \tsudo snap connect rclip:removable-media\n\n\
-      This command will grant rclip the necessary access to the \"/media\" directory. Afterward, you can try again."
+      This command will grant rclip the necessary access to the \"{root}\" directory. Afterward, you can try again."
     );
   }
-  "rclip installed with snap cannot access files outside of the home or \"/media\" directories. If you want to use \
-  rclip outside of home or \"/media\", file an issue in the rclip project on GitHub \
+  "rclip installed with snap cannot access files outside of the home, \"/media\", \"/run/media\", or \"/mnt\" \
+  directories. If you want to use rclip elsewhere, file an issue in the rclip project on GitHub \
   https://github.com/yurijmikhalevich/rclip/issues, describe your use case, and consider alternative rclip \
   installation options https://github.com/yurijmikhalevich/rclip#linux."
     .into()
