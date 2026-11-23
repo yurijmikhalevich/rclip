@@ -1,8 +1,9 @@
 //! HEIF decoding through the Windows Imaging Component (WIC).
 
 use windows::Win32::Graphics::Imaging::{
-  CLSID_WICImagingFactory, GUID_WICPixelFormat32bppRGBA, IWICBitmapSource, IWICImagingFactory, IWICPalette,
-  WICBitmapDitherTypeNone, WICBitmapInterpolationModeFant, WICBitmapPaletteTypeCustom, WICDecodeMetadataCacheOnDemand,
+  CLSID_WICImagingFactory, GUID_ContainerFormatHeif, GUID_WICPixelFormat32bppRGBA, IWICBitmapSource,
+  IWICImagingFactory, IWICPalette, WICBitmapDitherTypeNone, WICBitmapInterpolationModeFant, WICBitmapPaletteTypeCustom,
+  WICDecodeMetadataCacheOnDemand,
 };
 use windows::Win32::System::Com::{
   CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
@@ -12,10 +13,6 @@ use windows::core::{HRESULT, Interface};
 use crate::imaging::{ImageError, RgbImage, check_pixel_limit};
 
 const RPC_E_CHANGED_MODE: HRESULT = HRESULT(0x80010106_u32 as i32);
-/// What WIC returns when no installed decoder recognizes the data.
-const WINCODEC_ERR_COMPONENTNOTFOUND: HRESULT = HRESULT(0x88982F50_u32 as i32);
-/// What WIC returns when the HEIF decoder is installed but can't start, such as without the HEVC codec it needs.
-const WINCODEC_ERR_COMPONENTINITIALIZEFAILURE: HRESULT = HRESULT(0x88982F8B_u32 as i32);
 
 /// Decodes an HEIF image. `min_side` lets WIC downscale while decoding, as long as the shortest side
 /// stays at least that long.
@@ -46,13 +43,15 @@ fn decode_with_com(data: &[u8], max_pixels: Option<u64>, min_side: Option<u32>) 
     stream.InitializeFromMemory(data).map_err(wic("read the HEIF data"))?;
     let decoder =
       factory.CreateDecoderFromStream(&stream, std::ptr::null(), WICDecodeMetadataCacheOnDemand).map_err(|error| {
-        if [WINCODEC_ERR_COMPONENTNOTFOUND, WINCODEC_ERR_COMPONENTINITIALIZEFAILURE].contains(&error.code()) {
+        // Asking for a HEIF decoder by its format tells a missing or broken codec, such as one without the HEVC
+        // codec it needs, apart from data that no decoder recognizes.
+        if factory.CreateDecoder(&GUID_ContainerFormatHeif, std::ptr::null()).is_err() {
           ImageError::decode(
             "Windows has no working HEIF decoder; install the HEIF Image Extensions and HEVC Video Extensions \
              from the Microsoft Store",
           )
         } else {
-          wic("create a HEIF decoder")(error)
+          wic("recognize the HEIF data")(error)
         }
       })?;
     let frame = decoder.GetFrame(0).map_err(wic("read the first HEIF frame"))?;
