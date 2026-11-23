@@ -2,7 +2,7 @@
 //! Resize(256, bicubic) → CenterCrop(256) → RGB float32 [0, 1] → Normalize(CLIP mean/std) → CHW.
 
 use super::RgbImage;
-use super::resample::{Filter, resize};
+use super::resample::{Filter, resize_cropped};
 
 pub const IMAGE_SIZE: u32 = 256;
 /// Length of one preprocessed image tensor (3x256x256).
@@ -21,24 +21,22 @@ pub fn preprocess_into(image: &RgbImage, output: &mut Vec<f32>) {
   } else {
     ((width * size / height) as u32, IMAGE_SIZE)
   };
-  let resized = resize(image, resized_width, resized_height, Filter::Bicubic);
   // Python's round() rounds halves to even.
   let left = ((f64::from(resized_width) - size) / 2.0).round_ties_even() as u32;
   let top = ((f64::from(resized_height) - size) / 2.0).round_ties_even() as u32;
+  // Only the center crop is resized, so that images with extreme aspect ratios do not need memory
+  // for their whole resized length.
+  let crop = (left, top, IMAGE_SIZE, IMAGE_SIZE);
+  let cropped = resize_cropped(image, resized_width, resized_height, crop, Filter::Bicubic);
 
   let start = output.len();
   output.resize(start + TENSOR_LEN, 0.0);
   let planes = &mut output[start..];
   let plane_len = (IMAGE_SIZE * IMAGE_SIZE) as usize;
-  let stride = resized.width as usize * 3;
-  for y in 0..IMAGE_SIZE as usize {
-    let row_start = (top as usize + y) * stride + left as usize * 3;
-    let row = &resized.pixels[row_start..row_start + IMAGE_SIZE as usize * 3];
-    for (x, pixel) in row.as_chunks::<3>().0.iter().enumerate() {
-      for channel in 0..3 {
-        let value = f32::from(pixel[channel]) / 255.0;
-        planes[channel * plane_len + y * IMAGE_SIZE as usize + x] = (value - MEAN[channel]) / STD[channel];
-      }
+  for (index, pixel) in cropped.pixels.as_chunks::<3>().0.iter().enumerate() {
+    for channel in 0..3 {
+      let value = f32::from(pixel[channel]) / 255.0;
+      planes[channel * plane_len + index] = (value - MEAN[channel]) / STD[channel];
     }
   }
 }
@@ -68,5 +66,15 @@ mod tests {
   fn upscales_small_images() {
     let image = RgbImage { width: 10, height: 20, pixels: vec![7; 10 * 20 * 3] };
     assert_eq!(preprocess(&image).len(), TENSOR_LEN);
+  }
+
+  #[test]
+  fn handles_extreme_aspect_ratios_without_resizing_the_whole_image() {
+    // Resized whole, these would be 256x25,600,000 and 25,600,000x256 pixels, about 20 GB each.
+    for (width, height) in [(1, 100_000), (100_000, 1)] {
+      let image = RgbImage { width, height, pixels: vec![7; (width * height * 3) as usize] };
+      let tensor = preprocess(&image);
+      assert!((tensor[0] - (7.0 / 255.0 - MEAN[0]) / STD[0]).abs() < 1e-6, "{width}x{height}");
+    }
   }
 }
