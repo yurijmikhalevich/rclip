@@ -2138,6 +2138,7 @@ dependencies = [
  "thiserror 2.0.21",
  "turbojpeg-sys",
  "unicode-normalization",
+ "unicode-segmentation",
  "ureq",
  "windows",
 ]

@@ -36,6 +36,7 @@ tempfile = "3"
 thiserror = "2"
 turbojpeg-sys = { version = "1.2", default-features = false, features = ["cmake"] }
 unicode-normalization = "0.1"
+unicode-segmentation = "1"
 ureq = { version = "3", features = ["json"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -6,6 +6,7 @@ use ratatui::layout::{Alignment, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph, Widget, Wrap};
+use unicode_segmentation::UnicodeSegmentation;
 
 use super::app::{App, Focus, View, file_name};
 use super::images::{Fit, ImageKey, ImageState, Images, Variant};
@@ -86,12 +87,17 @@ fn draw_input(frame: &mut Frame<'_>, app: &App, area: Rect) {
   block.render(area, frame.buffer_mut());
   let width = usize::from(inner.width.saturating_sub(1)).max(1);
   // Scroll horizontally to keep the cursor visible, measuring in terminal columns as wide characters take two.
+  // Characters are measured in grapheme clusters, as a sequence such as 👩‍💻 takes two columns.
   let chars: Vec<char> = app.input.text.chars().collect();
-  let char_width = |c: char| Span::raw(c.to_string()).width();
+  let before_cursor: String = chars[..app.input.cursor].iter().collect();
   let (mut start, mut column) = (app.input.cursor, 0);
-  while start > 0 && column + char_width(chars[start - 1]) <= width {
-    start -= 1;
-    column += char_width(chars[start]);
+  for grapheme in before_cursor.graphemes(true).rev() {
+    let grapheme_width = Span::raw(grapheme).width();
+    if column + grapheme_width > width {
+      break;
+    }
+    column += grapheme_width;
+    start -= grapheme.chars().count();
   }
   if chars.is_empty() {
     Paragraph::new(format!("Search images in {}…", app.directory)).style(muted()).render(inner, frame.buffer_mut());
@@ -440,5 +446,7 @@ mod tests {
     assert_eq!(cursor_after("猫"), (3, "猫".into()));
     // Ten characters take 20 columns, so the field scrolls past the first two to fit the cursor in its 17.
     assert_eq!(cursor_after("一二三四五六七八九十"), (17, "三".into()));
+    // A woman, a zero-width joiner, and a laptop make one emoji two columns wide.
+    assert_eq!(cursor_after("\u{1F469}\u{200D}\u{1F4BB}a"), (4, "\u{1F469}\u{200D}\u{1F4BB}".into()));
   }
 }
