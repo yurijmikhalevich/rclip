@@ -168,6 +168,12 @@ fn translate_sign_options(args: impl IntoIterator<Item = OsString>) -> Vec<OsStr
       } else if arg == "-" {
         translated.push("--subtract".into());
         continue;
+      } else if let Some(value) = arg.to_str().and_then(|arg| arg.strip_prefix("+=")) {
+        translated.push(format!("--add={value}").into());
+        continue;
+      } else if let Some(value) = arg.to_str().and_then(|arg| arg.strip_prefix("-=")) {
+        translated.push(format!("--subtract={value}").into());
+        continue;
       }
     }
     translated.push(arg);
@@ -240,6 +246,9 @@ mod tests {
     assert_eq!(parsed.query.as_deref(), Some("kitty"));
     assert_eq!(parsed.add, ["roof", "puppy", "x"]);
     assert_eq!(parsed.subtract, ["fence", "y", "z"]);
+    let parsed = args(&["kitty", "+=roof", "-=fence", "+=-x"]);
+    assert_eq!(parsed.add, ["roof", "-x"]);
+    assert_eq!(parsed.subtract, ["fence"]);
   }
 
   #[test]
