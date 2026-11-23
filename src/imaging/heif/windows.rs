@@ -12,6 +12,8 @@ use windows::core::{HRESULT, Interface};
 use crate::imaging::{ImageError, RgbImage, check_pixel_limit};
 
 const RPC_E_CHANGED_MODE: HRESULT = HRESULT(0x80010106_u32 as i32);
+/// What WIC returns when no installed decoder recognizes the data.
+const WINCODEC_ERR_COMPONENTNOTFOUND: HRESULT = HRESULT(0x88982F50_u32 as i32);
 
 /// Decodes an HEIF image. `min_side` lets WIC downscale while decoding, as long as the shortest side
 /// stays at least that long.
@@ -40,9 +42,14 @@ fn decode_with_com(data: &[u8], max_pixels: Option<u64>, min_side: Option<u32>) 
       .map_err(wic("create the imaging factory"))?;
     let stream = factory.CreateStream().map_err(wic("create a stream"))?;
     stream.InitializeFromMemory(data).map_err(wic("read the HEIF data"))?;
-    let decoder = factory
-      .CreateDecoderFromStream(&stream, std::ptr::null(), WICDecodeMetadataCacheOnDemand)
-      .map_err(wic("find an installed HEIF decoder"))?;
+    let decoder =
+      factory.CreateDecoderFromStream(&stream, std::ptr::null(), WICDecodeMetadataCacheOnDemand).map_err(|error| {
+        if error.code() == WINCODEC_ERR_COMPONENTNOTFOUND {
+          ImageError::decode("Windows has no HEIF decoder installed")
+        } else {
+          wic("create a HEIF decoder")(error)
+        }
+      })?;
     let frame = decoder.GetFrame(0).map_err(wic("read the first HEIF frame"))?;
     // The pixel limit applies to the source image, which is what the scaler below reads.
     let (mut width, mut height) = (0u32, 0u32);
