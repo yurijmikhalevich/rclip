@@ -211,7 +211,7 @@ fn remove_terminal_escapes(text: &str) -> std::borrow::Cow<'_, str> {
 fn is_removed_control(c: char) -> bool {
   matches!(c,
     '\u{0}'..='\u{8}' | '\u{b}' | '\u{e}'..='\u{1f}' | '\u{7f}' | '\u{206a}'..='\u{206f}' | '\u{feff}'
-    | '\u{fff9}'..='\u{fffc}' | '\u{1d173}'..='\u{1d17a}' | '\u{e0000}'..='\u{e007f}')
+    | '\u{fff9}'..='\u{fffc}')
 }
 
 fn ligature(c: char) -> Option<&'static str> {
@@ -293,6 +293,9 @@ mod tests {
     // Like ftfy, quotes and line breaks are fixed after ligatures and C1 controls are replaced.
     assert_eq!(fix_text("ŉ hond"), "'n hond");
     assert_eq!(fix_text("\u{91}hi\u{92} \u{93}q\u{94} a\u{85}b"), "'hi' \"q\" a…b");
+    // ftfy keeps the tag characters of subdivision flags and musical notation controls.
+    let wales = "\u{1f3f4}\u{e0067}\u{e0062}\u{e0077}\u{e006c}\u{e0073}\u{e007f}";
+    assert_eq!(fix_text(&format!("{wales} a\u{1d173}b")), format!("{wales} a\u{1d173}b"));
   }
 
   #[test]
