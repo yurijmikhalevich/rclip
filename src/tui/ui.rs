@@ -87,10 +87,11 @@ fn draw_input(frame: &mut Frame<'_>, app: &App, area: Rect) {
   let width = usize::from(inner.width.saturating_sub(1)).max(1);
   // Scroll horizontally to keep the cursor visible, measuring in terminal columns as wide characters take two.
   let chars: Vec<char> = app.input.text.chars().collect();
-  let columns = |chars: &[char]| Span::raw(chars.iter().collect::<String>()).width();
-  let mut start = 0;
-  while columns(&chars[start..app.input.cursor]) > width {
-    start += 1;
+  let char_width = |c: char| Span::raw(c.to_string()).width();
+  let (mut start, mut column) = (app.input.cursor, 0);
+  while start > 0 && column + char_width(chars[start - 1]) <= width {
+    start -= 1;
+    column += char_width(chars[start]);
   }
   if chars.is_empty() {
     Paragraph::new(format!("Search images in {}…", app.directory)).style(muted()).render(inner, frame.buffer_mut());
@@ -98,8 +99,7 @@ fn draw_input(frame: &mut Frame<'_>, app: &App, area: Rect) {
     Paragraph::new(chars[start..].iter().collect::<String>()).render(inner, frame.buffer_mut());
   }
   if focused {
-    let column = columns(&chars[start..app.input.cursor]) as u16;
-    frame.set_cursor_position((inner.x + column, inner.y));
+    frame.set_cursor_position((inner.x + column as u16, inner.y));
   }
 }
 
