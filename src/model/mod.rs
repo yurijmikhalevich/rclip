@@ -6,7 +6,7 @@ pub mod download;
 mod onnx;
 pub mod tokenizer;
 
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 
 use anyhow::{Context, Result};
 use regex::Regex;
@@ -25,7 +25,7 @@ pub type FeatureVector = Vec<f64>;
 pub struct Model {
   files: ModelFiles,
   textual: OnceLock<OnnxModel>,
-  visual: OnceLock<Arc<OnnxModel>>,
+  visual: OnceLock<OnnxModel>,
   tokenizer: OnceLock<Tokenizer>,
 }
 
@@ -33,7 +33,7 @@ pub struct Model {
 pub enum IndexEncoder {
   #[cfg(target_os = "macos")]
   CoreMl(coreml::CoreMlModel),
-  Onnx(Arc<OnnxModel>),
+  Onnx(OnnxModel),
 }
 
 impl IndexEncoder {
@@ -75,9 +75,9 @@ impl Model {
     Ok(self.textual.get().expect("the textual model was just loaded"))
   }
 
-  fn visual(&self) -> Result<&Arc<OnnxModel>> {
+  fn visual(&self) -> Result<&OnnxModel> {
     if self.visual.get().is_none() {
-      let _ = self.visual.set(Arc::new(OnnxModel::load(&self.files.visual())?));
+      let _ = self.visual.set(OnnxModel::load(&self.files.visual())?);
     }
     Ok(self.visual.get().expect("the visual model was just loaded"))
   }
@@ -96,7 +96,7 @@ impl Model {
     if download::use_coreml_for_visual_index() {
       return Ok(IndexEncoder::CoreMl(coreml::CoreMlModel::load(&self.files.visual_coreml())?));
     }
-    Ok(IndexEncoder::Onnx(Arc::clone(self.visual()?)))
+    Ok(IndexEncoder::Onnx(OnnxModel::load(&self.files.visual())?))
   }
 
   pub fn text_features(&self, texts: &[&str]) -> Result<Vec<f32>> {
