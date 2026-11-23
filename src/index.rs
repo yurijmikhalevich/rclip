@@ -71,13 +71,15 @@ pub fn ensure_index(
     "checking images in the current directory for changes; \
      use \"--no-indexing\" to skip this if no images were added, changed, or removed"
   );
+  // Read before the walk, so that an image another rclip run indexes meanwhile is not taken for a missing one.
+  let indexed = db.filepaths(directory)?;
   let progress = progress_bar();
   let mut indexer =
     Indexer { db, options, progress: &progress, seen: HashSet::new(), unreadable_dirs: Vec::new(), scanned: 0 };
   let result = indexer.run(encoder, filter, directory);
   progress.finish();
   result?;
-  indexer.mark_missing_images_as_deleted(filter, directory)?;
+  indexer.mark_missing_images_as_deleted(indexed, filter, directory)?;
   eprintln!();
   Ok(())
 }
@@ -305,15 +307,15 @@ impl Indexer<'_> {
     self.progress.suspend(|| eprintln!("{message}"));
   }
 
-  /// Marks indexed images under `directory` that were not found during this run as deleted.
+  /// Marks the `indexed` images under `directory` that were not found during this run as deleted.
   /// Excluded paths and unreadable directories and entries were not inspected, so their state is kept.
-  fn mark_missing_images_as_deleted(&self, filter: &PathFilter, directory: &str) -> Result<()> {
+  fn mark_missing_images_as_deleted(&self, indexed: Vec<String>, filter: &PathFilter, directory: &str) -> Result<()> {
     let unreadable: Vec<String> = self
       .unreadable_dirs
       .iter()
       .map(|dir| format!("{}{MAIN_SEPARATOR}", dir.trim_end_matches(MAIN_SEPARATOR)))
       .collect();
-    for filepath in self.db.filepaths(directory)? {
+    for filepath in indexed {
       if !self.seen.contains(&filepath)
         && !filter.is_excluded(&filepath, directory)
         // an unreadable entry may be a symlink to a file, too
