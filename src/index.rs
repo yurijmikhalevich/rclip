@@ -485,6 +485,11 @@ mod tests {
     db.upsert_image(&NewImage { filepath: image, modified_at: 1.0, size: 1, vector: &[0; 4], hash: "h" }).unwrap();
     // A directory that can be listed but not searched hides its files' metadata.
     std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o444)).unwrap();
+    if std::fs::metadata(image).is_ok() {
+      // A privileged user, such as root in a container, can read it anyway, so there is nothing to check.
+      std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+      return;
+    }
     let options = IndexOptions { batch_size: 1, raw_support: false, max_pixels: None, workers: 1 };
     let filter = PathFilter::new(None, false, false);
     let result = ensure_index(&db, || anyhow::bail!("no model"), &filter, directory.path().to_str().unwrap(), &options);
