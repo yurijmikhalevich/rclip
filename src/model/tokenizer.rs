@@ -152,103 +152,16 @@ fn bytes_to_unicode() -> (Vec<u8>, [char; 256]) {
   (printable.into_iter().map(|byte| byte as u8).collect(), table)
 }
 
+/// Like CLIP's `basic_clean`, except that of `ftfy.fix_text` only the NFC normalization is kept: its other fixes
+/// (mojibake, ligatures, curly quotes, ...) only matter for unusual queries, and queries are never stored.
 fn basic_clean(text: &str) -> String {
-  let text = fix_text(text);
+  let text: String = text.nfc().collect();
   let text = html_escape::decode_html_entities(&text);
   html_escape::decode_html_entities(&text).trim().to_string()
 }
 
 fn whitespace_clean(text: &str) -> String {
   text.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// The subset of `ftfy.fix_text` that applies to search queries: HTML entities, terminal escapes,
-/// C1 controls, Latin ligatures, character width, curly quotes, line breaks, control characters,
-/// and NFC normalization. Mojibake repair is not reproduced; it does not affect typed queries.
-fn fix_text(text: &str) -> String {
-  let mut text = text.to_string();
-  if !text.contains('<') {
-    text = html_escape::decode_html_entities(&text).into_owned();
-  }
-  // The fixes run in ftfy's order, so that each one also applies to what the earlier ones produce:
-  // C1 controls, ligatures, and character width first, then quotes and line breaks, then terminal
-  // escapes and control characters.
-  let mut expanded = String::with_capacity(text.len());
-  for c in text.chars() {
-    match c {
-      '\u{80}'..='\u{9f}' => expanded.push(windows_1252(c as u8)),
-      '\u{3000}' => expanded.push(' '),
-      '\u{ff01}'..='\u{ffef}' => expanded.extend(c.to_string().nfkc()),
-      c => match ligature(c) {
-        Some(replacement) => expanded.push_str(replacement),
-        None => expanded.push(c),
-      },
-    }
-  }
-  let mut uncurled = String::with_capacity(expanded.len());
-  let mut chars = expanded.chars().peekable();
-  while let Some(c) = chars.next() {
-    match c {
-      '\u{2bc}' | '\u{2018}'..='\u{201b}' => uncurled.push('\''),
-      '\u{201c}'..='\u{201f}' => uncurled.push('"'),
-      '\r' => {
-        chars.next_if_eq(&'\n');
-        uncurled.push('\n');
-      }
-      '\u{2028}' | '\u{2029}' => uncurled.push('\n'),
-      c => uncurled.push(c),
-    }
-  }
-  remove_terminal_escapes(&uncurled).chars().filter(|&c| !is_removed_control(c)).nfc().collect()
-}
-
-fn remove_terminal_escapes(text: &str) -> std::borrow::Cow<'_, str> {
-  static ESCAPES: std::sync::LazyLock<Regex> =
-    std::sync::LazyLock::new(|| Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]").expect("the escape pattern is valid"));
-  ESCAPES.replace_all(text, "")
-}
-
-fn is_removed_control(c: char) -> bool {
-  matches!(c,
-    '\u{0}'..='\u{8}' | '\u{b}' | '\u{e}'..='\u{1f}' | '\u{7f}' | '\u{206a}'..='\u{206f}' | '\u{feff}'
-    | '\u{fff9}'..='\u{fffc}')
-}
-
-fn ligature(c: char) -> Option<&'static str> {
-  Some(match c {
-    'Ĳ' => "IJ",
-    'ĳ' => "ij",
-    'ŉ' => "ʼn",
-    'Ǳ' => "DZ",
-    'ǲ' => "Dz",
-    'ǳ' => "dz",
-    'Ǆ' => "DŽ",
-    'ǅ' => "Dž",
-    'ǆ' => "dž",
-    'Ǉ' => "LJ",
-    'ǈ' => "Lj",
-    'ǉ' => "lj",
-    'Ǌ' => "NJ",
-    'ǋ' => "Nj",
-    'ǌ' => "nj",
-    'ﬀ' => "ff",
-    'ﬁ' => "fi",
-    'ﬂ' => "fl",
-    'ﬃ' => "ffi",
-    'ﬄ' => "ffl",
-    'ﬅ' => "ſt",
-    'ﬆ' => "st",
-    _ => return None,
-  })
-}
-
-/// Decodes a C1 control byte as Windows-1252, the way ftfy's `fix_c1_controls` does.
-fn windows_1252(byte: u8) -> char {
-  const TABLE: [char; 32] = [
-    '€', '\u{81}', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\u{8d}', 'Ž', '\u{8f}', '\u{90}', '‘', '’',
-    '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '\u{9d}', 'ž', 'Ÿ',
-  ];
-  TABLE[(byte - 0x80) as usize]
 }
 
 #[cfg(test)]
@@ -285,17 +198,11 @@ mod tests {
   }
 
   #[test]
-  fn cleans_text_like_ftfy_and_html_unescape() {
-    assert_eq!(whitespace_clean(&basic_clean("  \u{201c}ﬁsh\u{201d} &amp;amp; chips\r\n")), "\"fish\" & chips");
-    assert_eq!(fix_text("ＡＢＣ\u{3000}x"), "ABC x");
-    assert_eq!(fix_text("e\u{301}"), "é");
-    assert_eq!(fix_text("\x1b[31mred\x1b[0m"), "red");
-    // Like ftfy, quotes and line breaks are fixed after ligatures and C1 controls are replaced.
-    assert_eq!(fix_text("ŉ hond"), "'n hond");
-    assert_eq!(fix_text("\u{91}hi\u{92} \u{93}q\u{94} a\u{85}b"), "'hi' \"q\" a…b");
-    // ftfy keeps the tag characters of subdivision flags and musical notation controls.
-    let wales = "\u{1f3f4}\u{e0067}\u{e0062}\u{e0077}\u{e006c}\u{e0073}\u{e007f}";
-    assert_eq!(fix_text(&format!("{wales} a\u{1d173}b")), format!("{wales} a\u{1d173}b"));
+  fn cleans_text_like_clip() {
+    assert_eq!(
+      whitespace_clean(&basic_clean("  e\u{301}clair &amp;amp; chips\r\n\tfries ")),
+      "\u{e9}clair & chips fries"
+    );
   }
 
   #[test]
