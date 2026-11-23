@@ -292,7 +292,10 @@ impl Indexer<'_> {
         self.warn(format!("cannot read {dir}: {error}; keeping its images in the index as they are"));
         self.unreadable_dirs.push(dir);
       }
-      WalkIssue::Metadata(path, error) => self.warn(format!("error getting fs metadata for {path}: {error}")),
+      WalkIssue::Metadata(path, error) => {
+        self.warn(format!("error getting fs metadata for {path}: {error}"));
+        self.unreadable_dirs.push(path);
+      }
       WalkIssue::NonUtf8(path) => self.warn(format!("skipping {}: the path is not valid UTF-8", path.display())),
     }
   }
@@ -465,5 +468,25 @@ mod tests {
     assert!(!has_processed_sibling(raw.to_str().unwrap()));
     std::fs::write(directory.path().join("a.JPG"), b"x").unwrap();
     assert!(has_processed_sibling(raw.to_str().unwrap()));
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn keeps_images_whose_metadata_cannot_be_read() {
+    use std::os::unix::fs::PermissionsExt;
+    let directory = tempfile::tempdir().unwrap();
+    let image = directory.path().join("a.jpg");
+    std::fs::write(&image, b"x").unwrap();
+    let image = image.to_str().unwrap();
+    let db = Db::open_in_memory().unwrap();
+    db.upsert_image(&NewImage { filepath: image, modified_at: 1.0, size: 1, vector: &[0; 4], hash: "h" }).unwrap();
+    // A directory that can be listed but not searched hides its files' metadata.
+    std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o444)).unwrap();
+    let options = IndexOptions { batch_size: 1, raw_support: false, max_pixels: None, workers: 1 };
+    let filter = PathFilter::new(None, false, false);
+    let result = ensure_index(&db, || anyhow::bail!("no model"), &filter, directory.path().to_str().unwrap(), &options);
+    std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+    result.unwrap();
+    assert!(!db.image_state(image).unwrap().unwrap().deleted);
   }
 }
