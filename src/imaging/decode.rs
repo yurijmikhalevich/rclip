@@ -12,7 +12,7 @@ use super::{IMAGE_RAW_EXT, ImageError, RgbImage, check_pixel_limit, heif, jp2, j
 ///
 /// `max_pixels` of `None` disables the decompression-bomb cap. `min_side` lets the JPEG and HEIF
 /// decoders downscale while decoding, which skips most of the work for camera-sized photos, as long
-/// as the shortest side stays at least that long; leave it unset when the image is displayed.
+/// as the shortest side stays at least that long.
 pub fn decode(
   data: &[u8],
   extension: &str,
@@ -21,25 +21,24 @@ pub fn decode(
 ) -> Result<RgbImage, ImageError> {
   match generic_format(data, extension) {
     Some(format) => Ok(to_rgb(decode_generic(data, format, max_pixels)?)),
-    None => decode_special(data, extension, max_pixels, min_side.map(|side| (side, side)), min_side),
+    None => decode_special(data, extension, max_pixels, min_side),
   }
 }
 
 /// Decodes an image for display, flattening transparency onto `background` the way the Python
-/// version's interactive UI does instead of dropping the alpha channel. `draft` lets JPEGs decode
-/// at a reduced scale that keeps the image at least that large; HEIF images keep their full frame.
+/// version's interactive UI does instead of dropping the alpha channel. `min_side` works like in [`decode`].
 pub fn decode_flattened(
   data: &[u8],
   extension: &str,
   background: u8,
-  draft: Option<(u32, u32)>,
+  min_side: Option<u32>,
 ) -> Result<RgbImage, ImageError> {
   match generic_format(data, extension) {
     Some(format) => {
       let image = decode_generic(data, format, None)?;
       if image.color().has_alpha() { Ok(flatten(&image.into_rgba8(), background)) } else { Ok(to_rgb(image)) }
     }
-    None => decode_special(data, extension, None, draft, None),
+    None => decode_special(data, extension, None, min_side),
   }
 }
 
@@ -56,17 +55,16 @@ fn decode_special(
   data: &[u8],
   extension: &str,
   max_pixels: Option<u64>,
-  jpeg_draft: Option<(u32, u32)>,
-  heif_min_side: Option<u32>,
+  min_side: Option<u32>,
 ) -> Result<RgbImage, ImageError> {
   if IMAGE_RAW_EXT.contains(&extension) {
-    raw::decode(data, max_pixels, jpeg_draft)
+    raw::decode(data, max_pixels, min_side)
   } else if extension == "heic" && heif::is_supported() {
-    heif::decode(data, max_pixels, heif_min_side)
+    heif::decode(data, max_pixels, min_side)
   } else if jp2::is_jp2(data) {
     jp2::decode(data, max_pixels)
   } else if image::guess_format(data).is_ok_and(|format| format == ImageFormat::Jpeg) {
-    jpeg::decode(data, max_pixels, jpeg_draft)
+    jpeg::decode(data, max_pixels, min_side)
   } else {
     Err(ImageError::Unidentified)
   }

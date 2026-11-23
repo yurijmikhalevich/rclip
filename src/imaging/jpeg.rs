@@ -50,9 +50,9 @@ impl Decompressor {
   }
 }
 
-/// Decodes a JPEG. Like Pillow's `draft`, `draft` picks the largest DCT reduction (down to 1/8) that
-/// keeps the image at least that large, which skips most of the decoding work.
-pub fn decode(data: &[u8], max_pixels: Option<u64>, draft: Option<(u32, u32)>) -> Result<RgbImage, ImageError> {
+/// Decodes a JPEG. Like Pillow's `draft`, `min_side` picks the largest DCT reduction (down to 1/8) that keeps
+/// the shortest side at least that long, which skips most of the decoding work.
+pub fn decode(data: &[u8], max_pixels: Option<u64>, min_side: Option<u32>) -> Result<RgbImage, ImageError> {
   let decompressor = Decompressor::new()?;
   // SAFETY: the handle is valid and `data` is a readable buffer of the given length.
   if unsafe { tj::tj3DecompressHeader(decompressor.0, data.as_ptr(), data.len() as tj::size_t) } != 0 {
@@ -65,9 +65,9 @@ pub fn decode(data: &[u8], max_pixels: Option<u64>, draft: Option<(u32, u32)>) -
   }
   check_pixel_limit(width, height, max_pixels)?;
   // Lossless JPEGs have no DCT to reduce.
-  let reduction = match draft {
-    Some((min_width, min_height)) if decompressor.get(tj::TJPARAM_TJPARAM_LOSSLESS) != 1 => {
-      let scale = (width / min_width).min(height / min_height);
+  let reduction = match min_side {
+    Some(min_side) if decompressor.get(tj::TJPARAM_TJPARAM_LOSSLESS) != 1 => {
+      let scale = width.min(height) / min_side.max(1);
       [8, 4, 2].into_iter().find(|&reduction| scale >= reduction).unwrap_or(1)
     }
     _ => 1,
@@ -162,17 +162,17 @@ mod tests {
   }
 
   #[test]
-  fn drafts_the_largest_reduction_that_covers_the_requested_size() {
+  fn drafts_the_largest_reduction_that_keeps_the_minimum_side() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/e2e/images/cat.jpg");
     let data = std::fs::read(path).unwrap();
-    let size = |draft| {
-      let image = decode(&data, None, Some(draft)).unwrap();
+    let size = |min_side| {
+      let image = decode(&data, None, Some(min_side)).unwrap();
       assert_eq!(image.pixels.len(), (image.width * image.height * 3) as usize);
       (image.width, image.height)
     };
-    assert_eq!(size((256, 256)), (384, 256));
-    assert_eq!(size((128, 128)), (192, 128));
-    assert_eq!(size((90, 60)), (96, 64));
-    assert_eq!(size((1, 1)), (48, 32));
+    assert_eq!(size(256), (384, 256));
+    assert_eq!(size(128), (192, 128));
+    assert_eq!(size(60), (96, 64));
+    assert_eq!(size(1), (48, 32));
   }
 }

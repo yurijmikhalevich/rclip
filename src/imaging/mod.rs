@@ -114,12 +114,12 @@ pub fn read_image(path: &str, max_pixels: Option<u64>, min_side: Option<u32>) ->
 const DISPLAY_BACKGROUND: u8 = 0x12;
 
 /// Reads an image for display: upright according to its EXIF orientation and with transparency
-/// flattened onto the UI background, like the Python version's interactive UI. `draft` lets JPEGs
-/// decode at a reduced scale that keeps the stored image at least that large.
-pub fn read_display_image(path: &str, draft: Option<(u32, u32)>) -> Result<RgbImage, ImageError> {
+/// flattened onto the UI background, like the Python version's interactive UI. `min_side` lets the decoders
+/// downscale while decoding, as long as the shortest side stays at least that long.
+pub fn read_display_image(path: &str, min_side: Option<u32>) -> Result<RgbImage, ImageError> {
   let data = std::fs::read(path)?;
   let extension = file_extension(path);
-  let image = decode::decode_flattened(&data, &extension, DISPLAY_BACKGROUND, draft)?;
+  let image = decode::decode_flattened(&data, &extension, DISPLAY_BACKGROUND, min_side)?;
   // RAW files show their embedded preview or LibRaw's output, which are already upright, and the
   // native HEIF decoders apply the orientation themselves.
   if IMAGE_RAW_EXT.contains(&extension.as_str()) || extension == "heic" {

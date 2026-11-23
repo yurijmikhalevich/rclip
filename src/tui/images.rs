@@ -297,9 +297,10 @@ fn run_loader(loader: &LoaderShared) {
 /// `prepare_image`.
 pub fn prepare(path: &str, variant: Variant) -> Result<RgbImage, String> {
   let (max_width, max_height) = variant.max_size();
-  // Twice the shown size leaves the resampling below enough pixels to keep the image sharp.
-  let image =
-    imaging::read_display_image(path, Some((max_width * 2, max_height * 2))).map_err(|error| error.to_string())?;
+  // Twice the shown size leaves the resampling below enough pixels to keep the image sharp. An image whose
+  // shortest side covers twice the box's shortest side is at least twice its shown size, whatever its shape.
+  let min_side = 2 * max_width.min(max_height);
+  let image = imaging::read_display_image(path, Some(min_side)).map_err(|error| error.to_string())?;
   if image.width <= max_width && image.height <= max_height {
     return Ok(image);
   }
