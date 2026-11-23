@@ -82,33 +82,58 @@ fn parse(output: &str) -> Vec<Line> {
     .collect()
 }
 
-/// Compares output with a snapshot, allowing small score differences and reordering of results
-/// whose scores are within the tolerance of each other.
+/// Whether output matches the expected output, allowing small score differences and reordering of
+/// results whose scores are within the tolerance of each other.
+fn matches(actual: &str, expected: &str) -> bool {
+  let (actual, expected) = (parse(actual), parse(expected));
+  let same_lines = actual.len() == expected.len()
+    && actual.iter().zip(&expected).all(|(a, e)| match (a.score, e.score) {
+      (Some(_), Some(_)) => true,
+      (None, None) => a.text == e.text,
+      _ => false,
+    });
+  // Near-tied results may swap places, so each result is compared with the same image's expected
+  // result, and the results must remain sorted by score.
+  let sorted =
+    actual.windows(2).all(|pair| pair[0].score.zip(pair[1].score).is_none_or(|(above, below)| above >= below));
+  let (actual, expected) = (by_image(&actual), by_image(&expected));
+  same_lines && sorted && actual.iter().zip(&expected).all(|(a, e)| a.0 == e.0 && (a.1 - e.1).abs() <= SCORE_TOLERANCE)
+}
+
+/// The results keyed by the number of the output they belong to and their image, sorted by that key.
+fn by_image(lines: &[Line]) -> Vec<((usize, &str), f64)> {
+  let mut output = 0;
+  let mut results: Vec<_> = lines
+    .iter()
+    .filter_map(|line| {
+      output += usize::from(line.score.is_none());
+      Some(((output, line.text.as_str()), line.score?))
+    })
+    .collect();
+  results.sort_by_key(|result| result.0);
+  results
+}
+
 fn assert_matches_snapshot(actual: &str, snapshot: &str) {
-  let snapshot = std::fs::read_to_string(fixtures().join("output_snapshots").join(format!("{snapshot}.txt")))
+  let expected = std::fs::read_to_string(fixtures().join("output_snapshots").join(format!("{snapshot}.txt")))
     .unwrap()
     .replace("\r\n", "\n");
-  let (actual_lines, expected_lines) = (parse(actual), parse(&snapshot));
-  let message = format!("output differs from the {snapshot} snapshot:\n--- actual\n{actual}--- expected\n{snapshot}");
-  assert_eq!(actual_lines.len(), expected_lines.len(), "{message}");
-  for (index, (actual, expected)) in actual_lines.iter().zip(&expected_lines).enumerate() {
-    match (actual.score, expected.score) {
-      (Some(actual_score), Some(expected_score)) => {
-        assert!((actual_score - expected_score).abs() <= SCORE_TOLERANCE, "{message}");
-        if actual.text != expected.text {
-          // A near-tie may swap places; the expected result must then be close by with a close score.
-          let swapped = expected_lines.iter().zip(&actual_lines).enumerate().any(|(other, (e, a))| {
-            other != index
-              && e.text == actual.text
-              && a.text == expected.text
-              && (e.score.unwrap() - expected_score).abs() <= 2.0 * SCORE_TOLERANCE
-          });
-          assert!(swapped, "{message}");
-        }
-      }
-      _ => assert_eq!(actual.text, expected.text, "{message}"),
-    }
-  }
+  assert!(
+    matches(actual, &expected),
+    "output differs from the {snapshot} snapshot:\n--- actual\n{actual}--- expected\n{expected}"
+  );
+}
+
+#[test]
+fn snapshots_let_near_ties_swap_but_keep_each_image_s_score() {
+  let expected = "score\tfilepath\n0.500\tA\n0.499\tB\n0.498\tC\n0.300\tD\n";
+  assert!(matches(expected, expected));
+  assert!(matches("score\tfilepath\n0.499\tB\n0.499\tC\n0.499\tA\n0.300\tD\n", expected));
+  // Every image's score moved by more than the tolerance, though the scores by position barely did.
+  assert!(!matches("score\tfilepath\n0.500\tC\n0.499\tB\n0.498\tA\n0.300\tD\n", expected));
+  assert!(!matches("score\tfilepath\nA\nB\nC\nD\n", expected));
+  assert!(!matches("score\tfilepath\n0.300\tD\n0.500\tA\n0.499\tB\n0.498\tC\n", expected));
+  assert!(!matches("score\tfilepath\n0.500\tA\n0.499\tB\n0.498\tC\n", expected));
 }
 
 fn images() -> PathBuf {
