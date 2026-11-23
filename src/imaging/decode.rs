@@ -104,7 +104,16 @@ fn to_rgb(image: DynamicImage) -> RgbImage {
     DynamicImage::ImageRgb8(rgb) => RgbImage { width, height, pixels: rgb.into_raw() },
     DynamicImage::ImageRgba8(rgba) => RgbImage::from_rgba(width, height, rgba.as_raw()),
     DynamicImage::ImageLuma8(luma) => RgbImage::from_luma(width, height, luma.as_raw()),
-    // Pillow opens 16-bit RGB(A) images in 8-bit modes by keeping the most significant byte.
+    // Pillow opens 16-bit grayscale images in mode I;16, whose conversion to RGB clamps samples to 255.
+    DynamicImage::ImageLuma16(luma) => {
+      let luma: Vec<u8> = luma.as_raw().iter().map(|&value| value.min(255) as u8).collect();
+      RgbImage::from_luma(width, height, &luma)
+    }
+    // Pillow opens other 16-bit images in 8-bit modes by keeping the most significant byte.
+    DynamicImage::ImageLumaA16(luma_alpha) => {
+      let luma: Vec<u8> = luma_alpha.as_raw().as_chunks::<2>().0.iter().map(|pixel| (pixel[0] >> 8) as u8).collect();
+      RgbImage::from_luma(width, height, &luma)
+    }
     DynamicImage::ImageRgb16(rgb) => {
       RgbImage { width, height, pixels: rgb.as_raw().iter().map(|&value| (value >> 8) as u8).collect() }
     }
@@ -131,6 +140,28 @@ mod tests {
   fn flattens_transparency_onto_the_background() {
     let rgba = image::RgbaImage::from_raw(2, 1, vec![255, 0, 0, 255, 255, 255, 255, 0]).unwrap();
     assert_eq!(flatten(&rgba, 0x12).pixels, [255, 0, 0, 0x12, 0x12, 0x12]);
+  }
+
+  #[test]
+  fn converts_16_bit_grayscale_like_pillow() {
+    let samples = [0u16, 1, 255, 256, 257, 1000, 32768, 65535];
+    let encode = |image: DynamicImage| {
+      let mut data = Vec::new();
+      image.write_to(&mut Cursor::new(&mut data), ImageFormat::Png).unwrap();
+      decode(&data, "png", None, None)
+        .unwrap()
+        .pixels
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .map(|pixel| pixel[0])
+        .collect::<Vec<_>>()
+    };
+    let luma = image::ImageBuffer::from_raw(8, 1, samples.to_vec()).unwrap();
+    assert_eq!(encode(DynamicImage::ImageLuma16(luma)), [0, 1, 255, 255, 255, 255, 255, 255]);
+    let luma_alpha =
+      image::ImageBuffer::from_raw(8, 1, samples.iter().flat_map(|&value| [value, 65535]).collect()).unwrap();
+    assert_eq!(encode(DynamicImage::ImageLumaA16(luma_alpha)), [0, 0, 0, 1, 1, 3, 128, 255]);
   }
 
   #[test]
