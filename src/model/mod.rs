@@ -203,7 +203,14 @@ fn download_image(url: &str) -> Result<RgbImage, QueryError> {
     .timeout_global(Some(std::time::Duration::from_secs(60)))
     .build()
     .into();
-  let head = agent.head(url).call().with_context(|| format!("cannot download {url}"))?;
+  // Servers that reject HEAD requests can still serve the image, so only the size is checked here.
+  let head = agent
+    .head(url)
+    .config()
+    .http_status_as_error(false)
+    .build()
+    .call()
+    .with_context(|| format!("cannot download {url}"))?;
   if let Some(length) = head.headers().get("content-length").and_then(|value| value.to_str().ok()?.parse::<u64>().ok())
     && length > MAX_DOWNLOAD_SIZE_BYTES
   {
@@ -294,6 +301,32 @@ mod tests {
     {
       assert!(!is_text_query(query), "{query}");
     }
+  }
+
+  #[test]
+  fn downloads_images_from_servers_that_reject_head_requests() {
+    use std::io::{BufRead, Write};
+
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/cat.png", listener.local_addr().unwrap());
+    let mut png = Vec::new();
+    image::RgbImage::new(3, 2).write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).unwrap();
+    std::thread::spawn(move || {
+      for stream in listener.incoming() {
+        let stream = stream.unwrap();
+        let request: Vec<String> =
+          std::io::BufReader::new(&stream).lines().map(Result::unwrap).take_while(|line| !line.is_empty()).collect();
+        let response = if request[0].starts_with("HEAD ") {
+          b"HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_vec()
+        } else {
+          let headers = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", png.len());
+          [headers.as_bytes(), &png].concat()
+        };
+        (&stream).write_all(&response).unwrap();
+      }
+    });
+    let image = download_image(&url).unwrap();
+    assert_eq!((image.width, image.height), (3, 2));
   }
 
   #[test]
