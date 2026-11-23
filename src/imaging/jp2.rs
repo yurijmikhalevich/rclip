@@ -10,7 +10,7 @@ pub fn is_jp2(data: &[u8]) -> bool {
 }
 
 pub fn decode(data: &[u8], max_pixels: Option<u64>) -> Result<RgbImage, ImageError> {
-  let (width, height) = dimensions(data).ok_or(ImageError::Unidentified)?;
+  let (width, height) = codestream(data).and_then(dimensions).ok_or(ImageError::Unidentified)?;
   check_pixel_limit(width, height, max_pixels)?;
   let image = jpeg2k::Image::from_bytes(data).map_err(ImageError::decode)?;
   let components = image.components();
@@ -44,31 +44,72 @@ pub fn decode(data: &[u8], max_pixels: Option<u64>) -> Result<RgbImage, ImageErr
   }
 }
 
-/// Reads the image size from the JP2 `ihdr` box or the codestream `SIZ` marker.
-fn dimensions(data: &[u8]) -> Option<(u32, u32)> {
-  let be32 = |offset: usize| Some(u32::from_be_bytes(data.get(offset..offset + 4)?.try_into().ok()?));
+fn be32(data: &[u8], offset: usize) -> Option<u32> {
+  Some(u32::from_be_bytes(data.get(offset..offset + 4)?.try_into().ok()?))
+}
+
+/// The codestream that OpenJPEG decodes: the data itself, or the contents of the first `jp2c` box
+/// of a JP2 file.
+fn codestream(mut data: &[u8]) -> Option<&[u8]> {
   if data.starts_with(J2K_SIGNATURE) {
-    // SOC, SIZ marker, Lsiz, Rsiz, then Xsiz, Ysiz, XOsiz, YOsiz.
-    let (x, y, x0, y0) = (be32(8)?, be32(12)?, be32(16)?, be32(20)?);
-    return Some((x.checked_sub(x0)?, y.checked_sub(y0)?));
+    return Some(data);
   }
-  let position = data.windows(4).position(|window| window == b"ihdr")?;
-  let (height, width) = (be32(position + 4)?, be32(position + 8)?);
-  Some((width, height))
+  loop {
+    let (header, length) = match be32(data, 0)? {
+      0 => (8, data.len()),
+      1 => (16, usize::try_from(u64::from_be_bytes(data.get(8..16)?.try_into().ok()?)).ok()?),
+      length => (8, usize::try_from(length).ok()?),
+    };
+    if length < header {
+      return None;
+    }
+    if data.get(4..8)? == b"jp2c" {
+      return data.get(header..);
+    }
+    data = data.get(length..)?;
+  }
+}
+
+/// Reads the image size from the codestream's `SIZ` marker, which is the size OpenJPEG decodes.
+fn dimensions(codestream: &[u8]) -> Option<(u32, u32)> {
+  if !codestream.starts_with(J2K_SIGNATURE) {
+    return None;
+  }
+  // SOC, SIZ marker, Lsiz, Rsiz, then Xsiz, Ysiz, XOsiz, YOsiz.
+  let (x, y, x0, y0) = (be32(codestream, 8)?, be32(codestream, 12)?, be32(codestream, 16)?, be32(codestream, 20)?);
+  Some((x.checked_sub(x0)?, y.checked_sub(y0)?))
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
 
-  #[test]
-  fn reads_codestream_dimensions() {
+  /// The start of a codestream: SOC, SIZ, Lsiz, Rsiz, Xsiz, Ysiz, XOsiz, and YOsiz.
+  fn codestream_header(x: u32, y: u32, x0: u32, y0: u32) -> Vec<u8> {
     let mut data = J2K_SIGNATURE.to_vec();
     data.extend_from_slice(&[0, 41, 0, 0]);
-    for value in [640u32, 480, 10, 20] {
+    for value in [x, y, x0, y0] {
       data.extend_from_slice(&value.to_be_bytes());
     }
+    data
+  }
+
+  #[test]
+  fn reads_codestream_dimensions() {
+    let data = codestream_header(640, 480, 10, 20);
     assert!(is_jp2(&data));
-    assert_eq!(dimensions(&data), Some((630, 460)));
+    assert_eq!(codestream(&data).and_then(dimensions), Some((630, 460)));
+  }
+
+  #[test]
+  fn reads_jp2_dimensions_from_the_codestream_that_is_decoded() {
+    let jp2_box = |kind: &[u8], contents: &[u8]| [&(8 + contents.len() as u32).to_be_bytes(), kind, contents].concat();
+    let mut data = JP2_SIGNATURE.to_vec();
+    // A box that happens to contain "ihdr" followed by a 1x1 size, before the real header.
+    data.extend(jp2_box(b"xml ", b"ihdr\0\0\0\x01\0\0\0\x01"));
+    data.extend(jp2_box(b"jp2h", &jp2_box(b"ihdr", b"\0\0\0\x04\0\0\0\x06\0\x03\x07\x07\0\0")));
+    data.extend(jp2_box(b"jp2c", &codestream_header(6, 4, 0, 0)));
+    assert!(is_jp2(&data));
+    assert_eq!(codestream(&data).and_then(dimensions), Some((6, 4)));
   }
 }
