@@ -92,10 +92,7 @@ fn run(options: &Options) -> Result<ExitCode> {
   let search = Search { db: &db, model: &model, filter: &filter, directory: &directory };
   let query = Query { query: args.query.as_deref().unwrap_or_default(), add: &args.add, subtract: &args.subtract };
   match search.search(&query, options.top_k, None) {
-    Ok(results) => {
-      print_results(&results, options)?;
-      Ok(ExitCode::SUCCESS)
-    }
+    Ok(results) => print_results(&results, options),
     Err(SearchError::Query(error)) => {
       eprintln!("{error}");
       Ok(ExitCode::FAILURE)
@@ -110,9 +107,11 @@ fn current_directory() -> Result<String> {
   directory.into_os_string().into_string().map_err(|path| anyhow::anyhow!("{} is not valid UTF-8", path.display()))
 }
 
-fn print_results(results: &[SearchResult], options: &Options) -> Result<()> {
+/// Prints the results, failing when a preview cannot be shown after showing the remaining ones.
+fn print_results(results: &[SearchResult], options: &Options) -> Result<ExitCode> {
   let stdout = std::io::stdout();
   let mut output = std::io::BufWriter::new(stdout.lock());
+  let mut code = ExitCode::SUCCESS;
   if options.args.null {
     for result in results {
       write!(output, "{}\0", result.filepath)?;
@@ -137,12 +136,13 @@ fn print_results(results: &[SearchResult], options: &Options) -> Result<()> {
         if let Err(error) = preview::preview(&mut output, &result.filepath, options.args.preview_height) {
           output.flush()?;
           eprintln!("rclip: cannot preview {}: {error:#}", result.filepath);
+          code = ExitCode::FAILURE;
         }
       }
     }
   }
   output.flush()?;
-  Ok(())
+  Ok(code)
 }
 
 #[derive(serde::Serialize)]
