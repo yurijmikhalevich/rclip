@@ -96,17 +96,16 @@ pub fn copy_image_to_clipboard(filepath: &str) -> Result<(), String> {
     return run_kitten(&executable, &["clipboard", filepath], Some(Duration::from_secs(30))).map(drop);
   }
   let image = imaging::read_display_image(filepath, None).map_err(|error| error.to_string())?;
-  let directory = std::env::temp_dir().join(format!("rclip-clipboard-{}", std::process::id()));
-  std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-  let converted = directory.join("image.png");
-  let result = crate::preview::encode_png(&image)
+  // A private directory with a random name, so that other users can't plant a file at the converted image's path.
+  // Dropping it removes it.
+  let directory = tempfile::Builder::new().prefix("rclip-clipboard-").tempdir().map_err(|error| error.to_string())?;
+  let converted = directory.path().join("image.png");
+  crate::preview::encode_png(&image)
     .map_err(|error| error.to_string())
     .and_then(|png| std::fs::write(&converted, png).map_err(|error| error.to_string()))
     .and_then(|()| {
       run_kitten(&executable, &["clipboard", &converted.to_string_lossy()], Some(Duration::from_secs(30))).map(drop)
-    });
-  std::fs::remove_dir_all(&directory).ok();
-  result
+    })
 }
 
 pub fn is_remote_session() -> bool {

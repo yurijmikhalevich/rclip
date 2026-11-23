@@ -32,6 +32,7 @@ rusqlite = { version = "0.33", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+tempfile = "3"
 thiserror = "2"
 turbojpeg-sys = { version = "1.2", default-features = false, features = ["cmake"] }
 unicode-normalization = "0.1"
@@ -53,7 +54,6 @@ cc = { version = "1", features = ["parallel"] }
 
 [dev-dependencies]
 libc = "0.2"
-tempfile = "3"
 
 [profile.release]
 lto = "thin"
