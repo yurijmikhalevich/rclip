@@ -208,8 +208,12 @@ impl Images {
 
   /// Records a finished load. Returns whether the image is still wanted (and needs a redraw).
   pub fn loaded(&mut self, key: ImageKey, result: Result<Prepared, String>) -> bool {
-    // An image cleared while loading can be requested again, so a second load may finish for a ready slot.
-    let Some(slot @ Slot::Loading) = self.slots.get_mut(&key) else { return false };
+    // An image cleared while loading can be requested again, so two loads may finish for one slot. Either load's
+    // image is right, so keep the first success, even over an earlier failure.
+    let Some(slot) = self.slots.get_mut(&key) else { return false };
+    if !matches!((&slot, &result), (Slot::Loading, _) | (Slot::Failed(_), Ok(_))) {
+      return false;
+    }
     *slot = match result {
       Ok(prepared) => {
         let id = self.ids.next();
@@ -438,6 +442,22 @@ mod tests {
     assert!(!images.loaded(key.clone(), prepared()));
     assert!(matches!(images.get(&key), ImageState::Ready { id: same, .. } if same == id));
     assert_eq!(images.transmitted_bytes, 100);
+  }
+
+  #[test]
+  fn shows_an_image_requested_again_after_a_clear_even_if_the_first_load_failed() {
+    let (events, _received) = crossbeam_channel::unbounded();
+    let mut images = Images::new(events, |_, _| ());
+    let key = key(Fit::Natural, (10, 10));
+    images.get(&key);
+    images.clear(&mut Vec::new()).unwrap();
+    images.get(&key);
+    assert!(images.loaded(key.clone(), Err("busy".into())));
+    let prepared = Prepared { png: b"png".to_vec(), cells: (2, 1), offset: (0, 0), decoded_bytes: 100 };
+    assert!(images.loaded(key.clone(), Ok(prepared)));
+    assert!(matches!(images.get(&key), ImageState::Ready { .. }));
+    assert!(!images.loaded(key.clone(), Err("late".into())));
+    assert!(matches!(images.get(&key), ImageState::Ready { .. }));
   }
 
   #[test]
