@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::{Result, anyhow};
 
 use crate::db::{Db, ImageCursor};
-use crate::model::{FeatureVector, Model, QueryError, VECTOR_SIZE, is_file_path};
+use crate::model::{FeatureVector, Model, QueryError, VECTOR_SIZE, is_file_path, split_multiplier};
 use crate::walk::PathFilter;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -85,12 +85,7 @@ impl Search<'_> {
 
     // Images used as queries are excluded from the results.
     let cwd = std::env::current_dir().map_err(|error| anyhow!("cannot get the current directory: {error}"))?;
-    let excluded: HashSet<String> = positive
-      .iter()
-      .chain(query.subtract)
-      .filter(|query| is_file_path(query))
-      .map(|query| absolute_path(&cwd, query).to_string_lossy().into_owned())
-      .collect();
+    let excluded = query_image_paths(&cwd, positive.iter().chain(query.subtract));
 
     let rankings = self
       .db
@@ -202,6 +197,15 @@ fn dot(query: &[f64], vector: &[u8]) -> f64 {
   sums.iter().sum()
 }
 
+/// The absolute paths of the local images among `queries`, as the model reads them.
+fn query_image_paths<'a>(cwd: &Path, queries: impl Iterator<Item = &'a String>) -> HashSet<String> {
+  queries
+    .map(|query| split_multiplier(query).1)
+    .filter(|query| is_file_path(query))
+    .map(|query| absolute_path(cwd, query.strip_prefix("file://").unwrap_or(query)).to_string_lossy().into_owned())
+    .collect()
+}
+
 /// `os.path.abspath`: joins `path` to `cwd` and normalizes `.` and `..` lexically.
 pub fn absolute_path(cwd: &Path, path: &str) -> PathBuf {
   let joined = cwd.join(path);
@@ -251,6 +255,16 @@ mod tests {
     assert_eq!(absolute_path(cwd, "./cat.jpg"), Path::new("/home/user/photos/cat.jpg"));
     assert_eq!(absolute_path(cwd, "../cat.jpg"), Path::new("/home/user/cat.jpg"));
     assert_eq!(absolute_path(cwd, "/tmp//a/./b.jpg"), Path::new("/tmp/a/b.jpg"));
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn excludes_query_images_with_multipliers_and_file_urls() {
+    let queries = ["./cat.jpg", "0.5:./dog.jpg", "file:///tmp/bird.jpg", "kitty", "2:kitty", "https://x/y.jpg"];
+    let queries = queries.map(String::from);
+    let mut paths: Vec<String> = query_image_paths(Path::new("/home/user"), queries.iter()).into_iter().collect();
+    paths.sort();
+    assert_eq!(paths, ["/home/user/cat.jpg", "/home/user/dog.jpg", "/tmp/bird.jpg"]);
   }
 
   #[test]
