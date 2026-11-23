@@ -138,9 +138,13 @@ fn max_image_megapixels(value: &str) -> Result<MaxImagePixels, String> {
   if ["none", "off", "disable", "disabled", "0"].contains(&lower.as_str()) {
     return Ok(MaxImagePixels::Disabled);
   }
-  let megapixels: f64 =
-    value.trim().parse().map_err(|_| "should be a number, \"auto\", or \"none\" to disable the limit".to_string())?;
-  if megapixels.is_nan() || megapixels <= 0.0 {
+  let megapixels = value
+    .trim()
+    .parse::<f64>()
+    .ok()
+    .filter(|megapixels| megapixels.is_finite())
+    .ok_or("should be a number, \"auto\", or \"none\" to disable the limit")?;
+  if megapixels <= 0.0 {
     return Err("should be >0, \"auto\", or \"none\" to disable the limit".into());
   }
   Ok(MaxImagePixels::Limit((megapixels * 1_000_000.0).round_ties_even() as u64))
@@ -280,6 +284,9 @@ mod tests {
     assert_eq!(max_image_megapixels("12.5"), Ok(MaxImagePixels::Limit(12_500_000)));
     assert!(max_image_megapixels("-1").is_err());
     assert!(max_image_megapixels("lots").is_err());
+    for not_finite in ["1e309", "inf", "NaN"] {
+      assert!(max_image_megapixels(not_finite).is_err(), "{not_finite}");
+    }
   }
 
   #[test]
