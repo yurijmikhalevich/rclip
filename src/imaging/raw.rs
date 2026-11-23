@@ -3,7 +3,7 @@
 use std::ffi::{CStr, c_char, c_int, c_uint, c_ushort, c_void};
 
 use super::preprocess::IMAGE_SIZE;
-use super::{ImageError, RgbImage};
+use super::{ImageError, RgbImage, check_pixel_limit};
 
 // LibRaw decodes deflate-compressed DNGs with zlib; referencing the crate makes sure it is linked.
 use libz_sys as _;
@@ -18,6 +18,9 @@ pub fn decode(data: &[u8], max_pixels: Option<u64>, jpeg_draft: Option<(u32, u32
       return Ok(preview);
     }
   }
+  // Processing unpacks the whole sensor, so the pixel limit applies to the sensor size.
+  let (width, height) = raw.raw_size();
+  check_pixel_limit(width, height, max_pixels)?;
   raw.process_half_size()
 }
 
@@ -44,6 +47,8 @@ const LIBRAW_IMAGE_JPEG: c_int = 1;
 unsafe extern "C" {
   fn libraw_init(flags: c_uint) -> *mut LibRawData;
   fn libraw_open_buffer(data: *mut LibRawData, buffer: *const c_void, size: usize) -> c_int;
+  fn libraw_get_raw_width(data: *mut LibRawData) -> c_int;
+  fn libraw_get_raw_height(data: *mut LibRawData) -> c_int;
   fn libraw_unpack_thumb(data: *mut LibRawData) -> c_int;
   fn libraw_unpack(data: *mut LibRawData) -> c_int;
   fn libraw_dcraw_process(data: *mut LibRawData) -> c_int;
@@ -81,6 +86,12 @@ impl LibRaw {
     }
     let (kind, image) = self.take_image(libraw_dcraw_make_mem_thumb).ok()?;
     (kind == LIBRAW_IMAGE_JPEG).then_some(image.pixels)
+  }
+
+  /// The size of the sensor data that processing unpacks.
+  fn raw_size(&self) -> (u32, u32) {
+    // SAFETY: the handle is valid and opened.
+    unsafe { (libraw_get_raw_width(self.0).unsigned_abs(), libraw_get_raw_height(self.0).unsigned_abs()) }
   }
 
   /// Equivalent to rawpy's `postprocess(half_size=True)` with its default parameters.
@@ -139,4 +150,17 @@ fn check(code: c_int) -> Result<(), ImageError> {
   // SAFETY: libraw_strerror returns a pointer to a static string.
   let message = unsafe { CStr::from_ptr(libraw_strerror(code)) };
   Err(ImageError::decode(message.to_string_lossy()))
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn applies_the_pixel_limit_to_the_sensor_before_processing() {
+    // This DNG has no JPEG preview, so decoding it means processing its 3920x2638 sensor data.
+    let data = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/e2e/images raw/RAW_LEICA_M8.DNG")).unwrap();
+    let result = decode(&data, Some(10_000_000), None);
+    assert!(matches!(result, Err(ImageError::TooLarge { pixels: 10_340_960, limit: 10_000_000 })));
+  }
 }
