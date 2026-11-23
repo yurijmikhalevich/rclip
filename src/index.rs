@@ -165,7 +165,8 @@ impl Indexer<'_> {
     let batch_size = self.options.batch_size;
     // Decoded images waiting for the model count against the look-ahead too, so memory stays
     // bounded when the model is slower than decoding.
-    let max_pending = (LOOKAHEAD_BATCHES * batch_size).max(self.options.workers * 2);
+    // Saturating, so that a huge batch size cannot wrap around and stall the walk before a batch fills.
+    let max_pending = LOOKAHEAD_BATCHES.saturating_mul(batch_size).max(self.options.workers * 2);
     let mut in_flight = 0usize;
     let mut walking = true;
     let mut batch = Batch { images: Vec::new(), tensors: Vec::new() };
