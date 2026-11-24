@@ -1,30 +1,17 @@
-//! rclip: AI-powered semantic photo search for the command line.
-
-mod cli;
-mod db;
-mod imaging;
-mod index;
-mod kitty;
-mod model;
-mod paths;
-mod preview;
-mod search;
-mod snap;
-mod terminal;
-mod tui;
-mod walk;
+//! The rclip command-line program.
 
 use std::io::Write;
 use std::process::ExitCode;
 
 use anyhow::{Context, Result};
 
-use cli::{MaxImagePixels, Options};
-use db::{Db, VectorCacheReset};
-use model::Model;
-use model::download::ModelFiles;
-use search::{Query, Search, SearchError, SearchResult};
-use walk::PathFilter;
+use rclip::cli::{self, MaxImagePixels, Options};
+use rclip::db::{Db, VectorCacheReset};
+use rclip::model::Model;
+use rclip::model::download::ModelFiles;
+use rclip::search::{Query, Search, SearchError, SearchResult};
+use rclip::walk::PathFilter;
+use rclip::{imaging, index, paths, preview, snap, terminal, tui};
 
 fn main() -> ExitCode {
   let options = cli::parse();
