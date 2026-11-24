@@ -88,6 +88,15 @@ impl ImageError {
   }
 }
 
+/// Runs `work` on one image and turns a panic in it, a bug in a decoder or in our code, into an
+/// error message, so that one bad file cannot stop the other images from loading.
+pub fn catch_panic<T>(work: impl FnOnce() -> T) -> Result<T, String> {
+  std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)).map_err(|panic| {
+    let message = panic.downcast_ref::<&str>().copied().or_else(|| panic.downcast_ref::<String>().map(String::as_str));
+    format!("the decoder crashed: {}", message.unwrap_or("unknown error"))
+  })
+}
+
 /// Fails with [`ImageError::TooLarge`] when an image of `width`x`height` exceeds `max_pixels`.
 pub fn check_pixel_limit(width: u32, height: u32, max_pixels: Option<u64>) -> Result<(), ImageError> {
   let pixels = u64::from(width) * u64::from(height);
@@ -165,6 +174,12 @@ fn total_memory_bytes() -> Option<u64> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn turns_panics_into_errors() {
+    assert_eq!(catch_panic(|| 1), Ok(1));
+    assert_eq!(catch_panic(|| panic!("bad {}", "file")), Err::<(), _>("the decoder crashed: bad file".to_string()));
+  }
 
   fn numbered(width: u32, height: u32) -> RgbImage {
     let pixels = (0..width * height).flat_map(|value| [value as u8; 3]).collect();

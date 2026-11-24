@@ -133,7 +133,8 @@ impl Indexer<'_> {
         let (jobs_rx, loaded_tx, max_pixels) = (jobs_rx.clone(), loaded_tx.clone(), self.options.max_pixels);
         std::thread::spawn(move || {
           for entry in jobs_rx {
-            let result = load_image(&entry, max_pixels);
+            let result = imaging::catch_panic(|| load_image(&entry, max_pixels))
+              .unwrap_or_else(|message| Err(ImageError::Decode(message)));
             if loaded_tx.send((entry, result)).is_err() {
               break;
             }

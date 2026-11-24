@@ -281,7 +281,7 @@ fn run_loader(loader: &LoaderShared) {
     let cached = loader.state.lock().expect("the loader lock is never poisoned").prepared.get(&key.path, key.variant);
     let image = match cached {
       Some(image) => Ok(image),
-      None => prepare(&key.path, key.variant).map(|image| {
+      None => imaging::catch_panic(|| prepare(&key.path, key.variant)).and_then(|image| image).map(|image| {
         let image = Arc::new(image);
         let mut state = loader.state.lock().expect("the loader lock is never poisoned");
         state.prepared.insert(key.path.clone(), key.variant, Arc::clone(&image));

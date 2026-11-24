@@ -278,9 +278,13 @@ struct Screen {
 impl Screen {
   fn enter() -> Result<Self> {
     let previous_hook = std::panic::take_hook();
+    // Image loaders turn their panics into errors shown in place of the image, so only a panic on
+    // the main thread ends the interface.
     std::panic::set_hook(Box::new(move |info| {
-      restore_terminal();
-      previous_hook(info);
+      if std::thread::current().name() == Some("main") {
+        restore_terminal();
+        previous_hook(info);
+      }
     }));
     // An active screen restores the terminal when dropped, which also undoes a setup that failed halfway.
     let screen = Screen { terminal: Terminal::new(CrosstermBackend::new(std::io::stdout()))?, active: true };
