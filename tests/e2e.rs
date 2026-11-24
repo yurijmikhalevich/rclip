@@ -1,5 +1,6 @@
 //! End-to-end tests that run the rclip binary against the fixtures in `tests/e2e` and compare its
-//! output with the snapshots shared with the Python version.
+//! output with the snapshots. The Python version produced them, except for a few whose scores moved by a few
+//! thousandths when rclip switched from Pillow's resizing to `fast_image_resize`.
 //!
 //! The first run downloads the model into a data directory under Cargo's target directory (or
 //! `RCLIP_TEST_DATADIR`). The tests share that directory and run one at a time, each starting from

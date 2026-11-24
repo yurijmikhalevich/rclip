@@ -17,6 +17,7 @@ base64 = "0.22"
 clap = { version = "4.6", features = ["derive", "wrap_help"] }
 crossbeam-channel = "0.5"
 crossterm = "0.29"
+fast_image_resize = "6.2"
 flate2 = "1"
 fs4 = { version = "1.1.0", default-features = false }
 html-escape = "0.2"

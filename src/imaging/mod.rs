@@ -1,8 +1,7 @@
 //! Image decoding with Pillow-compatible pixel output.
 //!
-//! Every decoder here returns plain 8-bit RGB pixels converted the way Pillow's
-//! `Image.convert("RGB")` would, so that the Rust and Python versions of rclip compute the same
-//! embeddings for the same files and can share one index.
+//! Every decoder here returns plain 8-bit RGB pixels converted the way Pillow's `Image.convert("RGB")` would,
+//! so that the embeddings of the Rust and Python versions of rclip stay close enough to share one index.
 
 mod decode;
 mod heif;
