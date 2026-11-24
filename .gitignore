@@ -156,3 +156,6 @@ benchmarks/datasets
 
 # Model files for development/testing
 models/
+
+# the files of the snap, laid out by the release workflow
+snap-root/

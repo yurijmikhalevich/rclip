@@ -134,6 +134,8 @@ struct RepoFile {
 struct Hub {
   agent: ureq::Agent,
   endpoint: String,
+  /// `HF_TOKEN`, which raises Hugging Face's rate limits when requests are authenticated with it.
+  token: Option<String>,
 }
 
 impl Hub {
@@ -144,13 +146,22 @@ impl Hub {
       .into();
     let endpoint =
       std::env::var("HF_ENDPOINT").ok().filter(|value| !value.is_empty()).unwrap_or("https://huggingface.co".into());
-    Ok(Hub { agent, endpoint: endpoint.trim_end_matches('/').to_string() })
+    let token = std::env::var("HF_TOKEN").ok().filter(|value| !value.is_empty());
+    let endpoint = endpoint.trim_end_matches('/').to_string();
+    Ok(Hub { agent, endpoint, token })
+  }
+
+  fn get(&self, url: &str) -> ureq::RequestBuilder<ureq::typestate::WithoutBody> {
+    let request = self.agent.get(url);
+    match &self.token {
+      Some(token) => request.header("Authorization", format!("Bearer {token}")),
+      None => request,
+    }
   }
 
   fn list_files(&self) -> Result<Vec<RepoFile>> {
     let url = format!("{}/api/models/{REPO_ID}?blobs=true", self.endpoint);
     let info: RepoInfo = self
-      .agent
       .get(&url)
       .call()
       .and_then(|mut response| response.body_mut().read_json())
@@ -166,7 +177,7 @@ impl Hub {
 
   fn download(&self, file: &RepoFile, target: &Path, progress: &ProgressBar) -> Result<()> {
     let url = format!("{}/{REPO_ID}/resolve/main/{}", self.endpoint, file.path);
-    let mut response = self.agent.get(&url).call().with_context(|| format!("cannot download {url}"))?;
+    let mut response = self.get(&url).call().with_context(|| format!("cannot download {url}"))?;
     let mut reader = response.body_mut().with_config().limit(u64::MAX).reader();
     let partial = partial_path(target);
     fs::create_dir_all(target.parent().expect("model files live in a directory"))?;

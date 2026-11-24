@@ -1,28 +1,15 @@
 name: Test system rclip
-description: Runs e2e tests on the rclip installed system-wide
-
-inputs:
-  python:
-    description: 'Python version to use'
-    required: false
-    default: '3.12'
-  force-bash:
-    description: 'Force using bash instead of PowerShell on Windows'
-    required: false
-    default: false
+description: Runs the end-to-end tests against the rclip installed system-wide
 
 runs:
-  using: 'composite'
+  using: composite
   steps:
-    - uses: actions/setup-python@v6
-      with:
-        python-version: ${{ inputs.python }}
-    - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
     - name: Print commit that we are going to run the tests from
       run: git rev-parse HEAD
       shell: bash
-    - name: Install dev dependencies required to run e2e tests
-      run: uv sync --locked --only-dev --no-install-project
+    - uses: ./.github/actions/rust-build-setup
+    - name: Build the end-to-end tests
+      run: cargo test --release --locked --test e2e --no-run
       shell: bash
     - name: Print tested rclip version
       run: |
@@ -31,6 +18,8 @@ runs:
       # on Windows, we set the latest PATH to ensure that the action can find
       # system rclip
       # on other OSes, we pass -ieo pipefail to bash to ensure it reads the .bashrc
-      shell: ${{ (runner.os != 'Windows' || inputs.force-bash == 'true') && 'bash -ieo pipefail {0}' || 'powershell -NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command "$env:Path = [Environment]::GetEnvironmentVariable(''Path'', ''Machine'') + '';'' + [Environment]::GetEnvironmentVariable(''Path'', ''User'') + '';'' + $env:Path; & {0}"' }}
-    - run: make test-system-rclip
-      shell: ${{ (runner.os != 'Windows' || inputs.force-bash == 'true') && 'bash -ieo pipefail {0}' || 'powershell -NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command "$env:Path = [Environment]::GetEnvironmentVariable(''Path'', ''Machine'') + '';'' + [Environment]::GetEnvironmentVariable(''Path'', ''User'') + '';'' + $env:Path; & {0}"' }}
+      shell: ${{ runner.os != 'Windows' && 'bash -ieo pipefail {0}' || 'powershell -NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command "$env:Path = [Environment]::GetEnvironmentVariable(''Path'', ''Machine'') + '';'' + [Environment]::GetEnvironmentVariable(''Path'', ''User'') + '';'' + $env:Path; & {0}"' }}
+    - run: cargo test --release --locked --test e2e
+      env:
+        RCLIP_TEST_RUN_SYSTEM_RCLIP: 'true'
+      shell: ${{ runner.os != 'Windows' && 'bash -ieo pipefail {0}' || 'powershell -NoLogo -NonInteractive -ExecutionPolicy RemoteSigned -Command "$env:Path = [Environment]::GetEnvironmentVariable(''Path'', ''Machine'') + '';'' + [Environment]::GetEnvironmentVariable(''Path'', ''User'') + '';'' + $env:Path; & {0}"' }}

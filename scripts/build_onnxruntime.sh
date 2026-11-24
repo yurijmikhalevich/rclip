@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Builds the static ONNX Runtime libraries that rclip links on x86-64 Linux. ort's prebuilt ones are
-# compiled for AVX2 and crash on older CPUs; this build targets baseline x86-64 and still picks the
-# fastest kernels the CPU supports at run time.
+# Builds the static ONNX Runtime libraries that rclip links on Linux. ort's prebuilt ones need
+# glibc 2.38 and, on x86-64, are compiled for AVX2 and crash on older CPUs. This build needs only the
+# glibc of the system it runs on, targets the baseline CPU, and still picks the fastest kernels the
+# CPU supports at run time.
 #
 # Usage: scripts/build_onnxruntime.sh <output directory>
 # Then build rclip with ORT_LIB_LOCATION=<output directory>.

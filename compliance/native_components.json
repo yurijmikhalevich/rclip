@@ -1,0 +1,16 @@
+[
+  {
+    "type": "library",
+    "name": "LibRaw",
+    "version": "0.22.3",
+    "purl": "pkg:github/LibRaw/LibRaw@0.22.3",
+    "licenses": [{ "license": { "id": "CDDL-1.0" } }]
+  },
+  {
+    "type": "library",
+    "name": "onnxruntime",
+    "version": "1.31.0",
+    "purl": "pkg:github/microsoft/onnxruntime@v1.31.0",
+    "licenses": [{ "license": { "id": "MIT" } }]
+  }
+]
