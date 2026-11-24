@@ -34,7 +34,7 @@ mod tests {
   /// A 1600x1200 image, or `None` where Windows has no HEIF and HEVC extensions installed (CI
   /// runners lack them), in which case the test has nothing to check.
   fn large_heic() -> Option<Vec<u8>> {
-    let data = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/unit/fixtures/large.heic")).unwrap();
+    let data = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/large.heic")).unwrap();
     if cfg!(windows) && matches!(decode(&data, "heic", None, None), Err(ImageError::Decode(_))) {
       eprintln!("skipping: the operating system HEIF codec is unavailable");
       return None;

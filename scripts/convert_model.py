@@ -1,13 +1,23 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12,<3.14"
+# dependencies = [
+#   "coremltools>=9.0,<10 ; sys_platform != 'win32'",
+#   "huggingface-hub>=1.9.0,<2",
+#   "numpy~=2.5.3",
+#   # the version rclip ships, which the script checks the exported model with
+#   "onnxruntime==1.31.0",
+#   "open_clip_torch>=3.2.0,<4",
+#   "torch==2.10.0",
+#   "torchvision==0.25.0",
+# ]
+# ///
 """
 Convert ViT-B-32-256 DataComp-1B from open_clip to ONNX and CoreML formats.
 
-Requirements (not rclip runtime deps):
-  pip install torch open_clip_torch coremltools huggingface_hub
-
-Usage:
-  python scripts/convert_model.py --output-dir ./models
-  python scripts/convert_model.py --output-dir ./models --upload --hf-repo yurijmikhalevich/rclip-models
+uv installs the dependencies listed above, pinned by convert_model.py.lock, on the first run:
+  uv run scripts/convert_model.py --output-dir ./models
+  uv run scripts/convert_model.py --output-dir ./models --upload --hf-repo yurijmikhalevich/rclip-models
 """
 
 import argparse

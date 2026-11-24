@@ -261,24 +261,13 @@ Thank you to everyone who has [contributed to rclip](https://github.com/yurijmik
 
 This repository follows the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) standard.
 
-### Running locally from the source code
+### Building from the source code
 
-With [Python](https://www.python.org/downloads/) and [uv](https://docs.astral.sh/uv/) installed, run:
+Building **rclip** needs [Rust](https://rustup.rs/) 1.92 or newer, a C/C++ compiler, and [CMake](https://cmake.org/). On Linux, it also needs pkg-config and the OpenSSL development files, which the build uses to download ONNX Runtime (`sudo apt install pkg-config libssl-dev` on Debian and Ubuntu).
 
 ```bash
-git clone git@github.com:yurijmikhalevich/rclip.git
+git clone --recurse-submodules git@github.com:yurijmikhalevich/rclip.git
 cd rclip
-uv sync
-```
-
-Then use `uv run rclip` in place of `rclip`.
-
-### Building the Rust version
-
-The repository also contains a Rust implementation of **rclip** with the same command-line interface, interactive UI, and index format, so both versions can share an index. It needs [Rust](https://rustup.rs/) 1.92 or newer, a C/C++ compiler, and [CMake](https://cmake.org/). On Linux, it also needs pkg-config and the OpenSSL development files, which the build uses to download ONNX Runtime (`sudo apt install pkg-config libssl-dev` on Debian and Ubuntu).
-
-```bash
-git submodule update --init
 cargo build --release
 ./target/release/rclip "search query"
 ```
