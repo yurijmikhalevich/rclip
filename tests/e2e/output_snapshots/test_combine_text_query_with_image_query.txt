@@ -8,4 +8,4 @@ score	filepath
 0.225	"<test_images_dir>boats on a lake.png"
 0.203	"<test_images_dir>chess-knight.tiff"
 0.197	"<test_images_dir>kookaburras.pnm"
-0.189	"<test_images_dir>books.jpg"
+0.188	"<test_images_dir>cake.jpg"

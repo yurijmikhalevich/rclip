@@ -1,0 +1,62 @@
+[package]
+name = "rclip"
+version = "4.1.3"
+edition = "2024"
+rust-version = "1.92"
+description = "Semantic photo search for the command line"
+authors = ["Yurij Mikhalevich <yurij@mikhalevi.ch>"]
+license = "MIT"
+repository = "https://github.com/yurijmikhalevich/rclip"
+readme = "README.md"
+keywords = ["image-search", "clip", "semantic-search", "photography", "cli"]
+categories = ["command-line-utilities", "multimedia::images"]
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+clap = { version = "4.6", features = ["derive", "wrap_help"] }
+crossbeam-channel = "0.5"
+crossterm = "0.29"
+fast_image_resize = "6.2"
+flate2 = "1"
+fs4 = { version = "1.1.0", default-features = false }
+html-escape = "0.2"
+image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "jpeg", "png", "pnm", "tiff", "webp"] }
+indicatif = "0.18"
+jpeg2k = { version = "0.10", default-features = false, features = ["openjpeg-sys", "image"] }
+libc = "0.2"
+libz-sys = { version = "1", default-features = false, features = ["static"] }
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "download-binaries", "tls-native"] }
+ratatui = "0.30"
+regex = "1"
+rusqlite = { version = "0.33", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tempfile = "3"
+thiserror = "2"
+turbojpeg-sys = { version = "1.2", default-features = false, features = ["cmake"] }
+unicode-normalization = "0.1"
+unicode-segmentation = "1"
+ureq = { version = "3", features = ["json"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-core-foundation = "0.3"
+objc2-core-graphics = "0.3"
+objc2-core-ml = "0.3"
+objc2-foundation = "0.3"
+objc2-image-io = "0.3"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Imaging", "Win32_System_Com", "Win32_System_SystemInformation"] }
+
+[build-dependencies]
+cc = { version = "1", features = ["parallel"] }
+
+[dev-dependencies]
+libc = "0.2"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
