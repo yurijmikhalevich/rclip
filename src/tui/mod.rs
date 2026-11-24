@@ -173,7 +173,9 @@ impl Session<'_> {
       }
       MouseEventKind::Down(MouseButton::Left) => {
         if inside(self.hits.input) {
+          // A click places the cursor rather than selecting the query.
           self.app.focus = app::Focus::Search;
+          self.app.input.selected = false;
           return Vec::new();
         }
         if let Some(&(_, offset)) = self.hits.filmstrip.iter().find(|(area, _)| inside(*area)) {
@@ -384,5 +386,22 @@ fn read_input(events: &Sender<Event>, paused: &AtomicBool, idle: &AtomicBool, st
       Ok(false) => {}
       Err(_) => return,
     }
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn abbreviates_the_home_directory() {
+    let home = crate::paths::home_dir().expect("the tests run with a home directory");
+    let home = home.to_str().expect("the home directory is valid UTF-8");
+    let separator = std::path::MAIN_SEPARATOR;
+    assert_eq!(display_directory(home), "~");
+    assert_eq!(display_directory(&format!("{home}{separator}photos")), format!("~{separator}photos"));
+    // A directory next to the home directory only shares its beginning.
+    let elsewhere = format!("{home}-elsewhere{separator}photos");
+    assert_eq!(display_directory(&elsewhere), elsewhere);
   }
 }

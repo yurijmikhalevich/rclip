@@ -3,7 +3,7 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use base64::Engine;
@@ -73,19 +73,20 @@ fn run_kitten(executable: &Path, args: &[&str], timeout: Option<Duration>) -> Re
 
 /// Copying and downloading go through Kitty's remote control, so the terminal must be Kitty itself.
 /// `kitten query_terminal` (Kitty 0.38+) confirms that; older kittens cannot tell, so they pass.
+/// Only a passed check is remembered, so one that failed, e.g. on a slow reply, runs again next time.
 fn require_kitty() -> Result<PathBuf, String> {
-  static PROBE: OnceLock<Result<(), String>> = OnceLock::new();
+  static CONFIRMED: AtomicBool = AtomicBool::new(false);
   let executable = kitten_executable()?;
-  PROBE
-    .get_or_init(|| {
-      if run_kitten(&executable, &["query_terminal", "--help"], None).is_err() {
-        return Ok(());
-      }
+  if !CONFIRMED.load(Ordering::Relaxed) {
+    if run_kitten(&executable, &["query_terminal", "--help"], None).is_ok() {
       let response =
         run_kitten(&executable, &["query_terminal", "--wait-for", "1", "name"], Some(Duration::from_secs(2)))?;
-      if response.trim() == "name: kitty" { Ok(()) } else { Err("Image copy and download require Kitty".into()) }
-    })
-    .clone()?;
+      if response.trim() != "name: kitty" {
+        return Err("Image copy and download require Kitty".into());
+      }
+    }
+    CONFIRMED.store(true, Ordering::Relaxed);
+  }
   Ok(executable)
 }
 
@@ -131,5 +132,35 @@ mod tests {
   #[test]
   fn encodes_osc52() {
     assert_eq!(osc52_copy("/a b.jpg"), "\x1b]52;c;L2EgYi5qcGc=\x07");
+  }
+
+  /// Runs a shell command in place of `kitten`.
+  #[cfg(unix)]
+  fn run_shell(command: &str, timeout: Option<Duration>) -> Result<String, String> {
+    run_kitten(Path::new("/bin/sh"), &["-c", command], timeout)
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn returns_what_kitten_prints() {
+    assert_eq!(run_shell("echo 'name: kitty'; echo noise >&2", None).unwrap(), "name: kitty\n");
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn reports_why_kitten_failed() {
+    assert_eq!(run_shell("echo ' permission denied ' >&2; exit 1", None).unwrap_err(), "permission denied");
+    let silent = run_shell("exit 3", None).unwrap_err();
+    assert!(silent.starts_with("kitten exited with") && silent.contains('3'), "{silent}");
+    assert!(run_kitten(Path::new("/nonexistent/kitten"), &[], None).is_err());
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn stops_a_kitten_that_does_not_respond_in_time() {
+    let started = Instant::now();
+    let error = run_shell("exec sleep 60", Some(Duration::from_millis(50))).unwrap_err();
+    assert_eq!(error, "Kitty did not respond in time");
+    assert!(started.elapsed() < Duration::from_secs(30));
   }
 }

@@ -5,10 +5,16 @@
 //! The first run downloads the model into a data directory under Cargo's target directory (or
 //! `RCLIP_TEST_DATADIR`). The tests share that directory and run one at a time, each starting from
 //! an empty index, like the Python test suite.
+//!
+//! `RCLIP_TEST_RUN_SYSTEM_RCLIP=true` tests the rclip installed on `PATH` instead of the one Cargo
+//! built, which is how the release pipeline checks each package. The installed rclip must be able
+//! to access the data directory: the snap, for example, only sees non-hidden directories under home.
 
+use std::io::{BufRead, BufReader, Write};
+use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 /// Scores may differ by this much from the snapshots: Core ML and ONNX Runtime builds produce
 /// slightly different floating-point results on different machines.
@@ -31,6 +37,11 @@ fn fixtures() -> PathBuf {
   Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("e2e")
 }
 
+fn rclip() -> Command {
+  let installed = std::env::var("RCLIP_TEST_RUN_SYSTEM_RCLIP").is_ok_and(|value| value == "true");
+  Command::new(if installed { "rclip" } else { env!("CARGO_BIN_EXE_rclip") })
+}
+
 struct Run {
   _guard: MutexGuard<'static, ()>,
   datadir: PathBuf,
@@ -45,12 +56,7 @@ impl Run {
   }
 
   fn rclip(&self, cwd: &Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_rclip"))
-      .args(args)
-      .current_dir(cwd)
-      .env("RCLIP_DATADIR", &self.datadir)
-      .output()
-      .expect("rclip runs")
+    rclip().args(args).current_dir(cwd).env("RCLIP_DATADIR", &self.datadir).output().expect("rclip runs")
   }
 
   /// Runs rclip and returns its stdout with the image directory replaced by a placeholder.
@@ -214,6 +220,19 @@ fn search_animated_gif() {
 fn search_by_image() {
   let query = images().join("cat.jpg");
   snapshot_test(&images(), &[query.to_str().unwrap()], "test_search_by_image");
+}
+
+/// The pixel limit keeps indexing from running out of memory on huge images; an image the user
+/// searches by is read regardless of it.
+#[test]
+fn searches_by_an_image_larger_than_the_pixel_limit() {
+  let run = Run::new();
+  assert!(run.output(&images(), &["kitty"]).0);
+  let query = images().join("cat.jpg");
+  let args = ["--no-indexing", "--max-image-megapixels", "0.0001", query.to_str().unwrap()];
+  let (success, output) = run.output(&images(), &args);
+  assert!(success, "{output}");
+  assert_matches_snapshot(&output, "test_search_by_image");
 }
 
 #[test]
@@ -427,6 +446,165 @@ fn prints_the_version() {
   assert_eq!(String::from_utf8(output.stdout).unwrap(), format!("rclip {}\n", env!("CARGO_PKG_VERSION")));
 }
 
+const VISUAL: &str = "ViT-B-32-256-datacomp_s34b_b86k/visual.onnx";
+const TEXTUAL: &str = "ViT-B-32-256-datacomp_s34b_b86k/textual.onnx";
+const WEIGHTS: [&str; 3] = [VISUAL, TEXTUAL, "tokenizer/bpe_simple_vocab_16e6.txt.gz"];
+const NOTICES: [&str; 4] = ["LICENSE", "OPENAI-CLIP-MIT.txt", "README.md", "THIRD_PARTY_NOTICES.md"];
+/// Only macOS uses the Core ML package: it indexes with it once the package is compiled.
+const CORE_ML_PACKAGE: [&str; 2] = [
+  "ViT-B-32-256-datacomp_s34b_b86k/visual.mlpackage/Manifest.json",
+  "ViT-B-32-256-datacomp_s34b_b86k/visual.mlpackage/Data/weights.bin",
+];
+const COMPILED_CORE_ML_MODEL: &str = "ViT-B-32-256-datacomp_s34b_b86k/visual.mlmodelc";
+
+/// The files that rclip downloads into an empty data directory, sorted.
+fn model_files() -> Vec<&'static str> {
+  let mut files = [&WEIGHTS[..], &NOTICES].concat();
+  if cfg!(target_os = "macos") {
+    files.extend(CORE_ML_PACKAGE);
+  }
+  files.sort();
+  files
+}
+
+/// A temporary directory inside the data directory, which a confined rclip can reach, unlike `/tmp`.
+fn tempdir() -> tempfile::TempDir {
+  tempfile::tempdir_in(datadir()).unwrap()
+}
+
+/// A stand-in for the Hugging Face Hub that has rclip's model and a file that rclip never needs.
+/// Every file it serves contains its own path.
+struct FakeHub {
+  endpoint: String,
+  downloads: Arc<Mutex<Vec<String>>>,
+}
+
+impl FakeHub {
+  fn start() -> Self {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    let downloads = Arc::new(Mutex::new(Vec::new()));
+    let log = Arc::clone(&downloads);
+    let siblings: Vec<_> = [&WEIGHTS[..], &NOTICES, &CORE_ML_PACKAGE, &["another-model/visual.onnx"]]
+      .concat()
+      .iter()
+      .map(|file| serde_json::json!({ "rfilename": file, "size": file.len() }))
+      .collect();
+    let listing = serde_json::json!({ "siblings": siblings }).to_string();
+    std::thread::spawn(move || {
+      for stream in listener.incoming() {
+        let mut stream = stream.unwrap();
+        let mut lines = BufReader::new(&stream).lines().map_while(Result::ok);
+        let Some(request) = lines.next() else { continue };
+        // Read the headers too: closing a connection with unread data can reset it.
+        lines.find(String::is_empty);
+        let path = request.split(' ').nth(1).unwrap_or_default();
+        let body = match path.strip_prefix("/yurijmikhalevich/rclip-models/resolve/main/") {
+          Some(file) => {
+            log.lock().unwrap().push(file.to_string());
+            file
+          }
+          None => &listing,
+        };
+        write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).ok();
+      }
+    });
+    FakeHub { endpoint, downloads }
+  }
+
+  /// Runs rclip with `datadir` as its data directory. The run fails after the download because the
+  /// downloaded files are not real models.
+  fn rclip(&self, datadir: &Path) {
+    let mut command = rclip();
+    command
+      .arg("kitty")
+      .current_dir(fixtures().join("empty_directory"))
+      .env("HF_ENDPOINT", &self.endpoint)
+      .env("RCLIP_DATADIR", datadir)
+      .env_remove("RCLIP_USE_ONNX_ON_MACOS");
+    command.output().expect("rclip runs");
+  }
+
+  fn downloads(&self) -> Vec<String> {
+    let mut downloads = self.downloads.lock().unwrap().clone();
+    downloads.sort();
+    downloads
+  }
+}
+
+fn assert_downloaded(datadir: &Path, files: &[&str]) {
+  for file in files {
+    assert_eq!(std::fs::read_to_string(datadir.join(file)).ok().as_deref(), Some(*file));
+  }
+}
+
+#[test]
+fn downloads_the_model_files_missing_from_the_data_directory() {
+  let hub = FakeHub::start();
+  let datadir = tempdir();
+  hub.rclip(datadir.path());
+  assert_eq!(hub.downloads(), model_files());
+  assert_downloaded(datadir.path(), &model_files());
+}
+
+#[test]
+fn downloads_only_the_notices_for_an_already_downloaded_model() {
+  let hub = FakeHub::start();
+  let datadir = tempdir();
+  for file in WEIGHTS.iter().chain(&CORE_ML_PACKAGE) {
+    let path = datadir.path().join(file);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, "").unwrap();
+  }
+  std::fs::create_dir(datadir.path().join(COMPILED_CORE_ML_MODEL)).unwrap();
+  hub.rclip(datadir.path());
+  assert_eq!(hub.downloads(), NOTICES);
+  assert_downloaded(datadir.path(), &NOTICES);
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn compiles_a_downloaded_core_ml_package_that_is_not_compiled_yet() {
+  let run = Run::new();
+  let empty = fixtures().join("empty_directory");
+  // The first run downloads the model.
+  assert!(run.rclip(&empty, &["kitty"]).status.success());
+  let compiled = run.datadir.join(COMPILED_CORE_ML_MODEL);
+  std::fs::remove_dir_all(&compiled).unwrap();
+  assert!(run.rclip(&empty, &["kitty"]).status.success());
+  assert!(compiled.is_dir());
+}
+
+#[test]
+fn loads_only_the_encoder_that_the_query_needs() {
+  let run = Run::new();
+  let empty = fixtures().join("empty_directory");
+  // The first run downloads the model.
+  assert!(run.rclip(&empty, &["kitty"]).status.success());
+  let image = images().join("cat.jpg");
+  for (unused, query) in [(VISUAL, "kitty"), (TEXTUAL, image.to_str().unwrap())] {
+    let datadir = tempdir();
+    for file in WEIGHTS.iter().chain(&NOTICES) {
+      let path = datadir.path().join(file);
+      std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+      if *file == unused {
+        std::fs::write(path, "not a model").unwrap();
+      } else {
+        std::fs::hard_link(run.datadir.join(file), path).unwrap();
+      }
+    }
+    // Without Core ML, this data directory is complete on macOS too.
+    let output = rclip()
+      .args(["--no-indexing", query])
+      .current_dir(&empty)
+      .env("RCLIP_DATADIR", datadir.path())
+      .env("RCLIP_USE_ONNX_ON_MACOS", "1")
+      .output()
+      .expect("rclip runs");
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+  }
+}
+
 /// Runs the interactive UI in a pseudo-terminal, lets it start, and quits it with Ctrl+C.
 #[cfg(unix)]
 #[test]
@@ -446,7 +624,7 @@ fn interactive_starts_and_exits_cleanly() {
     );
     (std::fs::File::from_raw_fd(controller), OwnedFd::from_raw_fd(device))
   };
-  let mut command = Command::new(env!("CARGO_BIN_EXE_rclip"));
+  let mut command = rclip();
   command
     .arg("--force-interactive")
     .current_dir(fixtures().join("empty_directory"))

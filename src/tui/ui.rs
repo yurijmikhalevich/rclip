@@ -112,7 +112,8 @@ fn draw_input(frame: &mut Frame<'_>, app: &App, area: Rect) {
   if chars.is_empty() {
     Paragraph::new("Search images…").style(muted()).render(inner, frame.buffer_mut());
   } else {
-    Paragraph::new(chars[start..].iter().collect::<String>()).render(inner, frame.buffer_mut());
+    let style = if focused && app.input.selected { Style::default().reversed() } else { Style::default() };
+    Paragraph::new(chars[start..].iter().collect::<String>()).style(style).render(inner, frame.buffer_mut());
   }
   if focused {
     frame.set_cursor_position((inner.x + column as u16, inner.y));
@@ -304,7 +305,9 @@ fn draw_detail(buffer: &mut Buffer, app: &mut App, context: &mut Context<'_>, ar
 
   let strip = Rect::new(area.x, frame.bottom(), area.width, filmstrip_height);
   let slots = 2 * neighbors + 1;
-  let slot_width = |slot: usize| strip.width / slots as u16 + u16::from(slot < usize::from(strip.width) % slots);
+  // Spreading the slots' edges evenly keeps the selected slot centered when the width leaves a remainder.
+  let slot_left = |slot: usize| (usize::from(strip.width) * slot / slots) as u16;
+  let slot_width = |slot: usize| slot_left(slot + 1) - slot_left(slot);
   let thumbnail_frame = |slot_area: Rect, selected: bool| {
     if selected {
       return slot_area;
@@ -325,11 +328,9 @@ fn draw_detail(buffer: &mut Buffer, app: &mut App, context: &mut Context<'_>, ar
     cells: (frame.width.saturating_sub(4), frame.height.saturating_sub(2)),
     cell_pixels: context.cell_pixels,
   };
-  let mut x = strip.x;
   for slot in 0..slots {
     let offset = slot as isize - neighbors as isize;
-    let slot_area = Rect::new(x, strip.y, slot_width(slot), strip.height);
-    x += slot_area.width;
+    let slot_area = Rect::new(strip.x + slot_left(slot), strip.y, slot_width(slot), strip.height);
     let Some(result) = app.selected.checked_add_signed(offset).and_then(|index| app.results.get(index)) else {
       continue;
     };
@@ -416,7 +417,326 @@ fn draw_notifications(buffer: &mut Buffer, app: &App, area: Rect) {
 
 #[cfg(test)]
 mod tests {
+  use std::collections::{BTreeSet, HashSet};
+  use std::time::Duration;
+
+  use crossbeam_channel::{Receiver, unbounded};
+  use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+  use ratatui::Terminal;
+  use ratatui::backend::TestBackend;
+
+  use super::super::app::Effect;
+  use super::super::images::Prepared;
+  use super::super::worker::{Request, Response, TuiResult};
   use super::*;
+  use crate::db::ImageCursor;
+
+  /// The app drawn on an in-memory terminal.
+  struct Screen {
+    app: App,
+    images: Images,
+    loaded: Receiver<(ImageKey, Result<Prepared, String>)>,
+    /// The images whose loads were handed to `images`.
+    finished: HashSet<ImageKey>,
+    terminal: Terminal<TestBackend>,
+    hits: HitMap,
+  }
+
+  impl Screen {
+    /// The app as it starts, with the request for its first results.
+    fn new((width, height): (u16, u16)) -> (Self, Vec<Effect>) {
+      let (app, effects) = App::new("~/p".into(), 100);
+      let (events, loaded) = unbounded();
+      let screen = Screen {
+        app,
+        images: Images::new(events, |key, result| (key, result)),
+        loaded,
+        finished: HashSet::new(),
+        terminal: Terminal::new(TestBackend::new(width, height)).unwrap(),
+        hits: HitMap::default(),
+      };
+      (screen, effects)
+    }
+
+    /// The app showing `paths`: as search results for `query`, or as all images if it is empty.
+    fn showing(query: &str, paths: &[String], size: (u16, u16)) -> Self {
+      let (mut screen, mut effects) = Screen::new(size);
+      if !query.is_empty() {
+        effects = screen.search(query);
+      }
+      screen.respond(effects, paths, None);
+      screen
+    }
+
+    fn press(&mut self, code: KeyCode) -> Vec<Effect> {
+      self.app.on_key(KeyEvent::new(code, KeyModifiers::NONE))
+    }
+
+    fn search(&mut self, query: &str) -> Vec<Effect> {
+      for c in query.chars() {
+        self.press(KeyCode::Char(c));
+      }
+      self.press(KeyCode::Enter)
+    }
+
+    /// Answers the requests in `effects` with `paths`, scored if they are search results, and returns the requests.
+    fn respond(&mut self, effects: Vec<Effect>, paths: &[String], more: Option<ImageCursor>) -> Vec<Request> {
+      let mut requests = Vec::new();
+      for effect in effects {
+        let Effect::Request(generation, request) = effect else { panic!("expected a request, got {effect:?}") };
+        requests.push(request.clone());
+        let scored = matches!(request, Request::Search(_));
+        let score = |index: usize| scored.then_some(0.9 - index as f64 / 10.0);
+        let results =
+          paths.iter().enumerate().map(|(index, path)| TuiResult { filepath: path.clone(), score: score(index) });
+        self.app.on_response(Response { generation, request, outcome: Ok((results.collect(), more.clone())) });
+      }
+      requests
+    }
+
+    /// Draws a frame and returns the lines on the screen.
+    fn draw(&mut self) -> Vec<String> {
+      self.images.begin_frame();
+      let Screen { app, images, terminal, hits, .. } = self;
+      terminal.draw(|frame| *hits = draw(frame, app, &mut Context { images, cell_pixels: (10, 20) })).unwrap();
+      self.images.end_frame();
+      let buffer = self.terminal.backend().buffer();
+      let rows = buffer.content().chunks(usize::from(buffer.area.width));
+      rows.map(|row| row.iter().map(|cell| cell.symbol()).collect()).collect()
+    }
+
+    /// The line below the results, which shows the selected result's path.
+    fn selected_path(&mut self) -> String {
+      let lines = self.draw();
+      lines[lines.len() - 2].trim().to_string()
+    }
+
+    /// The paths of the images the last frame asked for at the size of `variant`.
+    fn requested(&self, variant: Variant) -> Vec<&str> {
+      let keys = self.images.requested().iter().filter(|key| key.variant == variant);
+      keys.map(|key| key.path.as_str()).collect::<BTreeSet<&str>>().into_iter().collect()
+    }
+
+    /// The filmstrip thumbnails of `path` that the last frame asked for.
+    fn thumbnails(&self, path: &str) -> Vec<ImageKey> {
+      self.images.requested().iter().filter(|key| key.fit == Fit::Fill && key.path == path).cloned().collect()
+    }
+
+    /// Finishes loading the images the last frame asked for.
+    fn load(&mut self) {
+      let wanted = self.images.requested().clone();
+      while !wanted.is_subset(&self.finished) {
+        let (key, result) = self.loaded.recv_timeout(Duration::from_secs(30)).expect("the images load");
+        self.images.loaded(key.clone(), result);
+        self.finished.insert(key);
+      }
+    }
+
+    /// Whether the last frame drew an image inside `area`.
+    fn shows_image_in(&self, area: Rect) -> bool {
+      let buffer = self.terminal.backend().buffer();
+      area.positions().any(|position| buffer[position].symbol().starts_with('\u{10EEEE}'))
+    }
+  }
+
+  fn paths(count: usize) -> Vec<String> {
+    (0..count).map(|index| format!("/p/{index}.jpg")).collect()
+  }
+
+  #[test]
+  fn shows_what_is_searched_and_how_the_results_are_ordered() {
+    let mut screen = Screen::showing("", &paths(2), (100, 40));
+    let text = screen.draw().join("\n");
+    assert!(text.contains("Search images…"));
+    assert!(text.contains("~/p · Including subfolders") && text.contains("All images · Recently modified first"));
+    assert!(text.contains(" 0.jpg ") && text.contains(" 1.jpg "));
+
+    let mut screen = Screen::showing("cat", &paths(2), (100, 40));
+    let text = screen.draw().join("\n");
+    assert!(text.contains("┃cat ") && !text.contains("Search images…"));
+    assert!(text.contains("Search results · Most similar first"));
+    assert!(text.contains(" 0.900  0.jpg ") && text.contains(" 0.800  1.jpg "));
+  }
+
+  #[test]
+  fn shows_the_path_of_the_selected_result_below_the_results() {
+    let mut screen = Screen::showing("", &paths(2), (100, 40));
+    assert_eq!(screen.selected_path(), "");
+    screen.press(KeyCode::Down);
+    assert_eq!(screen.selected_path(), "/p/0.jpg");
+
+    let mut screen = Screen::showing("cat", &paths(2), (100, 40));
+    assert_eq!(screen.selected_path(), "");
+    screen.press(KeyCode::Down);
+    screen.press(KeyCode::Right);
+    assert_eq!(screen.selected_path(), "0.800  /p/1.jpg");
+    screen.press(KeyCode::Enter);
+    assert_eq!(screen.selected_path(), "0.800  /p/1.jpg");
+    // New results hide the path until one of them is selected.
+    screen.press(KeyCode::Esc);
+    screen.press(KeyCode::Char('/'));
+    let effects = screen.search("s");
+    screen.respond(effects, &paths(1), None);
+    assert_eq!(screen.selected_path(), "");
+  }
+
+  #[test]
+  fn shows_the_search_status_on_the_search_field() {
+    let (mut screen, effects) = Screen::new((100, 40));
+    assert!(screen.draw()[1].contains("Searching…"));
+    screen.respond(effects, &paths(1), None);
+    let top = &screen.draw()[1];
+    assert!(!top.contains("Searching…") && !top.contains("No results"), "{top}");
+    let effects = screen.search("cat");
+    assert!(screen.draw()[1].contains("Searching…"));
+    screen.respond(effects, &[], None);
+    assert!(screen.draw()[1].contains("No results"));
+  }
+
+  #[test]
+  fn shows_notifications_with_their_titles() {
+    let mut screen = Screen::showing("", &paths(1), (100, 40));
+    screen.app.notify("cat.jpg", "Path copied", false);
+    let lines = screen.draw();
+    let title = lines.iter().position(|line| line.contains(" cat.jpg ")).expect("the title is shown");
+    assert!(lines[title + 1].contains(" Path copied "));
+  }
+
+  #[test]
+  fn loads_previews_only_for_the_cards_on_screen() {
+    let paths = paths(100);
+    let mut screen = Screen::showing("", &paths, (80, 25));
+    screen.draw();
+    // Three columns of cards fit, and two rows of them are at least partly visible.
+    assert_eq!(screen.requested(Variant::Preview), paths[..6]);
+    assert_eq!(screen.hits.cards.iter().map(|(_, index)| *index).collect::<Vec<_>>(), [0, 1, 2, 3, 4, 5]);
+    screen.app.scroll_grid(isize::MAX, screen.hits.grid_lines);
+    screen.draw();
+    let requested = screen.requested(Variant::Preview);
+    assert!(requested.contains(&"/p/99.jpg") && !requested.contains(&"/p/0.jpg"), "{requested:?}");
+    assert!(requested.len() <= 6 && screen.requested(Variant::Detail).is_empty());
+  }
+
+  #[test]
+  fn moving_down_keeps_the_selection_on_screen_and_loads_the_next_page_near_the_end() {
+    let paths = paths(26);
+    let more = ImageCursor { modified_at: 2.0, filepath: paths[24].clone() };
+    let (mut screen, effects) = Screen::new((80, 24));
+    screen.respond(effects, &paths[..25], Some(more.clone()));
+    let mut requests = Vec::new();
+    for _ in 0..10 {
+      screen.press(KeyCode::Down);
+      screen.draw();
+      let selected = screen.hits.cards.iter().find(|(_, index)| *index == screen.app.selected);
+      assert_eq!(selected.map(|(area, _)| area.height), Some(CARD_HEIGHT));
+      let effects = screen.app.after_frame(screen.hits.grid_lines);
+      requests.extend(screen.respond(effects, &paths[25..], None));
+    }
+    assert_eq!(requests, [Request::Browse(Some(more))]);
+    assert_eq!((screen.app.results.len(), screen.app.selected), (26, 25));
+  }
+
+  #[test]
+  fn scrolling_to_the_end_shows_the_next_batch_of_search_results() {
+    let (mut screen, _) = Screen::new((80, 24));
+    let effects = screen.search("cat");
+    screen.respond(effects, &paths(150), None);
+    screen.draw();
+    assert!(screen.app.after_frame(screen.hits.grid_lines).is_empty());
+    assert_eq!(screen.app.results.len(), 100);
+    screen.app.scroll_grid(isize::MAX, screen.hits.grid_lines);
+    screen.draw();
+    assert!(screen.app.after_frame(screen.hits.grid_lines).is_empty());
+    assert_eq!(screen.app.results.len(), 150);
+  }
+
+  #[test]
+  fn the_detail_view_loads_the_shown_image_and_its_neighbors_at_full_size() {
+    let paths = paths(5);
+    let mut screen = Screen::showing("", &paths, (100, 40));
+    screen.app.select(2);
+    screen.press(KeyCode::Enter);
+    screen.draw();
+    assert_eq!(screen.requested(Variant::Detail), paths[1..4]);
+    assert_eq!(screen.requested(Variant::Preview), paths[..]);
+    screen.press(KeyCode::Left);
+    screen.draw();
+    assert_eq!(screen.requested(Variant::Detail), paths[..3]);
+    screen.press(KeyCode::Left);
+    screen.draw();
+    assert_eq!(screen.requested(Variant::Detail), paths[..2]);
+  }
+
+  #[test]
+  fn the_filmstrip_fits_the_terminal_and_centers_the_selection() {
+    let paths = paths(9);
+    for (width, height, thumbnails) in [(100, 40, 5), (81, 24, 5), (40, 16, 1), (160, 40, 9)] {
+      let mut screen = Screen::showing("", &paths, (width, height));
+      screen.app.select(4);
+      screen.press(KeyCode::Enter);
+      screen.draw();
+      let neighbors = thumbnails / 2;
+      let offsets: Vec<isize> = screen.hits.filmstrip.iter().map(|(_, offset)| *offset).collect();
+      assert_eq!(offsets, (-neighbors..=neighbors).collect::<Vec<_>>(), "{width}x{height}");
+      let (center, _) = screen.hits.filmstrip[neighbors.unsigned_abs()];
+      assert!((2 * center.x + center.width).abs_diff(width) <= 1, "{width}x{height}");
+      assert!(screen.hits.detail_image.height > 0, "{width}x{height}");
+    }
+
+    // Slots before the first result and after the last one stay empty.
+    let mut screen = Screen::showing("", &paths, (100, 40));
+    screen.press(KeyCode::Down);
+    screen.press(KeyCode::Enter);
+    screen.draw();
+    assert_eq!(screen.hits.filmstrip.iter().map(|(_, offset)| *offset).collect::<Vec<_>>(), [0, 1, 2]);
+  }
+
+  #[test]
+  fn the_filmstrip_enlarges_the_selection_and_preloads_the_thumbnail_browsing_reveals_next() {
+    let paths = paths(7);
+    let mut screen = Screen::showing("", &paths, (100, 40));
+    screen.app.select(2);
+    screen.press(KeyCode::Enter);
+    screen.draw();
+    let (selected, neighbor) = (&screen.thumbnails(&paths[2])[0], &screen.thumbnails(&paths[3])[0]);
+    assert!(selected.cells.0 > neighbor.cells.0 && selected.cells.1 > neighbor.cells.1);
+    // The filmstrip shows two neighbors on each side; the next one is loaded while still hidden.
+    let preloaded = screen.thumbnails(&paths[5]);
+    assert_eq!((preloaded.len(), screen.thumbnails(&paths[6]).len()), (1, 0));
+
+    screen.press(KeyCode::Right);
+    screen.draw();
+    assert_eq!(screen.hits.filmstrip.len(), 5);
+    assert_eq!(screen.thumbnails(&paths[5]), preloaded);
+    assert_eq!(screen.thumbnails(&paths[6]).len(), 1);
+  }
+
+  #[test]
+  fn the_detail_view_explains_what_it_cannot_show() {
+    let directory = tempfile::tempdir().unwrap();
+    let image = directory.path().join("image.png");
+    image::RgbImage::from_pixel(80, 60, image::Rgb([200, 30, 30])).save(&image).unwrap();
+    let paths = [image, directory.path().join("missing.png")].map(|path| path.to_str().unwrap().to_string());
+    let mut screen = Screen::showing("", &paths, (100, 40));
+    screen.press(KeyCode::Down);
+    screen.press(KeyCode::Enter);
+    assert!(screen.draw().join("\n").contains("Loading higher-resolution image…"));
+    assert!(!screen.shows_image_in(screen.hits.detail_image));
+    screen.load();
+    assert!(!screen.draw().join("\n").contains("Loading higher-resolution image…"));
+    assert!(screen.shows_image_in(screen.hits.detail_image));
+
+    screen.press(KeyCode::Right);
+    assert!(screen.draw().join("\n").contains("Unable to load image: "));
+    assert!(!screen.shows_image_in(screen.hits.detail_image));
+
+    let mut screen = Screen::showing("", &[], (100, 40));
+    screen.press(KeyCode::Down);
+    screen.press(KeyCode::Char('o'));
+    let lines = screen.draw();
+    let frame = screen.hits.detail_image;
+    assert!(lines[usize::from(frame.y)..usize::from(frame.bottom())].iter().any(|line| line.contains("No results")));
+  }
 
   #[test]
   fn fits_as_many_columns_as_possible() {

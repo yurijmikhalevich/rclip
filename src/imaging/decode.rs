@@ -133,6 +133,7 @@ fn to_rgb(image: DynamicImage) -> RgbImage {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::imaging::preprocess::{IMAGE_SIZE, preprocess};
 
   #[test]
   fn flattens_transparency_onto_the_background() {
@@ -165,5 +166,63 @@ mod tests {
   #[test]
   fn unknown_data_is_unidentified() {
     assert!(matches!(decode(b"definitely not an image", "jpg", None, None), Err(ImageError::Unidentified)));
+  }
+
+  #[cfg(not(any(target_os = "macos", windows)))]
+  #[test]
+  fn heic_images_are_unidentified_without_an_operating_system_codec() {
+    let data = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/e2e/images heic/bee.heic")).unwrap();
+    assert!(matches!(decode(&data, "heic", None, None), Err(ImageError::Unidentified)));
+  }
+
+  /// A smooth gradient, which JPEG compresses with little loss, in color or in grayscale.
+  fn gradient(width: u32, height: u32, color: bool, format: ImageFormat) -> Vec<u8> {
+    let image = DynamicImage::ImageRgb8(image::RgbImage::from_fn(width, height, |x, y| {
+      let value = ((x * 255 / width + y * 255 / height) / 2) as u8;
+      image::Rgb([value, 255 - value, value / 2 + 64])
+    }));
+    let image = if color { image } else { image.grayscale() };
+    let mut data = Vec::new();
+    image.write_to(&mut Cursor::new(&mut data), format).unwrap();
+    data
+  }
+
+  fn decoded_size(data: &[u8], min_side: Option<u32>) -> (u32, u32) {
+    let image = decode(data, "", None, min_side).unwrap();
+    assert_eq!(image.pixels.len(), (image.width * image.height * 3) as usize);
+    (image.width, image.height)
+  }
+
+  #[test]
+  fn decodes_large_jpegs_at_the_largest_reduction_that_covers_the_minimum_side() {
+    let color = gradient(4096, 3072, true, ImageFormat::Jpeg);
+    assert_eq!(decoded_size(&color, Some(IMAGE_SIZE)), (512, 384));
+    assert_eq!(decoded_size(&color, None), (4096, 3072));
+    let gray = gradient(2048, 1536, false, ImageFormat::Jpeg);
+    assert_eq!(decoded_size(&gray, Some(IMAGE_SIZE)), (512, 384));
+  }
+
+  #[test]
+  fn decodes_small_jpegs_and_other_formats_at_full_size() {
+    assert_eq!(decoded_size(&gradient(400, 300, true, ImageFormat::Jpeg), Some(IMAGE_SIZE)), (400, 300));
+    assert_eq!(decoded_size(&gradient(1024, 768, true, ImageFormat::Png), Some(IMAGE_SIZE)), (1024, 768));
+  }
+
+  #[test]
+  fn reduced_jpeg_decoding_stays_close_to_the_full_resolution_result() {
+    let data = gradient(4096, 3072, true, ImageFormat::Jpeg);
+    let reduced = preprocess(&decode(&data, "", None, Some(IMAGE_SIZE)).unwrap());
+    let full = preprocess(&decode(&data, "", None, None).unwrap());
+    assert!(reduced.iter().zip(&full).all(|(reduced, full)| (reduced - full).abs() <= 0.2));
+  }
+
+  #[test]
+  fn rejects_images_over_the_pixel_limit() {
+    for format in [ImageFormat::Png, ImageFormat::Jpeg] {
+      let data = gradient(50, 50, true, format);
+      assert!(matches!(decode(&data, "", Some(100), None), Err(ImageError::TooLarge { pixels: 2500, limit: 100 })));
+      assert!(decode(&data, "", Some(2500), None).is_ok());
+      assert!(decode(&data, "", None, None).is_ok());
+    }
   }
 }

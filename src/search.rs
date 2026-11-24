@@ -86,7 +86,17 @@ impl Search<'_> {
     // Images used as queries are excluded from the results.
     let cwd = std::env::current_dir().map_err(|error| anyhow!("cannot get the current directory: {error}"))?;
     let excluded = query_image_paths(&cwd, positive.iter().chain(query.subtract));
+    self.rank(&features, &excluded, top_k, cancel)
+  }
 
+  /// Returns the `top_k` indexed images that match `features` best, leaving out the `excluded` paths.
+  fn rank(
+    &self,
+    features: &[f64],
+    excluded: &HashSet<String>,
+    top_k: usize,
+    cancel: Option<&AtomicBool>,
+  ) -> Result<Vec<SearchResult>, SearchError> {
     let rankings = self
       .db
       .scan_vectors(
@@ -98,7 +108,7 @@ impl Search<'_> {
             check(cancel)?;
           }
           if !self.filter.is_excluded(filepath, self.directory) && !excluded.contains(filepath) {
-            ranking.push(dot(&features, vector), filepath);
+            ranking.push(dot(features, vector), filepath);
           }
           Ok(())
         },
@@ -230,6 +240,29 @@ mod tests {
     values.into_iter().flat_map(f32::to_le_bytes).collect()
   }
 
+  /// Converts a path written with `/` to the platform's separators, at which the exclusions split paths.
+  fn native(path: &str) -> String {
+    path.replace('/', std::path::MAIN_SEPARATOR_STR)
+  }
+
+  fn features() -> FeatureVector {
+    std::iter::once(1.0).chain(std::iter::repeat_n(0.0, VECTOR_SIZE - 1)).collect()
+  }
+
+  /// The vector of an image that scores `score` against [`features`].
+  fn scoring(score: f32) -> Vec<u8> {
+    vector(std::iter::once(score).chain(std::iter::repeat_n(0.0, VECTOR_SIZE - 1)))
+  }
+
+  fn insert(db: &Db, path: &str, modified_at: f64, vector: &[u8]) {
+    let image = crate::db::NewImage { filepath: &native(path), modified_at, size: 1, vector, hash: "h" };
+    db.upsert_image(&image).unwrap();
+  }
+
+  fn model() -> Model {
+    Model::new(crate::model::download::ModelFiles::new(Path::new("/nonexistent")))
+  }
+
   #[test]
   fn dot_product_matches_a_naive_sum() {
     let query: Vec<f64> = (0..VECTOR_SIZE).map(|i| (i as f64).sin()).collect();
@@ -268,16 +301,51 @@ mod tests {
   }
 
   #[test]
+  fn ranks_only_images_that_are_neither_excluded_nor_part_of_the_query() {
+    let db = Db::open_in_memory().unwrap();
+    for (path, score) in [
+      ("/p/private/a.jpg", 6.0),
+      ("/p/.hidden.jpg", 5.0),
+      ("/p/query.jpg", 4.0),
+      ("/elsewhere/a.jpg", 3.0),
+      ("/p/b.jpg", 1.0),
+      ("/p/a.jpg", 2.0),
+    ] {
+      insert(&db, path, 1.0, &scoring(score));
+    }
+    let (model, filter) = (model(), PathFilter::new(Some(vec!["private".into()]), false, false));
+    let search = Search { db: &db, model: &model, filter: &filter, directory: &native("/p") };
+    let query_images = HashSet::from([native("/p/query.jpg")]);
+    let ranked = |top_k| search.rank(&features(), &query_images, top_k, None).unwrap();
+    let result = |path, score| SearchResult { filepath: native(path), score };
+    assert_eq!(ranked(1), [result("/p/a.jpg", 2.0)]);
+    assert_eq!(ranked(10), [result("/p/a.jpg", 2.0), result("/p/b.jpg", 1.0)]);
+  }
+
+  #[test]
+  fn cancelled_searches_and_listings_fail_instead_of_returning_results() {
+    let db = Db::open_in_memory().unwrap();
+    // enough images for the scan to check for the cancellation before it reaches the last one
+    for index in 0..4096 {
+      insert(&db, &format!("/p/{index}.jpg"), 1.0, &scoring(1.0));
+    }
+    let (model, filter) = (model(), PathFilter::new(None, false, false));
+    let search = Search { db: &db, model: &model, filter: &filter, directory: &native("/p") };
+    let cancel = AtomicBool::new(true);
+    // the search is cancelled before it needs the model, which is missing here
+    let query = Query { query: "cat", add: &[], subtract: &[] };
+    assert!(matches!(search.search(&query, 10, Some(&cancel)), Err(SearchError::Cancelled(_))));
+    assert!(matches!(search.rank(&features(), &HashSet::new(), 10, Some(&cancel)), Err(SearchError::Cancelled(_))));
+    assert!(matches!(search.list_images(10, None, Some(&cancel)), Err(SearchError::Cancelled(_))));
+  }
+
+  #[test]
   fn lists_images_with_exclusions_applied_before_the_limit() {
     let db = Db::open_in_memory().unwrap();
-    // `list_images` splits paths at the platform's separator
-    let native = |path: &str| path.replace('/', std::path::MAIN_SEPARATOR_STR);
     for (path, modified_at) in [("/p/a.jpg", 5.0), ("/p/.hidden.jpg", 4.0), ("/p/b.jpg", 3.0), ("/p/c.jpg", 2.0)] {
-      let image = crate::db::NewImage { filepath: &native(path), modified_at, size: 1, vector: &[0; 4], hash: "h" };
-      db.upsert_image(&image).unwrap();
+      insert(&db, path, modified_at, &[0; 4]);
     }
-    let model = Model::new(crate::model::download::ModelFiles::new(Path::new("/nonexistent")));
-    let filter = PathFilter::new(None, false, false);
+    let (model, filter) = (model(), PathFilter::new(None, false, false));
     let search = Search { db: &db, model: &model, filter: &filter, directory: &native("/p") };
     let (page, cursor) = search.list_images(2, None, None).unwrap();
     assert_eq!(page, [native("/p/a.jpg"), native("/p/b.jpg")]);

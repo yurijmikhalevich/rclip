@@ -63,9 +63,29 @@ mod tests {
   }
 
   #[test]
-  fn upscales_small_images() {
-    let image = RgbImage { width: 10, height: 20, pixels: vec![7; 10 * 20 * 3] };
-    assert_eq!(preprocess(&image).len(), TENSOR_LEN);
+  fn returns_the_model_input_for_any_size_and_aspect_ratio() {
+    for (width, height) in [(512, 384), (384, 512), (1024, 768), (256, 256), (200, 100), (10, 20), (1000, 333)] {
+      let image = RgbImage { width, height, pixels: vec![7; (width * height * 3) as usize] };
+      assert_eq!(preprocess(&image).len(), TENSOR_LEN, "{width}x{height}");
+    }
+  }
+
+  #[test]
+  fn crops_the_center_rounding_half_pixel_offsets_to_even_like_python() {
+    // Red holds the column and green holds the row, so the first value of a plane shows where the
+    // crop starts. A shorter side of 256 means that the image is cropped without resizing.
+    let coordinates = |width: u32, height: u32| RgbImage {
+      width,
+      height,
+      pixels: (0..height).flat_map(|y| (0..width).flat_map(move |x| [x as u8, y as u8, 0])).collect(),
+    };
+    let normalized = |value: u8, channel: usize| (f32::from(value) / 255.0 - MEAN[channel]) / STD[channel];
+    for (width, left) in [(384, 64), (257, 0), (259, 2), (261, 2)] {
+      let tensor = preprocess(&coordinates(width, 256));
+      assert!((tensor[0] - normalized(left, 0)).abs() < 1e-6, "{width}");
+    }
+    let tensor = preprocess(&coordinates(256, 384));
+    assert!((tensor[(IMAGE_SIZE * IMAGE_SIZE) as usize] - normalized(64, 1)).abs() < 1e-6);
   }
 
   #[test]

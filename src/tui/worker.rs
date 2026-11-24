@@ -123,3 +123,105 @@ fn handle(
     }
   }
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::db::NewImage;
+  use crate::model::download::ModelFiles;
+
+  fn native(path: &str) -> String {
+    path.replace('/', std::path::MAIN_SEPARATOR_STR)
+  }
+
+  /// A library of `count` images, the first one modified last, with a model that cannot be loaded.
+  fn context(count: usize) -> Context {
+    let db = Db::open_in_memory().unwrap();
+    for index in 0..count {
+      let filepath = native(&format!("/p/{index:02}.jpg"));
+      let modified_at = (count - index) as f64;
+      db.upsert_image(&NewImage { filepath: &filepath, modified_at, size: 1, vector: &[0; 4], hash: "h" }).unwrap();
+    }
+    Context {
+      db,
+      model: Model::new(ModelFiles::new(std::path::Path::new("/nonexistent"))),
+      filter: PathFilter::new(None, false, false),
+      directory: native("/p"),
+    }
+  }
+
+  /// Queues `requests` (generation, request, whether it was cancelled) and returns the worker's answers.
+  fn answers(context: &Context, requests: Vec<(u64, Request, bool)>) -> Vec<Response> {
+    let (sender, receiver) = unbounded();
+    for (generation, request, cancelled) in requests {
+      sender.send((generation, request, Arc::new(AtomicBool::new(cancelled)))).unwrap();
+    }
+    drop(sender);
+    let responses = std::cell::RefCell::new(Vec::new());
+    run(context, &receiver, |response| {
+      responses.borrow_mut().push(response);
+      true
+    });
+    responses.into_inner()
+  }
+
+  #[test]
+  fn browses_a_page_at_a_time() {
+    let context = context(BROWSE_PAGE_SIZE + 1);
+    let cancel = AtomicBool::new(false);
+    let (page, cursor) = handle(&context, &Request::Browse(None), &cancel).unwrap();
+    assert_eq!(page.len(), BROWSE_PAGE_SIZE);
+    assert_eq!(page[0], TuiResult { filepath: native("/p/00.jpg"), score: None });
+    assert!(cursor.is_some());
+    let (page, cursor) = handle(&context, &Request::Browse(cursor), &cancel).unwrap();
+    assert_eq!(page, [TuiResult { filepath: native("/p/25.jpg"), score: None }]);
+    assert_eq!(cursor, None);
+  }
+
+  #[test]
+  fn rejects_image_queries() {
+    for query in ["./cat.jpg", "2:./cat.jpg", "https://example.com/cat.jpg"] {
+      let responses = answers(&context(1), vec![(1, Request::Search(query.into()), false)]);
+      assert_eq!(responses[0].outcome, Err("interactive mode supports text queries only".into()), "{query}");
+      assert_eq!((responses[0].generation, &responses[0].request), (1, &Request::Search(query.into())));
+    }
+  }
+
+  #[test]
+  fn answers_only_the_newest_request() {
+    let requests = vec![
+      (1, Request::Browse(None), false),
+      (2, Request::Search("./cat.jpg".into()), false),
+      (3, Request::Browse(None), false),
+    ];
+    let responses = answers(&context(2), requests);
+    assert_eq!(responses.len(), 1);
+    assert_eq!(responses[0].generation, 3);
+    assert_eq!(responses[0].outcome.as_ref().map(|(results, _)| results.len()), Ok(2));
+  }
+
+  #[test]
+  fn does_not_answer_cancelled_requests() {
+    let context = context(2);
+    assert!(answers(&context, vec![(1, Request::Browse(None), true)]).is_empty());
+    // A request cancelled while it runs stops with an error instead of finishing.
+    let interrupted = handle(&context, &Request::Browse(None), &AtomicBool::new(true));
+    assert!(matches!(interrupted, Err(SearchError::Cancelled(_))));
+  }
+
+  #[test]
+  fn a_new_request_cancels_the_previous_one() {
+    let (events, received) = unbounded();
+    let mut worker = Worker::spawn(context(2), events, std::convert::identity);
+    worker.request(1, Request::Browse(None));
+    let first = Arc::clone(&worker.cancel);
+    worker.request(2, Request::Browse(None));
+    assert!(first.load(Ordering::Relaxed));
+    assert!(!worker.cancel.load(Ordering::Relaxed));
+    // The first request may have finished before it was cancelled; the newest one is always answered.
+    let newest = std::iter::from_fn(|| received.recv_timeout(std::time::Duration::from_secs(30)).ok())
+      .find(|response: &Response| response.generation == 2)
+      .expect("the newest request is answered");
+    assert_eq!(newest.outcome.map(|(results, _)| results.len()), Ok(2));
+  }
+}

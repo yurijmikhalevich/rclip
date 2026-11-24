@@ -53,6 +53,9 @@ pub struct Db {
 /// Scans covering fewer rows than this run on a single connection.
 const PARALLEL_SCAN_MIN_ROWS: i64 = 50_000;
 const PARALLEL_SCAN_THREADS: usize = 4;
+/// The scan of the images under a directory on a single connection, which follows the filepath index.
+const VECTORS_SQL: &str =
+  "SELECT filepath, vector FROM images WHERE filepath >= ? AND filepath < ? AND deleted IS NULL";
 
 /// Whether a vector cache built by an incompatible model version may be discarded.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -73,7 +76,7 @@ impl Db {
     let db = Db { connection, path: Some(path.to_path_buf()) };
     db.ensure_tables()?;
     db.ensure_version(reset)?;
-    db.ensure_page_size(path)?;
+    db.ensure_page_size(path, |directory| fs4::available_space(directory), confirm_rebuild)?;
     Ok(db)
   }
 
@@ -152,7 +155,14 @@ impl Db {
   }
 
   /// Rebuilds an index stored in small pages, which makes it smaller and faster to search.
-  fn ensure_page_size(&self, path: &Path) -> Result<()> {
+  /// Rebuilds an index that still uses small pages. `available_space` returns the free space in the
+  /// index directory, and `confirm` decides whether to rebuild an index that takes minutes to rebuild.
+  fn ensure_page_size(
+    &self,
+    path: &Path,
+    available_space: impl FnOnce(&Path) -> std::io::Result<u64>,
+    confirm: impl FnOnce(i64, &str) -> bool,
+  ) -> Result<()> {
     let page_size: i64 = self.connection.pragma_query_value(None, "page_size", |row| row.get(0))?;
     let journal_mode: String = self.connection.pragma_query_value(None, "journal_mode", |row| row.get(0))?;
     // The rebuild can't change the page size of an index that is still in WAL mode.
@@ -164,26 +174,16 @@ impl Db {
       // SQLite writes the rebuilt database to a temporary file and then copies it back through a journal.
       let needed_bytes = 2 * std::fs::metadata(path)?.len();
       let needed_space = format!("{:.1} GB", needed_bytes as f64 / 1e9);
-      if fs4::available_space(path.parent().unwrap_or(path))? < needed_bytes {
+      if available_space(path.parent().unwrap_or(path))? < needed_bytes {
         eprintln!(
           "skipping the index rebuild that makes it smaller and faster to search: \
            it needs {needed_space} of free disk space"
         );
         return Ok(());
       }
-      if images >= REBUILD_CONFIRMATION_IMAGES && std::io::stdin().is_terminal() && std::io::stderr().is_terminal() {
-        eprint!(
-          "rclip can rebuild its index of {images} images to make it about 40% smaller and faster to search; \
-           this runs once, may take a few minutes, and needs {needed_space} of free disk space. \
-           Rebuild it now? [Y/n] "
-        );
-        let mut answer = String::new();
-        // A closed or unreadable stdin declines.
-        let read = std::io::stdin().read_line(&mut answer).unwrap_or(0);
-        if read == 0 || !["", "y", "yes"].contains(&answer.trim().to_lowercase().as_str()) {
-          eprintln!("skipping the index rebuild; rclip will ask again next time");
-          return Ok(());
-        }
+      if images >= REBUILD_CONFIRMATION_IMAGES && !confirm(images, &needed_space) {
+        eprintln!("skipping the index rebuild; rclip will ask again next time");
+        return Ok(());
       }
       eprintln!("rebuilding the index once to make it smaller and faster to search");
     }
@@ -275,9 +275,7 @@ impl Db {
     let dense = count >= PARALLEL_SCAN_MIN_ROWS && count * 4 >= max_id;
     let (Some(db_path), true, true) = (&self.path, dense, threads > 1) else {
       let mut state = new_state();
-      let mut statement = self.connection.prepare_cached(
-        "SELECT filepath, vector FROM images WHERE filepath >= ? AND filepath < ? AND deleted IS NULL",
-      )?;
+      let mut statement = self.connection.prepare_cached(VECTORS_SQL)?;
       let mut rows = statement.query([&start, &end])?;
       while let Some(row) = rows.next()? {
         visit(&mut state, row.get_ref(0)?.as_str()?, row.get_ref(1)?.as_blob()?)?;
@@ -332,16 +330,7 @@ impl Db {
     mut visit: impl FnMut(&str, f64) -> Result<bool>,
   ) -> Result<()> {
     let (start, end) = dirpath_range(path);
-    // SQLite would otherwise pick the filepath index and sort every image under `path` for each page; walking
-    // the recency index returns a page as soon as it finds enough images under `path`.
-    let mut sql = "SELECT filepath, modified_at FROM images INDEXED BY recent_images
-      WHERE filepath >= ?1 AND filepath < ?2 AND deleted IS NULL"
-      .to_string();
-    if after.is_some() {
-      sql += " AND modified_at <= ?3 AND (modified_at < ?3 OR filepath > ?4)";
-    }
-    sql += " ORDER BY modified_at DESC, filepath";
-    let mut statement = self.connection.prepare_cached(&sql)?;
+    let mut statement = self.connection.prepare_cached(&recent_filepaths_sql(after.is_some()))?;
     let mut rows = match after {
       Some(cursor) => statement.query(params![start, end, cursor.modified_at, cursor.filepath])?,
       None => statement.query(params![start, end])?,
@@ -353,6 +342,35 @@ impl Db {
     }
     Ok(())
   }
+}
+
+/// Asks whether to rebuild a large index now. Without a terminal to ask in, the answer is yes.
+fn confirm_rebuild(images: i64, needed_space: &str) -> bool {
+  if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
+    return true;
+  }
+  eprint!(
+    "rclip can rebuild its index of {images} images to make it about 40% smaller and faster to search; \
+     this runs once, may take a few minutes, and needs {needed_space} of free disk space. \
+     Rebuild it now? [Y/n] "
+  );
+  let mut answer = String::new();
+  // A closed or unreadable stdin declines.
+  let read = std::io::stdin().read_line(&mut answer).unwrap_or(0);
+  read != 0 && ["", "y", "yes"].contains(&answer.trim().to_lowercase().as_str())
+}
+
+/// The "recently modified first" listing query, which continues after a cursor when `after_cursor` is set.
+fn recent_filepaths_sql(after_cursor: bool) -> String {
+  // SQLite would otherwise pick the filepath index and sort every image under `path` for each page; walking
+  // the recency index returns a page as soon as it finds enough images under `path`.
+  let mut sql = "SELECT filepath, modified_at FROM images INDEXED BY recent_images
+    WHERE filepath >= ?1 AND filepath < ?2 AND deleted IS NULL"
+    .to_string();
+  if after_cursor {
+    sql += " AND modified_at <= ?3 AND (modified_at < ?3 OR filepath > ?4)";
+  }
+  sql + " ORDER BY modified_at DESC, filepath"
 }
 
 /// Returns the `[start, end)` filepath range covering every file under `path`.
@@ -413,8 +431,37 @@ mod tests {
     insert(&db, r"Y:\photos\nested\b.jpg", 2.0);
     insert(&db, r"Y:\photos2\c.jpg", 3.0);
     insert(&db, r"Y:\photo%\d.jpg", 4.0);
+    insert(&db, r"Z:\e.jpg", 5.0);
     assert_eq!(vectors(&db, r"Y:\photos"), [r"Y:\photos\a.jpg", r"Y:\photos\nested\b.jpg"]);
+    assert_eq!(vectors(&db, "Y:\\photos\\"), [r"Y:\photos\a.jpg", r"Y:\photos\nested\b.jpg"]);
     assert_eq!(vectors(&db, r"Y:\photo%"), [r"Y:\photo%\d.jpg"]);
+    assert_eq!(
+      vectors(&db, "Y:\\"),
+      [r"Y:\photo%\d.jpg", r"Y:\photos2\c.jpg", r"Y:\photos\a.jpg", r"Y:\photos\nested\b.jpg"]
+    );
+  }
+
+  /// The steps SQLite takes to run `sql`.
+  fn query_plan(db: &Db, sql: &str) -> String {
+    let mut statement = db.connection.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap();
+    let parameters = rusqlite::params_from_iter(std::iter::repeat_n("", statement.parameter_count()));
+    let steps = statement.query_map(parameters, |row| row.get::<_, String>(3)).unwrap();
+    steps.collect::<rusqlite::Result<Vec<_>>>().unwrap().join("; ")
+  }
+
+  #[test]
+  fn scans_a_directory_through_the_filepath_index() {
+    let plan = query_plan(&Db::open_in_memory().unwrap(), VECTORS_SQL);
+    assert!(plan.contains("existing_images (filepath>? AND filepath<?)"), "{plan}");
+  }
+
+  #[test]
+  fn lists_recent_filepaths_without_sorting() {
+    let db = Db::open_in_memory().unwrap();
+    for after_cursor in [false, true] {
+      let plan = query_plan(&db, &recent_filepaths_sql(after_cursor));
+      assert!(plan.contains("recent_images") && !plan.contains("TEMP B-TREE"), "{plan}");
+    }
   }
 
   #[test]
@@ -482,6 +529,7 @@ mod tests {
     insert(&db, r"Y:\p\old.jpg", 1.0);
     insert(&db, r"Y:\p\new-a.jpg", 2.0);
     insert(&db, r"Y:\p\new-b.jpg", 2.0);
+    insert(&db, r"Y:\elsewhere\newest.jpg", 3.0);
     let list = |after: Option<&ImageCursor>| {
       let mut paths = Vec::new();
       db.for_each_filepath(r"Y:\p", after, |filepath, _| {
@@ -505,6 +553,13 @@ mod tests {
     db.commit().unwrap();
   }
 
+  /// Opens an index the way `Db::open` does up to the rebuild, which the test then runs itself.
+  fn open_without_rebuilding(path: &Path) -> Db {
+    let connection = Connection::open(path).unwrap();
+    connection.pragma_update(None, "page_size", PAGE_SIZE).unwrap();
+    Db { connection, path: None }
+  }
+
   fn pragma<T: rusqlite::types::FromSql>(db: &Db, name: &str) -> T {
     db.connection.pragma_query_value(None, name, |row| row.get(0)).unwrap()
   }
@@ -517,6 +572,13 @@ mod tests {
   }
 
   #[test]
+  fn reads_the_index_through_a_memory_map() {
+    let directory = tempfile::tempdir().unwrap();
+    let db = Db::open(&directory.path().join("db.sqlite3"), VectorCacheReset::Allow).unwrap();
+    assert!(pragma::<i64>(&db, "mmap_size") > 0);
+  }
+
+  #[test]
   fn rebuilds_small_page_indexes_with_large_pages() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("db.sqlite3");
@@ -526,6 +588,40 @@ mod tests {
     assert_eq!(pragma::<i64>(&db, "page_size"), PAGE_SIZE);
     assert_eq!(pragma::<String>(&db, "journal_mode"), "delete");
     assert_eq!(db.filepaths(r"Y:\photos").unwrap(), [r"Y:\photos\cat.jpg"]);
+  }
+
+  #[test]
+  fn rebuilds_small_pages_only_with_enough_free_disk_space() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("db.sqlite3");
+    create_small_page_index(&path);
+    let db = open_without_rebuilding(&path);
+    db.ensure_page_size(&path, |_| Ok(0), |_, _| true).unwrap();
+    assert_eq!(pragma::<i64>(&db, "page_size"), 4096);
+    db.ensure_page_size(&path, |_| Ok(u64::MAX), |_, _| true).unwrap();
+    assert_eq!(pragma::<i64>(&db, "page_size"), PAGE_SIZE);
+  }
+
+  #[test]
+  fn rebuilds_a_large_index_only_when_confirmed() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("db.sqlite3");
+    create_small_page_index(&path);
+    let db = open_without_rebuilding(&path);
+    for index in 1..REBUILD_CONFIRMATION_IMAGES {
+      insert(&db, &format!(r"Y:\photos\{index}.jpg"), 1.0);
+    }
+    db.commit().unwrap();
+    let mut asked_about = None;
+    let decline = |images, _: &str| {
+      asked_about = Some(images);
+      false
+    };
+    db.ensure_page_size(&path, |_| Ok(u64::MAX), decline).unwrap();
+    assert_eq!(asked_about, Some(REBUILD_CONFIRMATION_IMAGES));
+    assert_eq!(pragma::<i64>(&db, "page_size"), 4096);
+    db.ensure_page_size(&path, |_| Ok(u64::MAX), |_, _| true).unwrap();
+    assert_eq!(pragma::<i64>(&db, "page_size"), PAGE_SIZE);
   }
 
   #[test]
